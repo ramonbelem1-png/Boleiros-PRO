@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { usePelada, Player } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
 
@@ -15,9 +15,42 @@ export default function MatchList() {
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [searchPlayer, setSearchPlayer] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 3000);
+  };
 
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handleConfirm = async (matchId: string) => {
+    if (!user) return;
+    setSubmitting(true);
+    try {
+      await confirmPresence(matchId, user.uid);
+      showFeedback('success', 'Presença confirmada!');
+    } catch (e) {
+      showFeedback('error', 'Erro ao confirmar presença.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleMarkAbsent = async (matchId: string, reason: string) => {
+    if (!user) return;
+    setSubmitting(true);
+    try {
+      await markAbsent(matchId, user.uid, reason);
+      showFeedback('success', 'Ausência marcada.');
+    } catch (e) {
+      showFeedback('error', 'Erro ao marcar ausência.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando lista...</div>;
@@ -64,6 +97,29 @@ export default function MatchList() {
               </div>
             ) : (
               <>
+                <div className="px-2 mb-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center space-x-2 text-primary mb-1">
+                        <CalendarIcon size={14} strokeWidth={3} />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Data da Pelada</span>
+                      </div>
+                      <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white">
+                        {nextMatch.date?.toDate().toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace('.', '')}
+                      </h2>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center justify-end space-x-2 text-gray-500 mb-1">
+                        <Clock size={14} />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Início</span>
+                      </div>
+                      <div className="text-xl font-bold text-white/90">
+                        {nextMatch.date?.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Confirmados</span>
@@ -231,20 +287,22 @@ export default function MatchList() {
                       return (
                         <>
                           <button 
-                            onClick={() => confirmPresence(nextMatch.id, user?.uid || '')}
+                            onClick={() => handleConfirm(nextMatch.id)}
+                            disabled={submitting}
                             className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
                               isConfirmed || isWaiting 
                                 ? 'bg-primary text-bg' 
                                 : 'bg-white/5 border border-border text-gray-400 hover:border-primary/50'
                             }`}
                           >
-                            <Check size={24} strokeWidth={4} />
+                            {submitting ? <Loader2 className="animate-spin" size={24} /> : <Check size={24} strokeWidth={4} />}
                             <span className="tracking-widest">
                               {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : 'DENTRO'}
                             </span>
                           </button>
                           <button 
                             onClick={() => setShowReasonModal(nextMatch.id)}
+                            disabled={submitting}
                             className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
                               isAbsent 
                                 ? 'bg-danger text-white' 
@@ -259,6 +317,19 @@ export default function MatchList() {
                     })()}
                   </div>
                 </div>
+
+                {feedback && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className={`fixed bottom-24 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl z-[100] ${
+                      feedback.type === 'success' ? 'bg-primary text-bg' : 'bg-danger text-white'
+                    }`}
+                  >
+                    {feedback.message}
+                  </motion.div>
+                )}
               </>
             )}
           </motion.div>
@@ -288,10 +359,11 @@ export default function MatchList() {
                 <button
                   key={r}
                   onClick={() => {
-                    markAbsent(showReasonModal, user?.uid || '', r);
+                    handleMarkAbsent(showReasonModal, r);
                     setShowReasonModal(null);
                   }}
-                  className="w-full py-4 bg-bg border border-border/50 rounded-2xl text-center font-bold text-sm text-white hover:border-primary/50 transition-colors uppercase tracking-widest active:scale-95"
+                  className="w-full py-4 bg-bg border border-border/50 rounded-2xl text-center font-bold text-sm text-white hover:border-primary/50 transition-colors uppercase tracking-widest active:scale-95 disabled:opacity-50"
+                  disabled={submitting}
                 >
                   {r}
                 </button>

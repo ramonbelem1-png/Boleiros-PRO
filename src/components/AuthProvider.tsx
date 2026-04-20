@@ -34,62 +34,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setAuthError(null);
-        // Obter papel do usuário
-        const roleDoc = await getDoc(doc(db, 'user_roles', u.uid));
-        let assignedRole: UserRole = 'USER';
+      try {
+        if (u) {
+          setAuthError(null);
+          // Obter papel do usuário
+          const roleDoc = await getDoc(doc(db, 'user_roles', u.uid));
+          let assignedRole: UserRole = 'USER';
 
-        if (roleDoc.exists()) {
-          assignedRole = roleDoc.data().role as UserRole;
-          
-          // Garantir que o email solicitado seja ADMIN
-          if (u.email === 'ramonbelem1@gmail.com' && assignedRole !== 'ADMIN') {
-            assignedRole = 'ADMIN';
-            await setDoc(doc(db, 'user_roles', u.uid), { role: 'ADMIN' }, { merge: true });
+          if (roleDoc.exists()) {
+            assignedRole = roleDoc.data().role as UserRole;
+            
+            // Garantir que o email solicitado seja ADMIN
+            if (u.email === 'ramonbelem1@gmail.com' && assignedRole !== 'ADMIN') {
+              assignedRole = 'ADMIN';
+              await setDoc(doc(db, 'user_roles', u.uid), { role: 'ADMIN' }, { merge: true });
+            }
+          } else {
+            // Se não houver configurações, o primeiro a logar vira admin (bootstrap)
+            const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
+            
+            if (!firstUserCheck.exists() || u.email === 'ramonbelem1@gmail.com') {
+              assignedRole = 'ADMIN';
+            }
+            
+            await setDoc(doc(db, 'user_roles', u.uid), { 
+              role: assignedRole,
+              email: u.email,
+              name: u.displayName
+            });
           }
+
+          // Garantir que o usuário exista na coleção 'players' para poder marcar presença
+          const playerDoc = await getDoc(doc(db, 'players', u.uid));
+          if (!playerDoc.exists()) {
+            await setDoc(doc(db, 'players', u.uid), {
+              name: u.displayName || u.email?.split('@')[0] || 'Jogador',
+              email: u.email,
+              photoUrl: u.photoURL || '',
+              level: 3,
+              position: 'MEIA',
+              type: 'DIARISTA',
+              balance: 0,
+              active: true,
+              gols: 0,
+              assistencias: 0,
+              vitorias: 0,
+              derrotas: 0,
+              empates: 0
+            });
+          }
+          
+          setRole(assignedRole);
+          setUser(u);
         } else {
-          // Se não houver configurações, o primeiro a logar vira admin (bootstrap)
-          const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
-          
-          if (!firstUserCheck.exists() || u.email === 'ramonbelem1@gmail.com') {
-            assignedRole = 'ADMIN';
-          }
-          
-          await setDoc(doc(db, 'user_roles', u.uid), { 
-            role: assignedRole,
-            email: u.email,
-            name: u.displayName
-          });
+          setUser(null);
+          setRole('USER');
         }
-
-        // Garantir que o usuário exista na coleção 'players' para poder marcar presença
-        const playerDoc = await getDoc(doc(db, 'players', u.uid));
-        if (!playerDoc.exists()) {
-          await setDoc(doc(db, 'players', u.uid), {
-            name: u.displayName || u.email?.split('@')[0] || 'Jogador',
-            email: u.email,
-            photoUrl: u.photoURL || '',
-            level: 3,
-            position: 'MEIA',
-            type: 'DIARISTA',
-            balance: 0,
-            active: true,
-            gols: 0,
-            assistencias: 0,
-            vitorias: 0,
-            derrotas: 0,
-            empates: 0
-          });
-        }
-        
-        setRole(assignedRole);
-        setUser(u);
-      } else {
-        setUser(null);
-        setRole('USER');
+      } catch (err: any) {
+        console.error("Erro na autenticação:", err);
+        setAuthError("Erro de conexão com o banco de dados.");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubAuth();

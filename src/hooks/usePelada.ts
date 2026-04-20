@@ -121,6 +121,10 @@ export function usePelada() {
   };
 
   const confirmPresence = async (matchId: string, playerId: string) => {
+    if (!playerId) {
+      console.error("Tentativa de confirmar presença sem playerId");
+      return;
+    }
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
 
@@ -135,14 +139,19 @@ export function usePelada() {
       newWaiting.push(playerId);
     }
 
-    await updateDoc(doc(db, 'matches', matchId), {
-      confirmedIds: newConfirmed,
-      waitingIds: newWaiting,
-      absentIds: match.absentIds.filter(a => a.userId !== playerId)
-    });
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        confirmedIds: newConfirmed,
+        waitingIds: newWaiting,
+        absentIds: match.absentIds.filter(a => a.userId !== playerId)
+      });
+    } catch (error) {
+      console.error("Erro ao confirmar presença:", error);
+    }
   };
 
   const markAbsent = async (matchId: string, playerId: string, reason: string) => {
+    if (!playerId) return;
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
 
@@ -150,17 +159,21 @@ export function usePelada() {
     let newWaiting = match.waitingIds.filter(id => id !== playerId);
     const newAbsent = [...match.absentIds, { userId: playerId, reason }];
 
-    // If someone leaves confirmed and there is a waitlist, move the first in waitlist to confirmed
+    // Se alguém sair dos confirmados e houver fila, o primeiro da fila entra
     if (match.confirmedIds.includes(playerId) && newWaiting.length > 0) {
       const nextInLine = newWaiting.shift();
       if (nextInLine) newConfirmed.push(nextInLine);
     }
 
-    await updateDoc(doc(db, 'matches', matchId), {
-      absentIds: newAbsent,
-      confirmedIds: newConfirmed,
-      waitingIds: newWaiting
-    });
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        absentIds: newAbsent,
+        confirmedIds: newConfirmed,
+        waitingIds: newWaiting
+      });
+    } catch (error) {
+      console.error("Erro ao marcar ausência:", error);
+    }
   };
 
   const createMatch = async (date: Date) => {
@@ -174,10 +187,25 @@ export function usePelada() {
   };
 
   const createTransaction = async (data: Omit<Transaction, 'id'>) => {
-    await addDoc(collection(db, 'transactions'), {
-      ...data,
-      date: Timestamp.fromDate(new Date())
-    });
+    try {
+      const docRef = await addDoc(collection(db, 'transactions'), {
+        ...data,
+        date: Timestamp.fromDate(new Date())
+      });
+
+      // Se for uma transação associada a um jogador, atualiza o saldo dele
+      if (data.playerId) {
+        const player = players.find(p => p.id === data.playerId);
+        if (player) {
+          const newBalance = (player.balance || 0) + (data.type === 'INCOME' ? data.amount : -data.amount);
+          await updatePlayer(data.playerId, { balance: newBalance });
+        }
+      }
+      return docRef;
+    } catch (error) {
+      console.error("Erro ao criar transação:", error);
+      throw error;
+    }
   };
 
   const addPlayer = async (data: Omit<Player, 'id' | 'gols' | 'assistencias' | 'vitorias' | 'derrotas' | 'empates' | 'active' | 'balance'>) => {

@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "Group": {
+      "title": "Group",
+      "description": "Configurações gerais do grupo de pelada",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "gameDay": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "monthlyFee": { "type": "number" },
+        "dailyFee": { "type": "number" },
+        "maxPlayers": { "type": "number" }
+      },
+      "required": ["name", "gameDay", "startTime", "monthlyFee", "dailyFee"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Cadastro de jogadores",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "position": { "type": "string", "enum": ["GOLEIRO", "VOLANTE", "MEIA", "ATACANTE", "LATERAL", "ZAGUEIRO"] },
+        "secondaryPosition": { "type": "string", "enum": ["GOLEIRO", "VOLANTE", "MEIA", "ATACANTE", "LATERAL", "ZAGUEIRO", "NENHUMA"] },
+        "level": { "type": "number", "description": "Nível técnico de 1 a 5" },
+        "type": { "type": "string", "enum": ["MENSALISTA", "DIARISTA"] },
+        "balance": { "type": "number", "description": "Saldo financeiro do jogador" },
+        "active": { "type": "boolean" },
+        "stats": { 
+          "type": "object",
+          "properties": {
+            "gols": { "type": "number" },
+            "assistencias": { "type": "number" },
+            "vitorias": { "type": "number" },
+            "empates": { "type": "number" },
+            "derrotas": { "type": "number" },
+            "pontos": { "type": "number" }
+          }
+        }
+      },
+      "required": ["name", "position", "level", "type"]
+    },
+    "UserRole": {
+      "title": "User Role",
+      "description": "Papéis de acesso dos usuários (Admin/Usuário)",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "USER"] }
+      }
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Churrascos e Eventos extras",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "totalCost": { "type": "number" },
+        "participantsIds": { "type": "array", "items": { "type": "string" } },
+        "costPerPerson": { "type": "number" }
+      },
+      "required": ["title", "date", "totalCost"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Instância de uma próxima pelada",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["OPEN", "FINISHED", "CANCELLED"] },
+        "confirmedIds": { "type": "array", "items": { "type": "string" } },
+        "absentIds": { "type": "array", "items": { "type": "object", "properties": { "userId": { "type": "string" }, "reason": { "type": "string" } } } },
+        "waitingIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["date", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Movimentações financeiras",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["INCOME", "EXPENSE"] },
+        "category": { "type": "string", "enum": ["MONTHLY", "DAILY", "FIELD_RENT", "BALL", "OTHER"] },
+        "description": { "type": "string" },
+        "playerId": { "type": "string" }
+      },
+      "required": ["date", "amount", "type", "category"]
+    },
+    "Award": {
+      "title": "Award",
+      "description": "Destaques da rodada",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "craqueId": { "type": "string" },
+        "artilheiroId": { "type": "string" },
+        "garcomId": { "type": "string" },
+        "paredaoId": { "type": "string" },
+        "perebaId": { "type": "string" },
+        "bolaMurchaId": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "groups": { "schema": "Group", "description": "Informações do clube/grupo" },
+    "players": { "schema": "Player", "description": "Lista de todos os jogadores" },
+    "matches": { "schema": "Match", "description": "Histórico e próximas peladas" },
+    "transactions": { "schema": "Transaction", "description": "Financeiro consolidado" },
+    "awards": { "schema": "Award", "description": "Histórico de premiações de cada match" },
+    "user_roles": { "schema": "UserRole", "description": "Gerenciamento de permissões" }
+  }
+}

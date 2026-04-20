@@ -30,9 +30,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole>('USER');
   const [loading, setLoading] = useState(true);
 
+  const [authError, setAuthError] = useState<string | null>(null);
+
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       if (u) {
+        setAuthError(null);
         // Obter papel do usuário
         const roleDoc = await getDoc(doc(db, 'user_roles', u.uid));
         let assignedRole: UserRole = 'USER';
@@ -59,6 +62,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: u.displayName
           });
         }
+
+        // Garantir que o usuário exista na coleção 'players' para poder marcar presença
+        const playerDoc = await getDoc(doc(db, 'players', u.uid));
+        if (!playerDoc.exists()) {
+          await setDoc(doc(db, 'players', u.uid), {
+            name: u.displayName || u.email?.split('@')[0] || 'Jogador',
+            email: u.email,
+            photoUrl: u.photoURL || '',
+            level: 3,
+            position: 'MEIA',
+            type: 'DIARISTA',
+            balance: 0,
+            active: true,
+            gols: 0,
+            assistencias: 0,
+            vitorias: 0,
+            derrotas: 0,
+            empates: 0
+          });
+        }
         
         setRole(assignedRole);
         setUser(u);
@@ -73,8 +96,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async () => {
+    setAuthError(null);
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error("Erro ao entrar com Google:", error);
+      let message = "Erro ao entrar. Tente novamente.";
+      if (error.code === 'auth/popup-closed-by-user') {
+        message = "O login foi cancelado.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        message = "Domínio não autorizado no Firebase.";
+      }
+      setAuthError(message);
+    }
   };
 
   const logout = async () => {
@@ -104,14 +139,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={signIn}
-          className="w-full max-w-xs py-5 bg-white text-bg rounded-3xl font-black uppercase tracking-widest flex items-center justify-center space-x-3 shadow-xl shadow-white/5"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-          <span>Entrar com Google</span>
-        </motion.button>
+        <div className="w-full max-w-xs space-y-4">
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={signIn}
+            className="w-full py-5 bg-white text-bg rounded-3xl font-black uppercase tracking-widest flex items-center justify-center space-x-3 shadow-xl shadow-white/5"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+            <span>Entrar com Google</span>
+          </motion.button>
+
+          {authError && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 bg-danger/10 border border-danger/20 rounded-2xl text-danger text-xs font-bold"
+            >
+              {authError}
+            </motion.div>
+          )}
+        </div>
         
         <p className="mt-8 text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em]">
           Powered by AI Studio

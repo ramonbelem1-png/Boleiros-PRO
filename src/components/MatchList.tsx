@@ -223,20 +223,40 @@ export default function MatchList() {
                 <div className="pt-8 pb-4">
                   <label className="text-gray-500 text-[10px] font-bold uppercase tracking-wider px-2 block mb-3 text-center">Minha Presença</label>
                   <div className="flex gap-4">
-                    <button 
-                      onClick={() => confirmPresence(nextMatch.id, user?.uid || '')}
-                      className="flex-1 h-16 bg-primary text-bg font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-transform"
-                    >
-                      <Check size={24} strokeWidth={4} />
-                      <span className="tracking-widest">DENTRO</span>
-                    </button>
-                    <button 
-                      onClick={() => setShowReasonModal(nextMatch.id)}
-                      className="flex-1 h-16 bg-card border border-border text-danger font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-transform"
-                    >
-                      <X size={24} strokeWidth={4} />
-                      <span className="tracking-widest">FORA</span>
-                    </button>
+                    {(() => {
+                      const isConfirmed = user && nextMatch.confirmedIds.includes(user.uid);
+                      const isWaiting = user && nextMatch.waitingIds.includes(user.uid);
+                      const isAbsent = user && nextMatch.absentIds.some(a => a.userId === user.uid);
+
+                      return (
+                        <>
+                          <button 
+                            onClick={() => confirmPresence(nextMatch.id, user?.uid || '')}
+                            className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
+                              isConfirmed || isWaiting 
+                                ? 'bg-primary text-bg' 
+                                : 'bg-white/5 border border-border text-gray-400 hover:border-primary/50'
+                            }`}
+                          >
+                            <Check size={24} strokeWidth={4} />
+                            <span className="tracking-widest">
+                              {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : 'DENTRO'}
+                            </span>
+                          </button>
+                          <button 
+                            onClick={() => setShowReasonModal(nextMatch.id)}
+                            className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
+                              isAbsent 
+                                ? 'bg-danger text-white' 
+                                : 'bg-card border border-border text-gray-500 hover:border-danger/50'
+                            }`}
+                          >
+                            <X size={24} strokeWidth={4} />
+                            <span className="tracking-widest">FORA</span>
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </>

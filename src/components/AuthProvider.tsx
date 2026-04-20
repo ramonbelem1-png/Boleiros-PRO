@@ -2,9 +2,12 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut,
-  User 
+  User,
+  browserPopupRedirectResolver
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { LogIn } from 'lucide-react';
@@ -33,6 +36,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Verificar resultado de redirecionamento (caso o usuário tenha usado esse método)
+    getRedirectResult(auth).catch((error: any) => {
+      console.error("Erro no retorno do redirecionamento:", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname;
+        setAuthError(`Domínio não autorizado: "${domain}". Adicione-o no Console do Firebase.`);
+      } else {
+        setAuthError("Erro ao processar login por redirecionamento.");
+      }
+    });
+
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       try {
         if (u) {
@@ -101,19 +115,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubAuth();
   }, []);
 
-  const signIn = async () => {
+  const signIn = async (useRedirect = false) => {
     setAuthError(null);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
     try {
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.error("Erro ao entrar com Google:", error);
-      let message = "Erro ao entrar. Tente novamente.";
-      if (error.code === 'auth/popup-closed-by-user') {
-        message = "O login foi cancelado.";
-      } else if (error.code === 'auth/unauthorized-domain') {
-        message = "Domínio não autorizado no Firebase.";
+      if (useRedirect) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider, browserPopupRedirectResolver);
       }
+    } catch (error: any) {
+      console.error("Firebase Auth Error:", error);
+      let message = "Erro ao entrar. Tente novamente.";
+      
+      if (error.code === 'auth/popup-closed-by-user') {
+        message = "O pop-up foi fechado antes de completar o login.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname;
+        message = `Domínio não autorizado: "${domain}". Você deve adicioná-lo no Console do Firebase (Authentication > Settings > Authorized Domains).`;
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = "O login com Google não está ativado no Console do Firebase (Authentication > Sign-in method).";
+      } else {
+        message = error.message || message;
+      }
+      
       setAuthError(message);
     }
   };
@@ -145,15 +172,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           </p>
         </div>
         
-        <div className="w-full max-w-xs space-y-4">
+        <div className="w-full max-w-xs space-y-3">
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={signIn}
+            onClick={() => signIn(false)}
             className="w-full py-5 bg-white text-bg rounded-3xl font-black uppercase tracking-widest flex items-center justify-center space-x-3 shadow-xl shadow-white/5"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
             <span>Entrar com Google</span>
           </motion.button>
+
+          <button 
+            onClick={() => signIn(true)}
+            className="w-full py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest hover:text-primary transition-colors"
+          >
+            Problemas com o pop-up? Tente por aqui
+          </button>
 
           {authError && (
             <motion.div 

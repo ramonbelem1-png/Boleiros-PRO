@@ -100,7 +100,7 @@ export function usePelada() {
     monthlyFee: 50,
     dailyFee: 15,
     maxPlayers: 20,
-    logoVariant: 'classic-ball'
+    logoVariant: 'winner-cup'
   });
   const [loading, setLoading] = useState(true);
 

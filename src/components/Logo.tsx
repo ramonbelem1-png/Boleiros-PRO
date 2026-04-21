@@ -6,7 +6,7 @@ export type LogoVariant = 'classic-ball' | 'modern-pitch' | 'winner-cup';
 
 export default function Logo({ 
   className = '', 
-  variant = 'classic-ball',
+  variant = 'winner-cup',
   size = 'md',
   vertical = false
 }: { 
@@ -69,9 +69,26 @@ export default function Logo({
 
       case 'winner-cup':
         return (
-          <div className={`${iconSizes[size]} relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/20`}>
-            <Trophy size={size === 'lg' ? 36 : 24} className="text-bg" />
-            <div className="absolute -top-1 -right-1">
+          <div className={`${iconSizes[size]} relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/20 overflow-hidden`}>
+            <Trophy size={size === 'lg' ? 36 : 24} className="text-bg relative z-10 drop-shadow-sm transition-transform group-hover:scale-110 duration-300" />
+            
+            {/* Brilho Pulsante no Hover */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+              <div className="absolute inset-0 bg-white/30 animate-pulse" />
+              <motion.div 
+                animate={{ 
+                  x: ['-100%', '200%'],
+                }}
+                transition={{ 
+                  repeat: Infinity, 
+                  duration: 1.2,
+                  ease: "easeInOut"
+                }}
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent -skew-x-20" 
+              />
+            </div>
+
+            <div className="absolute -top-1 -right-1 z-20">
               <div className="w-3 h-3 bg-white rounded-full animate-ping opacity-75" />
             </div>
           </div>
@@ -80,7 +97,7 @@ export default function Logo({
   };
 
   return (
-    <div className={`flex ${vertical ? 'flex-col space-y-3 items-center text-center' : 'items-center space-x-3'} ${className}`}>
+    <div className={`flex group ${vertical ? 'flex-col space-y-3 items-center text-center' : 'items-center space-x-3'} ${className}`}>
       {renderIcon()}
       <div className={`flex flex-col ${vertical ? '-space-y-1' : '-space-y-1'}`}>
         <span className={`font-black italic tracking-tighter ${textSizes[size]} text-white leading-none`}>

@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         <div className="mb-12 space-y-4">
           <div className="w-24 h-24 bg-card border border-border rounded-[40px] mx-auto flex items-center justify-center shadow-2xl relative overflow-hidden group">
             <div className="absolute inset-0 bg-primary/5 group-hover:bg-primary/10 transition-colors" />
-            <Logo variant="classic-ball" size="lg" vertical />
+            <Logo variant="winner-cup" size="lg" vertical />
           </div>
           <p className="text-gray-400 max-w-[280px] mx-auto text-sm">
             Gestão profissional para sua pelada. Presença, financeiro e estatísticas.

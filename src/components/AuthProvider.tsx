@@ -199,45 +199,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
-        <div className="mb-12">
-          <Logo size="lg" vertical className="scale-125" />
-          <p className="text-gray-400 max-w-[280px] mx-auto text-sm mt-8">
-            Gestão profissional para sua pelada. Presença, financeiro e estatísticas.
-          </p>
-        </div>
-        
-        <div className="w-full max-w-xs space-y-3">
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => signIn(false)}
-            className="w-full py-5 bg-white text-bg rounded-3xl font-black uppercase tracking-widest flex items-center justify-center space-x-3 shadow-xl shadow-white/5"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-            <span>Entrar com Google</span>
-          </motion.button>
+      <div className="min-h-screen bg-bg relative flex items-center justify-center p-4 overflow-hidden">
+        {/* Background Decorative Elements */}
+        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-primary/5 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/5 blur-[120px] rounded-full" />
 
-          <button 
-            onClick={() => signIn(true)}
-            className="w-full py-3 text-[10px] text-gray-500 font-bold uppercase tracking-widest hover:text-primary transition-colors"
-          >
-            Problemas com o pop-up? Tente por aqui
-          </button>
-
-          {authError && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-4 bg-danger/10 border border-danger/20 rounded-2xl text-danger text-xs font-bold"
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-sm bg-card border border-border/50 rounded-[3rem] p-10 shadow-2xl relative z-10"
+        >
+          <div className="text-center mb-10">
+            <Logo size="lg" vertical className="scale-110 mb-6 drop-shadow-2xl" />
+            <div className="h-px w-10 bg-primary/20 mx-auto mb-6" />
+            <p className="text-gray-400 text-sm leading-relaxed max-w-[240px] mx-auto font-medium">
+              Gestão profissional para a elite da sua pelada.
+            </p>
+          </div>
+          
+          <div className="space-y-4">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => signIn(false)}
+              className="w-full py-5 bg-white text-bg rounded-2xl font-black uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg hover:shadow-white/10 transition-all active:scale-95"
             >
-              {authError}
-            </motion.div>
-          )}
-        </div>
-        
-        <p className="mt-8 text-[10px] text-gray-600 font-bold uppercase tracking-[0.2em]">
-          Powered by AI Studio
-        </p>
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+              <span>Entrar com Google</span>
+            </motion.button>
+
+            <button 
+              onClick={() => signIn(true)}
+              className="w-full py-3 text-[10px] text-gray-400 font-bold uppercase tracking-widest hover:text-primary transition-colors flex items-center justify-center space-x-2"
+            >
+              <span>Problemas com o pop-up?</span>
+              <span className="underline decoration-primary/30 underline-offset-4">Tente por aqui</span>
+            </button>
+
+            {authError && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-4 bg-danger/10 border border-danger/20 rounded-2xl text-danger text-[11px] font-bold text-center"
+              >
+                {authError}
+              </motion.div>
+            )}
+          </div>
+          
+          <div className="mt-12 flex flex-col items-center">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/20" />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/20" />
+            </div>
+            <p className="text-[10px] text-gray-600 font-bold uppercase tracking-[0.3em]">
+              Boleiros PRO © 2024
+            </p>
+          </div>
+        </motion.div>
       </div>
     );
   }

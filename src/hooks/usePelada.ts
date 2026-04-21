@@ -78,10 +78,13 @@ export interface Transaction {
   playerId?: string;
 }
 
+import { LogoVariant } from '../components/Logo';
+
 export interface GroupSettings {
   monthlyFee: number;
   dailyFee: number;
   maxPlayers: number;
+  logoVariant?: LogoVariant;
 }
 
 import { useAuth } from '../components/AuthProvider';
@@ -96,7 +99,8 @@ export function usePelada() {
   const [settings, setSettings] = useState<GroupSettings>({
     monthlyFee: 50,
     dailyFee: 15,
-    maxPlayers: 20
+    maxPlayers: 20,
+    logoVariant: 'classic-ball'
   });
   const [loading, setLoading] = useState(true);
 
@@ -269,15 +273,16 @@ export function usePelada() {
 
   const updatePlayer = async (playerId: string, data: Partial<Player>) => {
     try {
-      console.log(`[usePelada] Atualizando jogador ${playerId}...`, data);
+      console.log(`[usePelada] Iniciando updateDoc para jogador ${playerId}... Data:`, JSON.stringify(data));
       const { serverTimestamp } = await import('firebase/firestore');
       await updateDoc(doc(db, 'players', playerId), {
         ...data,
         updatedAt: serverTimestamp()
       });
-      console.log(`[usePelada] Jogador ${playerId} atualizado com sucesso!`);
-    } catch (error) {
-      console.error(`[usePelada] Erro ao atualizar jogador ${playerId}:`, error);
+      console.log(`[usePelada] Jogador ${playerId} atualizado com sucesso no Firestore!`);
+    } catch (error: any) {
+      console.error(`[usePelada] ERRO CRÍTICO ao atualizar jogador ${playerId}:`, error);
+      console.error(`[usePelada] Detalhes do erro: Code=${error.code}, Message=${error.message}`);
       throw error;
     }
   };

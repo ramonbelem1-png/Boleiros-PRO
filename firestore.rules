@@ -54,7 +54,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if (request.auth.token.email == 'ramonbelem1@gmail.com') || isAdmin() || (
-        isOwner(playerId) && 
+        isSignedIn() && (isOwner(playerId) || (existing().email == request.auth.token.email)) && 
         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt'])
       );
       allow delete: if (request.auth.token.email == 'ramonbelem1@gmail.com') || isAdmin();

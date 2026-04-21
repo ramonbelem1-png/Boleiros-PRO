@@ -12,6 +12,7 @@ import {
 import { auth } from '../lib/firebase';
 import { LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
+import Logo from './Logo';
 
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -89,8 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const emailSnap = await getDocs(emailQuery);
 
             if (!emailSnap.empty) {
-              const existingData = emailSnap.docs[0].data();
-              const oldId = emailSnap.docs[0].id;
+              const docToMigrate = emailSnap.docs[0];
+              const existingData = docToMigrate.data();
+              const oldId = docToMigrate.id;
+              console.log(`[AuthProvider] Migrando jogador do email ${u.email} (ID antigo: ${oldId}) para o UID: ${u.uid}`);
 
               await setDoc(playerRef, {
                 level: 3,
@@ -111,8 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
 
               if (oldId !== u.uid) {
+                console.log(`[AuthProvider] Deletando documento antigo: ${oldId}`);
                 await deleteDoc(doc(db, 'players', oldId));
               }
+              console.log(`[AuthProvider] Migração concluída com sucesso!`);
             } else {
               await setDoc(playerRef, {
                 name: u.displayName || u.email?.split('@')[0] || 'Jogador',
@@ -196,12 +201,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
         <div className="mb-12 space-y-4">
-          <div className="w-24 h-24 bg-card border border-border rounded-[40px] mx-auto flex items-center justify-center shadow-2xl">
-            <LogIn size={40} className="text-primary" />
+          <div className="w-24 h-24 bg-card border border-border rounded-[40px] mx-auto flex items-center justify-center shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-primary/5 group-hover:bg-primary/10 transition-colors" />
+            <Logo variant="classic-ball" size="lg" vertical />
           </div>
-          <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase">
-            Boleiros <span className="text-primary truncate">PRO</span>
-          </h1>
           <p className="text-gray-400 max-w-[280px] mx-auto text-sm">
             Gestão profissional para sua pelada. Presença, financeiro e estatísticas.
           </p>

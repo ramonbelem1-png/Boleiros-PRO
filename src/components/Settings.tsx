@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePelada, GroupSettings, Match, Player } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
+import Logo from './Logo';
 import { 
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
   History, Calendar, Users, Camera, Upload, Loader2, Trash2, Edit, 
@@ -572,6 +573,49 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 value={localSettings.maxPlayers}
                 onChange={(v) => setLocalSettings({...localSettings, maxPlayers: Number(v)})}
               />
+
+              <div className="space-y-4 pt-4 border-t border-border/20">
+                <div className="flex items-center space-x-2 text-primary">
+                  <Type size={16} />
+                  <h4 className="text-[11px] font-black uppercase tracking-[0.2em]">Estilo da Logo</h4>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  {(['classic-ball', 'modern-pitch', 'winner-cup'] as const).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setLocalSettings({...localSettings, logoVariant: v})}
+                      className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                        localSettings.logoVariant === v 
+                          ? 'bg-primary/10 border-primary shadow-lg shadow-primary/10' 
+                          : 'bg-bg border-border/50 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-xl scale-75 origin-left ${localSettings.logoVariant === v ? 'opacity-100' : 'opacity-40'}`}>
+                          <Logo variant={v} />
+                        </div>
+                        <div className="text-left">
+                          <p className={`text-xs font-black uppercase tracking-widest ${localSettings.logoVariant === v ? 'text-primary' : 'text-gray-400'}`}>
+                            {v === 'classic-ball' && 'Bola de Ouro'}
+                            {v === 'modern-pitch' && 'Campo Elite'}
+                            {v === 'winner-cup' && 'Taça dos Campeões'}
+                          </p>
+                          <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mt-0.5">
+                            {v === 'classic-ball' && 'Ícone clássico de futebol com rastro de movimento'}
+                            {v === 'modern-pitch' && 'Representação tática do gramado pro'}
+                            {v === 'winner-cup' && 'Troféu de glória com brilho e prestígio'}
+                          </p>
+                        </div>
+                      </div>
+                      {localSettings.logoVariant === v && (
+                        <div className="w-5 h-5 bg-primary text-bg rounded-full flex items-center justify-center">
+                          <CheckCircle2 size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <button 

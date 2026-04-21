@@ -205,6 +205,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       const url = await getDownloadURL(snapshot.ref);
       setPhotoUrl(url);
       console.log("URL de foto salva no estado:", url);
+      alert("Foto enviada com sucesso! Clique em 'Salvar Alterações' para finalizar.");
     } catch (error: any) {
       console.error("Erro ao subir imagem:", error);
       alert("Erro ao subir imagem: " + (error.message || "Erro desconhecido."));
@@ -242,9 +243,9 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
     };
 
     try {
+      console.log(`[PlayerModal] Tentando salvar. UID Autenticado: ${user?.uid}, Email: ${user?.email}, Documento ID: ${initialData?.id || 'NOVO'}, Role: ${role}, isAdmin (calc): ${isAdmin}`);
       const payload = isAdmin ? adminData : userData;
-      console.log(`[PlayerModal] Tentando salvar. Usuário: ${user?.email}, Role: ${role}, isAdmin (calc): ${isAdmin}`);
-      console.log("[PlayerModal] Payload:", payload);
+      console.log("[PlayerModal] Payload final:", JSON.stringify(payload));
       await onSave(payload);
       console.log("[PlayerModal] Salvo com sucesso!");
       onClose();

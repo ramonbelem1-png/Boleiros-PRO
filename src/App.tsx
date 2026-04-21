@@ -40,6 +40,24 @@ export default function App() {
 
   const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
 
+  useEffect(() => {
+    // Test connection to Firestore
+    const testConnection = async () => {
+      try {
+        const { doc, getDocFromServer } = await import('firebase/firestore');
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        console.log("Conexão com Firestore: OK");
+      } catch (error: any) {
+        if (error.message?.includes('offline')) {
+          console.error("Conexão com Firestore falhou: O cliente está offline ou o domínio não está autorizado.");
+        } else {
+          console.error("Erro ao testar conexão com Firestore:", error);
+        }
+      }
+    };
+    if (user) testConnection();
+  }, [user]);
+
   const handlePlusClick = () => {
     if (!isAdmin) return;
     if (activeTab === 'list') setModalType('match');
@@ -84,7 +102,7 @@ export default function App() {
       <header className="px-6 pt-8 pb-4 bg-bg/80 backdrop-blur-md z-10 transition-all duration-300">
         <div className="flex justify-between items-end">
           <div>
-            <Logo className="mb-2" />
+            <Logo variant={settings.logoVariant} className="mb-2" />
             <div className="flex items-center space-x-2">
               <h1 className="text-3xl font-bold text-white">
                 {activeTab === 'list' && 'Próxima Pelada'}

@@ -23,6 +23,9 @@ interface SettingsProps {
 export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, settings, onUpdateSettings }: SettingsProps) {
   const { players, matches, deletePlayer } = usePelada();
   const { logout, role, user } = useAuth();
+  const isAdmin = role === 'ADMIN';
+  const currentUserPlayer = players.find(p => p.id === user?.uid);
+
   const [localSettings, setLocalSettings] = useState<GroupSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -30,10 +33,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [playerToDelete, setPlayerToDelete] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'level' | 'name' | 'position'>('name');
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group'>('players');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
-
-  const isAdmin = role === 'ADMIN';
 
   const filteredPlayers = players.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -179,62 +180,139 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         </div>
       )}
 
-      {/* User Profile Summary */}
-      <div className="bg-card rounded-[32px] p-6 border border-border/50 flex items-center gap-4 mb-2">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 transition-transform hover:scale-105">
-          <UserCircle size={40} className="stroke-[1.5]" />
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-black text-white leading-none truncate">
-              {user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
-            </h2>
-            {role === 'ADMIN' && (
-              <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
-                ADMIN
-              </span>
+      {/* User Profile Summary - Hidden when on profile tab to avoid redundancy */}
+      {activeSettingsTab !== 'profile' && (
+        <div className="bg-card rounded-[32px] p-6 border border-border/50 flex items-center gap-4 mb-2">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 transition-transform hover:scale-105 border border-primary/20 overflow-hidden">
+            {currentUserPlayer?.photoUrl ? (
+              <img src={currentUserPlayer.photoUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <UserCircle size={40} className="stroke-[1.5]" />
             )}
           </div>
-          <p className="text-gray-500 text-[10px] font-medium truncate opacity-70">{user?.email}</p>
-        </div>
-      </div>
-
-      {/* User Profile Summary */}
-      <div className="bg-card rounded-[32px] p-6 border border-border/50 flex items-center gap-4 mb-2">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 transition-transform hover:scale-105">
-          <UserCircle size={40} className="stroke-[1.5]" />
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-black text-white leading-none truncate">
-              {user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
-            </h2>
-            {role === 'ADMIN' && (
-              <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
-                ADMIN
-              </span>
-            )}
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-white leading-none truncate">
+                  {currentUserPlayer?.name || user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
+                </h2>
+                {role === 'ADMIN' && (
+                  <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
+                    ADMIN
+                  </span>
+                )}
+              </div>
+              {currentUserPlayer && (
+                <button 
+                  onClick={() => onEditPlayer(currentUserPlayer)}
+                  className="p-2 bg-white/5 rounded-xl text-gray-400 hover:text-primary transition-all flex items-center gap-2"
+                >
+                  <Edit2 size={12} />
+                  <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Editar Perfil</span>
+                </button>
+              )}
+            </div>
+            <p className="text-gray-500 text-[10px] font-medium truncate opacity-70">{user?.email}</p>
           </div>
-          <p className="text-gray-500 text-[10px] font-medium truncate opacity-70">{user?.email}</p>
         </div>
-      </div>
+      )}
 
       {/* Tabs Navigation */}
       <div className="flex bg-card p-1 rounded-2xl border border-border/50 sticky top-0 z-20 backdrop-blur-md mb-6">
-        {(['players', 'admin', 'group'] as const).map(tab => (
+        {[
+          { id: 'profile', label: 'Meu Perfil' },
+          ...(isAdmin ? [{ id: 'players', label: 'Elenco' }] : []),
+          ...(isAdmin ? [
+            { id: 'admin', label: 'Acesso' },
+            { id: 'group', label: 'Config' }
+          ] : [])
+        ].map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveSettingsTab(tab)}
+            key={tab.id}
+            onClick={() => setActiveSettingsTab(tab.id as any)}
             className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${
-              activeSettingsTab === tab ? 'bg-primary text-bg shadow-sm' : 'text-gray-500'
+              activeSettingsTab === tab.id ? 'bg-primary text-bg shadow-sm' : 'text-gray-500'
             }`}
           >
-            {tab === 'players' ? 'Elenco' : tab === 'admin' ? 'Acesso' : 'Config'}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {activeSettingsTab === 'players' && (
+      {activeSettingsTab === 'profile' && (
+        <div className="space-y-6">
+          <div className="bg-card p-6 rounded-[32px] border border-border/50 shadow-xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+            
+            <div className="relative z-10 flex flex-col items-center text-center space-y-4 py-4">
+              <div className="w-24 h-24 rounded-3xl bg-bg border-2 border-border/50 overflow-hidden shadow-2xl">
+                {currentUserPlayer?.photoUrl ? (
+                  <img src={currentUserPlayer.photoUrl} alt={currentUserPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary">
+                    <User size={40} />
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">{currentUserPlayer?.name}</h3>
+                <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em] mt-1">
+                  {currentUserPlayer?.position} • {currentUserPlayer?.type}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2 w-full pt-4 px-2">
+                <div className="text-center">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Jogos</p>
+                  <p className="text-base font-black text-white">
+                    {(currentUserPlayer?.vitorias || 0) + (currentUserPlayer?.derrotas || 0) + (currentUserPlayer?.empates || 0)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Gols</p>
+                  <p className="text-base font-black text-primary">{currentUserPlayer?.gols || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Assis</p>
+                  <p className="text-base font-black text-white">{currentUserPlayer?.assistencias || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Vits</p>
+                  <p className="text-base font-black text-white">{currentUserPlayer?.vitorias || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Derr</p>
+                  <p className="text-base font-black text-white">{currentUserPlayer?.derrotas || 0}</p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => currentUserPlayer && onEditPlayer(currentUserPlayer)}
+                className="w-full py-4 bg-white/5 border border-border/50 rounded-2xl text-[11px] font-black uppercase tracking-widest text-gray-200 hover:bg-white/10 transition-all flex items-center justify-center gap-3 mt-4"
+              >
+                <Edit2 size={16} />
+                Alterar Meus Dados
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-3xl border border-border/50 divide-y divide-border/20 overflow-hidden shadow-xl">
+            <SettingsLink icon={<Bell size={18}/>} label="Notificações" />
+            <SettingsLink icon={<Info size={18}/>} label="Ajuda & Suporte" />
+          </div>
+
+          <button 
+            onClick={logout}
+            className="w-full flex items-center justify-center space-x-2 py-6 text-danger font-black uppercase tracking-widest text-xs hover:bg-danger/5 transition-colors rounded-2xl"
+          >
+            <LogOut size={16} />
+            <span>Sair (Logout)</span>
+          </button>
+        </div>
+      )}
+
+      {activeSettingsTab === 'players' && isAdmin && (
         <div className="space-y-6">
           <div className="flex items-center justify-between px-2">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Gerenciar Jogadores</h3>
@@ -287,24 +365,28 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                           player.name.charAt(0)
                         )}
                       </div>
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="image/*" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handlePhotoUpload(player.id, file);
-                        }}
-                        disabled={uploadingPlayerId === player.id}
-                      />
-                      <div className="absolute -bottom-1 -right-1 bg-primary text-bg p-1 rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity">
-                        <Camera size={8} />
-                      </div>
+                      {(isAdmin || player.id === user?.uid) && (
+                        <>
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handlePhotoUpload(player.id, file);
+                            }}
+                            disabled={uploadingPlayerId === player.id}
+                          />
+                          <div className="absolute -bottom-1 -right-1 bg-primary text-bg p-1 rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity">
+                            <Camera size={8} />
+                          </div>
+                        </>
+                      )}
                     </label>
                     <div className="min-w-0">
                       <div className="flex items-center space-x-2">
                         <h4 className="font-bold text-white tracking-tight text-sm truncate max-w-[120px]">{player.name}</h4>
-                        {isAdmin && (
+                        {(isAdmin || player.id === user?.uid) && (
                           <button 
                             onClick={() => onEditPlayer(player)}
                             className="p-1.5 bg-white/5 rounded-lg text-gray-400 hover:text-primary transition-all"
@@ -325,9 +407,11 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   </div>
 
                   <div className="text-right">
-                    <div className={`text-sm font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
-                      R$ {(player.balance || 0).toFixed(2)}
-                    </div>
+                    {isAdmin && (
+                      <div className={`text-sm font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
+                        R$ {(player.balance || 0).toFixed(2)}
+                      </div>
+                    )}
                     <div className="flex gap-1 mt-1 justify-end">
                       {[1, 2, 3, 4, 5].map(l => (
                         <div 
@@ -344,7 +428,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     label="Gols" 
                     value={player.gols || 0} 
                     color="text-white" 
-                    editable 
+                    editable={isAdmin} 
                     onIncrement={() => updateStat(player.id, 'gols', (player.gols || 0) + 1)}
                     onDecrement={() => updateStat(player.id, 'gols', Math.max(0, (player.gols || 0) - 1))}
                   />
@@ -352,7 +436,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     label="Assists" 
                     value={player.assistencias || 0} 
                     color="text-white" 
-                    editable 
+                    editable={isAdmin} 
                     onIncrement={() => updateStat(player.id, 'assistencias', (player.assistencias || 0) + 1)}
                     onDecrement={() => updateStat(player.id, 'assistencias', Math.max(0, (player.assistencias || 0) - 1))}
                   />
@@ -360,7 +444,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     label="Vits" 
                     value={player.vitorias || 0} 
                     color="text-primary" 
-                    editable 
+                    editable={isAdmin} 
                     onIncrement={() => updateStat(player.id, 'vitorias', (player.vitorias || 0) + 1)}
                     onDecrement={() => updateStat(player.id, 'vitorias', Math.max(0, (player.vitorias || 0) - 1))}
                   />
@@ -368,7 +452,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     label="Derr" 
                     value={player.derrotas || 0} 
                     color="text-danger" 
-                    editable 
+                    editable={isAdmin} 
                     onIncrement={() => updateStat(player.id, 'derrotas', (player.derrotas || 0) + 1)}
                     onDecrement={() => updateStat(player.id, 'derrotas', Math.max(0, (player.derrotas || 0) - 1))}
                   />
@@ -376,7 +460,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     label="Emp" 
                     value={player.empates || 0} 
                     color="text-yellow-500" 
-                    editable 
+                    editable={isAdmin} 
                     onIncrement={() => updateStat(player.id, 'empates', (player.empates || 0) + 1)}
                     onDecrement={() => updateStat(player.id, 'empates', Math.max(0, (player.empates || 0) - 1))}
                   />
@@ -411,7 +495,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         </div>
       )}
 
-      {activeSettingsTab === 'admin' && (
+      {activeSettingsTab === 'admin' && isAdmin && (
         <div className="space-y-6">
           <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Adicionar Administrador</h3>
@@ -461,7 +545,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         </div>
       )}
 
-      {activeSettingsTab === 'group' && (
+      {activeSettingsTab === 'group' && isAdmin && (
         <div className="space-y-6">
           <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
             <div className="flex items-center justify-between">

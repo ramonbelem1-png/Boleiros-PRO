@@ -1,18 +1,33 @@
 import React, { useState } from 'react';
 import { usePelada, Player } from '../hooks/usePelada';
+import { useAuth } from './AuthProvider';
 import { Shuffle, Users, Trophy } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function TeamDraw() {
-  const { players, matches } = usePelada();
+  const { players, matches, setMatchTeams } = usePelada();
+  const { user, role } = useAuth();
+  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
   const nextMatch = matches.find(m => m.status === 'OPEN');
   const confirmedPlayers = players.filter(p => nextMatch?.confirmedIds.includes(p.id));
 
   const [teams, setTeams] = useState<Player[][]>([]);
+  const [saving, setSaving] = useState(false);
 
-  const confirmTeams = () => {
-    alert("Times definidos com sucesso! Boa sorte no jogo.");
-    setTeams([]);
+  const confirmTeams = async () => {
+    if (!nextMatch) return;
+    setSaving(true);
+    try {
+      const teamsIds = teams.map(team => team.map(p => p.id));
+      await setMatchTeams(nextMatch.id, teamsIds);
+      alert("Times definidos com sucesso! Vá para a aba 'Ao Vivo' para gerenciar os jogos.");
+      setTeams([]);
+    } catch (error) {
+      console.error("Erro ao salvar times:", error);
+      alert("Erro ao salvar times.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const drawTeams = () => {
@@ -112,7 +127,7 @@ export default function TeamDraw() {
                 </div>
                 <h3 className="text-lg font-bold">Time {idx + 1}</h3>
                 <div className="h-[1px] flex-1 bg-border/50 ml-2" />
-                <span className="text-[10px] font-bold text-gray-500 uppercase">Level: {team.reduce((acc, p) => acc + p.level, 0)}</span>
+                {isAdmin && <span className="text-[10px] font-bold text-gray-500 uppercase">Level: {team.reduce((acc, p) => acc + p.level, 0)}</span>}
               </div>
               
               <div className="grid grid-cols-1 gap-2">
@@ -133,11 +148,13 @@ export default function TeamDraw() {
                         <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">{player.position}</span>
                       </div>
                     </div>
-                    <div className="flex space-x-1">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
-                      ))}
-                    </div>
+                    {isAdmin && (
+                      <div className="flex space-x-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -151,12 +168,14 @@ export default function TeamDraw() {
             >
               Refazer Sorteio
             </button>
-            <button 
-              onClick={confirmTeams}
-              className="flex-1 py-4 bg-primary text-bg font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all"
-            >
-              Definir Times
-            </button>
+            {isAdmin && (
+              <button 
+                onClick={confirmTeams}
+                className="flex-1 py-4 bg-primary text-bg font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all"
+              >
+                Definir Times
+              </button>
+            )}
           </div>
         </div>
       )}

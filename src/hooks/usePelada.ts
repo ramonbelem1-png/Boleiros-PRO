@@ -12,7 +12,9 @@ import {
   limit,
   Timestamp,
   where,
-  getDocFromServer
+  getDoc,
+  getDocFromServer,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -35,6 +37,26 @@ export interface Player {
   empates: number;
 }
 
+export interface GameEvent {
+  type: 'GOAL';
+  playerId: string;
+  assistId?: string;
+  timestamp: any;
+  teamSide: 'A' | 'B';
+}
+
+export interface Game {
+  id: string;
+  teamA_ids: string[];
+  teamB_ids: string[];
+  scoreA: number;
+  scoreB: number;
+  startTime: any;
+  endTime?: any;
+  status: 'RUNNING' | 'FINISHED';
+  events: GameEvent[];
+}
+
 export interface Match {
   id: string;
   date: any;
@@ -43,6 +65,7 @@ export interface Match {
   absentIds: { userId: string; reason: string }[];
   waitingIds: string[];
   result?: { scoreA: number; scoreB: number };
+  teams?: string[][]; // Array of player UIDs for each team
 }
 
 export interface Transaction {
@@ -64,10 +87,12 @@ export interface GroupSettings {
 import { useAuth } from '../components/AuthProvider';
 
 export function usePelada() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const isAdmin = role === 'ADMIN';
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [liveGame, setLiveGame] = useState<Game | null>(null);
   const [settings, setSettings] = useState<GroupSettings>({
     monthlyFee: 50,
     dailyFee: 15,
@@ -76,30 +101,25 @@ export function usePelada() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    // Validate connection
-    const testConn = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (e) {}
-    };
-    testConn();
-
-    const qPlayers = query(collection(db, 'players'), orderBy('name'));
-    const unsubPlayers = onSnapshot(qPlayers, (snap) => {
+    const unsubPlayers = onSnapshot(query(collection(db, 'players'), orderBy('name')), (snap) => {
       setPlayers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
     });
 
-    const qMatches = query(collection(db, 'matches'), orderBy('date', 'desc'), limit(10));
-    const unsubMatches = onSnapshot(qMatches, (snap) => {
+    const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('date', 'desc'), limit(10)), (snap) => {
       setMatches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match)));
     });
 
-    const qTransactions = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(50));
-    const unsubTransactions = onSnapshot(qTransactions, (snap) => {
-      setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
-    });
+    let unsubTransactions: () => void = () => {};
+    if (isAdmin) {
+      unsubTransactions = onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(50)), (snap) => {
+        setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+      });
+    }
 
     const unsubSettings = onSnapshot(doc(db, 'groups', 'main'), (snap) => {
       if (snap.exists()) {
@@ -114,7 +134,33 @@ export function usePelada() {
       unsubTransactions();
       unsubSettings();
     };
-  }, [user]);
+  }, [user, isAdmin]);
+
+  // Effect specifically for handling the live game listener
+  useEffect(() => {
+    if (!user) return;
+    const activeMatch = matches.find(m => m.status === 'OPEN');
+    if (!activeMatch) {
+      setLiveGame(null);
+      return;
+    }
+
+    const qLive = query(
+      collection(db, 'matches', activeMatch.id, 'games'),
+      where('status', '==', 'RUNNING'),
+      limit(1)
+    );
+    
+    const unsubLiveGame = onSnapshot(qLive, (snap) => {
+      if (!snap.empty) {
+        setLiveGame({ id: snap.docs[0].id, ...snap.docs[0].data() } as Game);
+      } else {
+        setLiveGame(null);
+      }
+    });
+
+    return () => unsubLiveGame();
+  }, [user, matches.find(m => m.status === 'OPEN')?.id]);
 
   const updateSettings = async (newSettings: GroupSettings) => {
     await setDoc(doc(db, 'groups', 'main'), newSettings, { merge: true });
@@ -222,26 +268,127 @@ export function usePelada() {
   };
 
   const updatePlayer = async (playerId: string, data: Partial<Player>) => {
-    await updateDoc(doc(db, 'players', playerId), data);
+    try {
+      console.log(`[usePelada] Atualizando jogador ${playerId}...`, data);
+      const { serverTimestamp } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'players', playerId), {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+      console.log(`[usePelada] Jogador ${playerId} atualizado com sucesso!`);
+    } catch (error) {
+      console.error(`[usePelada] Erro ao atualizar jogador ${playerId}:`, error);
+      throw error;
+    }
   };
 
   const deletePlayer = async (playerId: string) => {
     await deleteDoc(doc(db, 'players', playerId));
   };
 
-  return { 
-    players, 
-    matches, 
-    transactions, 
+  const setMatchTeams = async (matchId: string, teamsIds: string[][]) => {
+    await updateDoc(doc(db, 'matches', matchId), { teams: teamsIds });
+  };
+
+  const startLiveGame = async (matchId: string, teamAIds: string[], teamBIds: string[]) => {
+    const gameData = {
+      teamA_ids: teamAIds,
+      teamB_ids: teamBIds,
+      scoreA: 0,
+      scoreB: 0,
+      startTime: serverTimestamp(),
+      status: 'RUNNING',
+      events: []
+    };
+    await addDoc(collection(db, 'matches', matchId, 'games'), gameData);
+  };
+
+  const addGameEvent = async (matchId: string, gameId: string, event: Omit<GameEvent, 'timestamp'>) => {
+    const gameRef = doc(db, 'matches', matchId, 'games', gameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) return;
+    
+    const data = gameSnap.data() as Game;
+    const eventWithTime = { ...event, timestamp: Timestamp.now() };
+    const newEvents = [...(data.events || []), eventWithTime];
+    
+    let newScoreA = data.scoreA;
+    let newScoreB = data.scoreB;
+
+    if (event.type === 'GOAL') {
+      if (event.teamSide === 'A') newScoreA++;
+      else newScoreB++;
+
+      const pRef = doc(db, 'players', event.playerId);
+      const pSnap = await getDoc(pRef);
+      if (pSnap.exists()) {
+        await updateDoc(pRef, { gols: (pSnap.data().gols || 0) + 1 });
+      }
+
+      if (event.assistId) {
+        const aRef = doc(db, 'players', event.assistId);
+        const aSnap = await getDoc(aRef);
+        if (aSnap.exists()) {
+          await updateDoc(aRef, { assistencias: (aSnap.data().assistencias || 0) + 1 });
+        }
+      }
+    }
+
+    await updateDoc(gameRef, { 
+      events: newEvents,
+      scoreA: newScoreA,
+      scoreB: newScoreB
+    });
+  };
+
+  const finishGame = async (matchId: string, gameId: string, result: { scoreA: number, scoreB: number, teamA: string[], teamB: string[] }) => {
+    const gameRef = doc(db, 'matches', matchId, 'games', gameId);
+    await updateDoc(gameRef, { 
+      status: 'FINISHED',
+      endTime: serverTimestamp()
+    });
+
+    const isDraw = result.scoreA === result.scoreB;
+    
+    const updateStats = async (ids: string[], isWinner: boolean, isDrawing: boolean) => {
+      for (const id of ids) {
+        const pRef = doc(db, 'players', id);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          const stats = pSnap.data();
+          if (isDrawing) {
+            await updateDoc(pRef, { empates: (stats.empates || 0) + 1 });
+          } else if (isWinner) {
+            await updateDoc(pRef, { vitorias: (stats.vitorias || 0) + 1 });
+          } else {
+            await updateDoc(pRef, { derrotas: (stats.derrotas || 0) + 1 });
+          }
+        }
+      }
+    };
+
+    await updateStats(result.teamA, result.scoreA > result.scoreB, isDraw);
+    await updateStats(result.teamB, result.scoreB > result.scoreA, isDraw);
+  };
+
+  return {
+    players,
+    matches,
+    transactions,
     settings,
-    loading, 
-    confirmPresence, 
-    markAbsent, 
-    createMatch, 
-    createTransaction, 
+    loading,
+    liveGame,
+    confirmPresence,
+    markAbsent,
+    createMatch,
+    createTransaction,
     addPlayer,
     updatePlayer,
     deletePlayer,
-    updateSettings
+    updateSettings,
+    setMatchTeams,
+    startLiveGame,
+    addGameEvent,
+    finishGame
   };
 }

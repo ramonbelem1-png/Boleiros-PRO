@@ -3,6 +3,7 @@ import { Player, usePelada } from '../hooks/usePelada';
 import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2 } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useAuth } from './AuthProvider';
 
 interface ModalProps {
   type: 'match' | 'finance' | 'player' | null;
@@ -24,7 +25,19 @@ export default function ManagementModals({ type, editingPlayer, onClose }: Modal
         {type === 'finance' && <CreateTransactionModal onSave={createTransaction} onClose={onClose} />}
         {type === 'player' && (
           <PlayerModal 
-            onSave={editingPlayer ? (data: any) => updatePlayer(editingPlayer.id, data) : addPlayer} 
+            onSave={async (data: any) => {
+              try {
+                if (editingPlayer) {
+                  await updatePlayer(editingPlayer.id, data);
+                } else {
+                  await addPlayer(data);
+                }
+              } catch (err: any) {
+                console.error("Erro no callback de salvamento:", err);
+                alert("Erro ao processar: " + (err.message || "Erro desconhecido."));
+                throw err;
+              }
+            }} 
             onClose={onClose} 
             initialData={editingPlayer}
           />
@@ -157,6 +170,8 @@ function CreateTransactionModal({ onSave, onClose }: any) {
 }
 
 function PlayerModal({ onSave, onClose, initialData }: any) {
+  const { role, user } = useAuth();
+  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
   const [name, setName] = useState(initialData?.name || '');
   const [pos, setPos] = useState(initialData?.position || 'VOLANTE');
   const [secondaryPos, setSecondaryPos] = useState(initialData?.secondaryPosition || '');
@@ -169,22 +184,79 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   const [derrotas, setDerrotas] = useState(initialData?.derrotas || 0);
   const [empates, setEmpates] = useState(initialData?.empates || 0);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Basic size check (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert("A imagem deve ter no máximo 2MB.");
+      return;
+    }
+
     setUploading(true);
     try {
+      console.log("Iniciando upload de foto...");
       const storageRef = ref(storage, `players/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const snapshot = await uploadBytes(storageRef, file);
+      console.log("Upload concluído, obtendo URL...");
+      const url = await getDownloadURL(snapshot.ref);
       setPhotoUrl(url);
-    } catch (error) {
+      console.log("URL de foto salva no estado:", url);
+    } catch (error: any) {
       console.error("Erro ao subir imagem:", error);
-      alert("Erro ao subir imagem.");
+      alert("Erro ao subir imagem: " + (error.message || "Erro desconhecido."));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if(!name) {
+      alert("Por favor, insira o nome.");
+      return;
+    }
+    
+    setSaving(true);
+    // Campos permitidos para usuários comuns nas regras do Firestore
+    // Note: secondaryPosition must be string, not null, based on our previous logic
+    const userData = {
+      name: name.trim(),
+      position: pos,
+      secondaryPosition: secondaryPos || "NENHUMA",
+      photoUrl: photoUrl || ""
+    };
+
+    // Todos os campos para administradores
+    const adminData = {
+      ...userData,
+      type,
+      level,
+      gols: Number(gols) || 0,
+      assistencias: Number(assistencias) || 0,
+      vitorias: Number(vitorias) || 0,
+      derrotas: Number(derrotas) || 0,
+      empates: Number(empates) || 0
+    };
+
+    try {
+      const payload = isAdmin ? adminData : userData;
+      console.log(`[PlayerModal] Tentando salvar. Usuário: ${user?.email}, Role: ${role}, isAdmin (calc): ${isAdmin}`);
+      console.log("[PlayerModal] Payload:", payload);
+      await onSave(payload);
+      console.log("[PlayerModal] Salvo com sucesso!");
+      onClose();
+    } catch (error: any) {
+      console.error("Erro fatal ao salvar perfil:", error);
+      let errorMsg = "Erro ao salvar perfil.";
+      if (error.message?.includes('permission-denied')) {
+        errorMsg = "Permissão negada no banco de dados. Verifique se você é o dono deste perfil.";
+      }
+      alert(errorMsg + "\n" + (error.message || ""));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -193,7 +265,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   return (
     <div className="space-y-6 max-h-[85vh] overflow-y-auto pr-2 scrollbar-thin">
       <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-4 text-white">
-        {initialData ? 'Editar Jogador' : 'Novo Jogador'}
+        {initialData ? 'Editar Perfil' : 'Novo Jogador'}
       </h3>
       
       <div className="flex flex-col items-center space-y-4 mb-4">
@@ -213,6 +285,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             <Upload size={10} />
           </div>
         </label>
+        {uploading && <p className="text-[10px] text-primary animate-pulse font-bold uppercase">Enviando foto...</p>}
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -232,8 +305,9 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
               {['MENSALISTA', 'DIARISTA'].map(t => (
                 <button 
                   key={t}
+                  disabled={!isAdmin}
                   onClick={() => setType(t as any)}
-                  className={`flex-1 py-2 rounded-lg border text-[9px] font-bold tracking-wider ${
+                  className={`flex-1 py-2 rounded-lg border text-[9px] font-bold tracking-wider disabled:opacity-50 ${
                     type === t ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
                   }`}
                 >
@@ -249,8 +323,9 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
               {[1, 2, 3, 4, 5].map(l => (
                 <button 
                   key={l}
+                  disabled={!isAdmin}
                   onClick={() => setLevel(l)}
-                  className={`w-7 h-7 rounded-lg border text-[10px] font-black transition-all ${
+                  className={`w-7 h-7 rounded-lg border text-[10px] font-black transition-all disabled:opacity-50 ${
                     level === l ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
                   }`}
                 >
@@ -262,60 +337,62 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         </div>
 
         {/* Stats Section */}
-        <div className="p-4 bg-bg/50 rounded-2xl border border-border/50 space-y-4">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-primary block text-center">Estatísticas (Manual)</label>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Gols</label>
-              <input 
-                type="number"
-                className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
-                value={gols}
-                onChange={(e) => setGols(Number(e.target.value))}
-              />
+        {isAdmin && (
+          <div className="p-4 bg-bg/50 rounded-2xl border border-border/50 space-y-4">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-primary block text-center">Estatísticas (Manual)</label>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Gols</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={gols}
+                  onChange={(e) => setGols(Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Assists.</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={assistencias}
+                  onChange={(e) => setAssistencias(Number(e.target.value))}
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Assists.</label>
-              <input 
-                type="number"
-                className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
-                value={assistencias}
-                onChange={(e) => setAssistencias(Number(e.target.value))}
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Vitórias</label>
-              <input 
-                type="number"
-                className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
-                value={vitorias}
-                onChange={(e) => setVitorias(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Derrotas</label>
-              <input 
-                type="number"
-                className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
-                value={derrotas}
-                onChange={(e) => setDerrotas(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Empates</label>
-              <input 
-                type="number"
-                className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
-                value={empates}
-                onChange={(e) => setEmpates(Number(e.target.value))}
-              />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Vitórias</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={vitorias}
+                  onChange={(e) => setVitorias(Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Derrotas</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={derrotas}
+                  onChange={(e) => setDerrotas(Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Empates</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={empates}
+                  onChange={(e) => setEmpates(Number(e.target.value))}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Posição Principal</label>
@@ -364,27 +441,12 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       </div>
 
       <button 
-        disabled={uploading}
-        onClick={async () => {
-          if(!name) return;
-          await onSave({ 
-            name, 
-            position: pos, 
-            secondaryPosition: secondaryPos || null,
-            type, 
-            level, 
-            photoUrl,
-            gols,
-            assistencias,
-            vitorias,
-            derrotas,
-            empates
-          });
-          onClose();
-        }}
-        className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50"
+        disabled={uploading || saving}
+        onClick={handleSave}
+        className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
       >
-        {uploading ? 'Aguarde o upload...' : (initialData ? 'Salvar Alterações' : 'Criar Jogador')}
+        {(uploading || saving) && <Loader2 className="animate-spin" size={18} />}
+        {uploading ? 'Aguarde o upload...' : saving ? 'Salvando...' : (initialData ? 'Salvar Alterações' : 'Criar Jogador')}
       </button>
     </div>
   );

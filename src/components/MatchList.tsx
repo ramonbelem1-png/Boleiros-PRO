@@ -10,7 +10,7 @@ export default function MatchList() {
   const { players, matches, confirmPresence, markAbsent, loading } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   const nextMatch = matches.find(m => m.status === 'OPEN');
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
   
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -318,6 +318,47 @@ export default function MatchList() {
                   </div>
                 </div>
 
+                <div className="pt-8 space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase">Elenco do Grupo</h3>
+                    <span className="text-[10px] font-bold text-gray-500">{players.length} ATLETAS</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {players.sort((a,b) => a.name.localeCompare(b.name)).map(player => (
+                      <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-bg border border-border flex items-center justify-center">
+                            {player.photoUrl ? (
+                              <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <span className="text-gray-500 font-bold">{player.name.charAt(0)}</span>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-base leading-tight tracking-tight">{player.name}</h4>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{player.position}</span>
+                              {isAdmin && (
+                                <span className={`text-[9px] font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                  • R$ {(player.balance || 0).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {isAdmin && (
+                          <div className="flex space-x-1">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {feedback && (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
@@ -422,11 +463,13 @@ function PresenceSection({ title, players, color, emptyMsg, isAdmin, onRemove }:
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <div className="flex space-x-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
-                  ))}
-                </div>
+                {isAdmin && (
+                  <div className="flex space-x-1">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
+                    ))}
+                  </div>
+                )}
                 {isAdmin && onRemove && (
                   <button 
                     onClick={() => onRemove(player.id)}

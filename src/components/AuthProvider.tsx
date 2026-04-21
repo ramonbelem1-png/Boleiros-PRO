@@ -79,23 +79,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Garantir que o usuário exista na coleção 'players' para poder marcar presença
-          const playerDoc = await getDoc(doc(db, 'players', u.uid));
+          const playerRef = doc(db, 'players', u.uid);
+          const playerDoc = await getDoc(playerRef);
+          
           if (!playerDoc.exists()) {
-            await setDoc(doc(db, 'players', u.uid), {
-              name: u.displayName || u.email?.split('@')[0] || 'Jogador',
-              email: u.email,
-              photoUrl: u.photoURL || '',
-              level: 3,
-              position: 'MEIA',
-              type: 'DIARISTA',
-              balance: 0,
-              active: true,
-              gols: 0,
-              assistencias: 0,
-              vitorias: 0,
-              derrotas: 0,
-              empates: 0
-            });
+            // Se não existir pelo UID, tenta buscar por email (caso um admin tenha criado manualmente)
+            const { getDocs, query, collection, where, deleteDoc } = await import('firebase/firestore');
+            const emailQuery = query(collection(db, 'players'), where('email', '==', u.email));
+            const emailSnap = await getDocs(emailQuery);
+
+            if (!emailSnap.empty) {
+              const existingData = emailSnap.docs[0].data();
+              const oldId = emailSnap.docs[0].id;
+
+              await setDoc(playerRef, {
+                level: 3,
+                position: 'MEIA',
+                secondaryPosition: 'NENHUMA',
+                type: 'DIARISTA',
+                balance: 0,
+                active: true,
+                gols: 0,
+                assistencias: 0,
+                vitorias: 0,
+                derrotas: 0,
+                empates: 0,
+                ...existingData,
+                name: existingData.name || u.displayName || u.email?.split('@')[0] || 'Jogador',
+                photoUrl: existingData.photoUrl || u.photoURL || '',
+                email: u.email
+              });
+
+              if (oldId !== u.uid) {
+                await deleteDoc(doc(db, 'players', oldId));
+              }
+            } else {
+              await setDoc(playerRef, {
+                name: u.displayName || u.email?.split('@')[0] || 'Jogador',
+                email: u.email,
+                photoUrl: u.photoURL || '',
+                level: 3,
+                position: 'MEIA',
+                secondaryPosition: 'NENHUMA',
+                type: 'DIARISTA',
+                balance: 0,
+                active: true,
+                gols: 0,
+                assistencias: 0,
+                vitorias: 0,
+                derrotas: 0,
+                empates: 0
+              });
+            }
           }
           
           setRole(assignedRole);

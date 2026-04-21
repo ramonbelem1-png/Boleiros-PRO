@@ -200,12 +200,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!user) {
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
-        <div className="mb-12 space-y-4">
-          <div className="w-24 h-24 bg-card border border-border rounded-[40px] mx-auto flex items-center justify-center shadow-2xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-primary/5 group-hover:bg-primary/10 transition-colors" />
-            <Logo variant="winner-cup" size="lg" vertical />
-          </div>
-          <p className="text-gray-400 max-w-[280px] mx-auto text-sm">
+        <div className="mb-12">
+          <Logo size="lg" vertical className="scale-125" />
+          <p className="text-gray-400 max-w-[280px] mx-auto text-sm mt-8">
             Gestão profissional para sua pelada. Presença, financeiro e estatísticas.
           </p>
         </div>

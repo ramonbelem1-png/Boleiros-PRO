@@ -149,37 +149,40 @@ export default function LiveMatch() {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block">TIME A</span>
-            <div className="text-6xl font-black italic">{liveGame.scoreA}</div>
+          <div className="flex-1 flex flex-col items-center">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">TIME A</span>
+            <div className="text-6xl font-black italic mb-4">{liveGame.scoreA}</div>
+            {isAdmin && (
+              <button 
+                onClick={() => setShowEventModal({ type: 'GOAL', teamSide: 'A' })}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-full bg-primary/10 border border-primary/20 hover:bg-primary hover:text-bg transition-all active:scale-95 shadow-lg shadow-primary/10"
+                title="Registrar Gol Time A"
+              >
+                <Plus size={24} className="group-hover:scale-110 transition-transform" />
+                <span className="text-[8px] font-black uppercase mt-0.5">GOL</span>
+              </button>
+            )}
           </div>
           
-          <div className="px-4 text-2xl font-black text-border/50 italic">VS</div>
+          <div className="px-4 flex flex-col items-center">
+            <div className="text-2xl font-black text-border/50 italic mb-10">VS</div>
+          </div>
 
-          <div className="flex-1">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block">TIME B</span>
-            <div className="text-6xl font-black italic">{liveGame.scoreB}</div>
+          <div className="flex-1 flex flex-col items-center">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">TIME B</span>
+            <div className="text-6xl font-black italic mb-4">{liveGame.scoreB}</div>
+            {isAdmin && (
+              <button 
+                onClick={() => setShowEventModal({ type: 'GOAL', teamSide: 'B' })}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-full bg-white/5 border border-border/50 hover:bg-white hover:text-bg transition-all active:scale-95 shadow-lg"
+                title="Registrar Gol Time B"
+              >
+                <Plus size={24} className="group-hover:scale-110 transition-transform" />
+                <span className="text-[8px] font-black uppercase mt-0.5">GOL</span>
+              </button>
+            )}
           </div>
         </div>
-
-        {isAdmin && (
-          <div className="flex gap-4 pt-4">
-            <button 
-              onClick={() => setShowEventModal({ type: 'GOAL', teamSide: 'A' })}
-              className="flex-1 py-4 bg-white/5 border border-border rounded-2xl flex flex-col items-center space-y-1 active:scale-95 transition-all"
-            >
-              <Plus size={20} className="text-primary" />
-              <span className="text-[10px] font-bold uppercase">Gol Time A</span>
-            </button>
-            <button 
-              onClick={() => setShowEventModal({ type: 'GOAL', teamSide: 'B' })}
-              className="flex-1 py-4 bg-white/5 border border-border rounded-2xl flex flex-col items-center space-y-1 active:scale-95 transition-all"
-            >
-              <Plus size={20} className="text-primary" />
-              <span className="text-[10px] font-bold uppercase">Gol Time B</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Histórico Recente */}
@@ -240,9 +243,19 @@ export default function LiveMatch() {
             className="w-full max-w-lg bg-card border border-border rounded-[2.5rem] p-8 space-y-6 shadow-2xl"
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold uppercase italic">Registrar Gol - Time {showEventModal.teamSide}</h3>
-              <button onClick={() => setShowEventModal(null)} className="p-2 hover:bg-white/5 rounded-full">
-                <Plus className="rotate-45" />
+              <div className="flex items-center space-x-3">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${showEventModal.teamSide === 'A' ? 'bg-primary text-bg' : 'bg-white text-bg'}`}>
+                  <Trophy size={24} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold uppercase italic leading-none">Registrar Gol</h3>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">
+                    {showEventModal.teamSide === 'A' ? 'Time A - Boleiros' : 'Time B - Convidados'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowEventModal(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-colors">
+                <Plus className="rotate-45 text-gray-400" />
               </button>
             </div>
 

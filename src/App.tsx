@@ -102,7 +102,7 @@ export default function App() {
       <header className="px-6 pt-8 pb-4 bg-bg/80 backdrop-blur-md z-10 transition-all duration-300">
         <div className="flex justify-between items-end">
           <div>
-            <Logo variant={settings.logoVariant} className="mb-2" />
+            <Logo className="mb-2" />
             <div className="flex items-center space-x-2">
               <h1 className="text-3xl font-bold text-white">
                 {activeTab === 'list' && 'Próxima Pelada'}

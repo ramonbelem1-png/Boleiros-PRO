@@ -16,7 +16,7 @@ import {
   getDocFromServer,
   serverTimestamp
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError } from '../lib/firebase';
 
 export type PlayerPosition = 'GOLEIRO' | 'ZAGUEIRO' | 'LATERAL' | 'VOLANTE' | 'MEIA' | 'ATACANTE';
 
@@ -78,13 +78,10 @@ export interface Transaction {
   playerId?: string;
 }
 
-import { LogoVariant } from '../components/Logo';
-
 export interface GroupSettings {
   monthlyFee: number;
   dailyFee: number;
   maxPlayers: number;
-  logoVariant?: LogoVariant;
 }
 
 import { useAuth } from '../components/AuthProvider';
@@ -99,8 +96,7 @@ export function usePelada() {
   const [settings, setSettings] = useState<GroupSettings>({
     monthlyFee: 50,
     dailyFee: 15,
-    maxPlayers: 20,
-    logoVariant: 'winner-cup'
+    maxPlayers: 20
   });
   const [loading, setLoading] = useState(true);
 
@@ -222,7 +218,7 @@ export function usePelada() {
         waitingIds: newWaiting
       });
     } catch (error) {
-      console.error("Erro ao marcar ausência:", error);
+      handleFirestoreError(error, 'update', `matches/${matchId}`);
     }
   };
 
@@ -253,8 +249,7 @@ export function usePelada() {
       }
       return docRef;
     } catch (error) {
-      console.error("Erro ao criar transação:", error);
-      throw error;
+      handleFirestoreError(error, 'create', 'transactions');
     }
   };
 
@@ -310,40 +305,44 @@ export function usePelada() {
 
   const addGameEvent = async (matchId: string, gameId: string, event: Omit<GameEvent, 'timestamp'>) => {
     const gameRef = doc(db, 'matches', matchId, 'games', gameId);
-    const gameSnap = await getDoc(gameRef);
-    if (!gameSnap.exists()) return;
-    
-    const data = gameSnap.data() as Game;
-    const eventWithTime = { ...event, timestamp: Timestamp.now() };
-    const newEvents = [...(data.events || []), eventWithTime];
-    
-    let newScoreA = data.scoreA;
-    let newScoreB = data.scoreB;
+    try {
+      const gameSnap = await getDoc(gameRef);
+      if (!gameSnap.exists()) return;
+      
+      const data = gameSnap.data() as Game;
+      const eventWithTime = { ...event, timestamp: Timestamp.now() };
+      const newEvents = [...(data.events || []), eventWithTime];
+      
+      let newScoreA = data.scoreA;
+      let newScoreB = data.scoreB;
 
-    if (event.type === 'GOAL') {
-      if (event.teamSide === 'A') newScoreA++;
-      else newScoreB++;
+      if (event.type === 'GOAL') {
+        if (event.teamSide === 'A') newScoreA++;
+        else newScoreB++;
 
-      const pRef = doc(db, 'players', event.playerId);
-      const pSnap = await getDoc(pRef);
-      if (pSnap.exists()) {
-        await updateDoc(pRef, { gols: (pSnap.data().gols || 0) + 1 });
-      }
+        const pRef = doc(db, 'players', event.playerId);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          await updateDoc(pRef, { gols: (pSnap.data().gols || 0) + 1 });
+        }
 
-      if (event.assistId) {
-        const aRef = doc(db, 'players', event.assistId);
-        const aSnap = await getDoc(aRef);
-        if (aSnap.exists()) {
-          await updateDoc(aRef, { assistencias: (aSnap.data().assistencias || 0) + 1 });
+        if (event.assistId) {
+          const aRef = doc(db, 'players', event.assistId);
+          const aSnap = await getDoc(aRef);
+          if (aSnap.exists()) {
+            await updateDoc(aRef, { assistencias: (aSnap.data().assistencias || 0) + 1 });
+          }
         }
       }
-    }
 
-    await updateDoc(gameRef, { 
-      events: newEvents,
-      scoreA: newScoreA,
-      scoreB: newScoreB
-    });
+      await updateDoc(gameRef, { 
+        events: newEvents,
+        scoreA: newScoreA,
+        scoreB: newScoreB
+      });
+    } catch (error) {
+      handleFirestoreError(error, 'update', `matches/${matchId}/games/${gameId}`);
+    }
   };
 
   const finishGame = async (matchId: string, gameId: string, result: { scoreA: number, scoreB: number, teamA: string[], teamB: string[] }) => {

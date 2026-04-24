@@ -22,6 +22,8 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "fullName": { "type": "string" },
+        "displayName": { "type": "string", "description": "Nome curto para exibição (Máx 15 caracteres)" },
         "photoUrl": { "type": "string" },
         "position": { "type": "string", "enum": ["GOLEIRO", "VOLANTE", "MEIA", "ATACANTE", "LATERAL", "ZAGUEIRO"] },
         "secondaryPosition": { "type": "string", "enum": ["GOLEIRO", "VOLANTE", "MEIA", "ATACANTE", "LATERAL", "ZAGUEIRO", "NENHUMA"] },

@@ -11,7 +11,8 @@ import {
   Trophy, 
   Settings as SettingsIcon,
   Plus,
-  Activity
+  Activity,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from './lib/firebase';
@@ -33,7 +34,7 @@ type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 
 export default function App() {
   const { players, updatePlayer, settings, updateSettings } = usePelada();
-  const { role, user } = useAuth();
+  const { role, user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -100,35 +101,47 @@ export default function App() {
     <div className="flex flex-col min-h-screen bg-bg text-gray-100 pb-24">
       {/* ... header remains same ... */}
       <header className="px-6 pt-8 pb-4 bg-bg/80 backdrop-blur-md z-10 transition-all duration-300">
-        <div className="flex justify-between items-end">
-          <div>
-            <Logo className="mb-2" />
-            <div className="flex items-center space-x-2">
-              <h1 className="text-3xl font-bold text-white">
-                {activeTab === 'list' && 'Próxima Pelada'}
-                {activeTab === 'finance' && 'Financeiro'}
-                {activeTab === 'play' && 'Sorteio de Times'}
-                {activeTab === 'live' && 'Jogo ao Vivo'}
-                {activeTab === 'social' && 'Rankings'}
-                {activeTab === 'settings' && 'Ajustes'}
-              </h1>
-              {isAdmin && (
-                <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter">
-                  ADMIN
-                </span>
+        <div className="flex flex-col space-y-4">
+          <div className="flex justify-between items-start">
+            <Logo />
+            <div className="flex items-center space-x-3">
+              {isAdmin && ['list', 'finance', 'settings'].includes(activeTab) && (
+                <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handlePlusClick}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-bg shadow-lg transition-all bg-primary shadow-primary/20"
+                >
+                  <Plus size={24} />
+                </motion.button>
               )}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={logout}
+                className="w-10 h-10 rounded-xl bg-danger/10 border border-danger/20 flex items-center justify-center text-danger hover:bg-danger hover:text-bg transition-all"
+                title="Sair"
+              >
+                <LogOut size={20} />
+              </motion.button>
             </div>
           </div>
-          {isAdmin && ['list', 'finance', 'settings'].includes(activeTab) && (
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handlePlusClick}
-              className="w-12 h-12 rounded-full flex items-center justify-center text-bg shadow-lg transition-all bg-primary shadow-primary/20"
-            >
-              <Plus size={28} />
-            </motion.button>
-          )}
+
+          <div className="flex items-center space-x-2">
+            <h1 className="text-3xl font-bold text-white tracking-tight">
+              {activeTab === 'list' && 'Próxima Pelada'}
+              {activeTab === 'finance' && 'Financeiro'}
+              {activeTab === 'play' && 'Sorteio de Times'}
+              {activeTab === 'live' && 'Jogo ao Vivo'}
+              {activeTab === 'social' && 'Rankings'}
+              {activeTab === 'settings' && 'Ajustes'}
+            </h1>
+            {isAdmin && (
+              <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter">
+                ADMIN
+              </span>
+            )}
+          </div>
         </div>
       </header>
 

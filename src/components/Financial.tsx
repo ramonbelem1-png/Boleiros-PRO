@@ -77,10 +77,10 @@ export default function Financial() {
             <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-full bg-bg border border-border flex items-center justify-center font-bold text-gray-500">
-                  {player.name.charAt(0)}
+                  {(player.displayName || player.name).charAt(0)}
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm tracking-tight">{player.name}</h4>
+                  <h4 className="font-bold text-sm tracking-tight">{player.displayName || player.name}</h4>
                   <p className="text-[10px] text-gray-500 font-bold uppercase">{player.type}</p>
                 </div>
               </div>

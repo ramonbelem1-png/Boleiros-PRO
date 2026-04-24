@@ -1,25 +1,45 @@
 import React, { useState } from 'react';
 import { usePelada, Player } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Shuffle, Users, Trophy } from 'lucide-react';
+import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function TeamDraw() {
   const { players, matches, setMatchTeams } = usePelada();
   const { user, role } = useAuth();
   const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
-  const nextMatch = matches.find(m => m.status === 'OPEN');
+  const now = new Date();
+  const nextMatch = matches.find(m => {
+    if (m.status !== 'OPEN') return false;
+    const matchDate = m.date.toDate();
+    const dayAfterMatch = new Date(matchDate);
+    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
+    dayAfterMatch.setHours(0, 0, 0, 0);
+    return now < dayAfterMatch;
+  });
   const confirmedPlayers = players.filter(p => nextMatch?.confirmedIds.includes(p.id));
+
+  // Detectar duplicatas de número nos jogadores confirmados
+  const duplicatedNumbers = confirmedPlayers.reduce((acc, p) => {
+    if (p.number !== undefined && p.number !== null) {
+      const count = confirmedPlayers.filter(hp => hp.number === p.number).length;
+      if (count > 1) acc.add(p.number);
+    }
+    return acc;
+  }, new Set<number>());
 
   const [teams, setTeams] = useState<Player[][]>([]);
   const [saving, setSaving] = useState(false);
+  const [playersPerTeamSelected, setPlayersPerTeamSelected] = useState(6);
 
   const confirmTeams = async () => {
     if (!nextMatch) return;
     setSaving(true);
     try {
       const teamsIds = teams.map(team => team.map(p => p.id));
-      await setMatchTeams(nextMatch.id, teamsIds);
+      await setMatchTeams(nextMatch.id, teamsIds, {
+        playersPerTeam: playersPerTeamSelected
+      });
       alert("Times definidos com sucesso! Vá para a aba 'Ao Vivo' para gerenciar os jogos.");
       setTeams([]);
     } catch (error) {
@@ -33,59 +53,103 @@ export default function TeamDraw() {
   const drawTeams = () => {
     if (confirmedPlayers.length < 2) return;
 
-    // 1. Identify number of teams (aiming for 5-7 players per team)
-    const playersPerTeam = 5;
-    const numTeams = Math.max(2, Math.ceil(confirmedPlayers.length / playersPerTeam));
+    // 1. Calculate target sizes and number of teams
+    const limit = playersPerTeamSelected;
+    const totalPlayers = confirmedPlayers.length;
+    const numTeams = Math.ceil(totalPlayers / limit);
+    
+    // Define exact sizes for each team: e.g. 15 players with limit 6 -> [6, 6, 3]
+    const targetSizes = new Array(numTeams).fill(0);
+    let remainingToAssign = totalPlayers;
+    for (let i = 0; i < numTeams; i++) {
+      const size = Math.min(remainingToAssign, limit);
+      targetSizes[i] = size;
+      remainingToAssign -= size;
+    }
+
     const result: Player[][] = Array.from({ length: numTeams }, () => []);
 
-    // 2. Separate Goalkeepers
+    // 2. Separate Goalkeepers and Field Players
     const goalkeepers = confirmedPlayers.filter(p => p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO');
     const fieldPlayers = confirmedPlayers.filter(p => !goalkeepers.find(gk => gk.id === p.id));
 
-    // 3. Sort by level (descending) to use in distribution
+    // 3. Sort by level (descending)
     const sortedGKs = [...goalkeepers].sort((a, b) => b.level - a.level);
     const sortedField = [...fieldPlayers].sort((a, b) => b.level - a.level);
 
-    // 4. Distribute Goalkeepers (prioritize primary position)
-    const primaryGKs = sortedGKs.filter(p => p.position === 'GOLEIRO');
-    const secondaryGKs = sortedGKs.filter(p => p.position !== 'GOLEIRO');
-    
-    const allGKsToDistribute = [...primaryGKs, ...secondaryGKs];
-    allGKsToDistribute.forEach((gk, index) => {
-      result[index % numTeams].push(gk);
-    });
+    // 4. Distribute Goalkeepers (max 1 per team, fill sequentially)
+    let currentGKIdx = 0;
+    for (let i = 0; i < numTeams && currentGKIdx < sortedGKs.length; i++) {
+      if (result[i].length < targetSizes[i]) {
+        result[i].push(sortedGKs[currentGKIdx]);
+        currentGKIdx++;
+      }
+    }
+    // If there are more GKs than teams, distribute the rest greedily
+    while (currentGKIdx < sortedGKs.length) {
+      let targetIdx = -1;
+      for (let i = 0; i < numTeams; i++) {
+        if (result[i].length < targetSizes[i]) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx !== -1) {
+        result[targetIdx].push(sortedGKs[currentGKIdx]);
+      }
+      currentGKIdx++;
+    }
 
-    // 5. Distribute Field Players using greedy balancing
-    // We want to balance: Total Level AND Positions
+    // 5. Distribute Field Players (fill teams sequentially while balancing level)
+    // To ensure Team 1 and 2 are filled before Team 3, we fill by "available slots" in order
     sortedField.forEach((player) => {
-      // Find team with:
-      // 1. the least number of players
-      // 2. then the lowest total level
-      // 3. (Optional) check if team needs this player's position
-      
-      let targetTeamIdx = 0;
-      let minPlayers = Infinity;
+      let targetTeamIdx = -1;
       let minLevel = Infinity;
 
+      // Find teams that are not yet at their target size
+      const teamsWithSpace = [];
       for (let i = 0; i < numTeams; i++) {
-        const teamSize = result[i].length;
-        const teamLevel = result[i].reduce((sum, p) => sum + p.level, 0);
-
-        if (teamSize < minPlayers) {
-          minPlayers = teamSize;
-          minLevel = teamLevel;
-          targetTeamIdx = i;
-        } else if (teamSize === minPlayers && teamLevel < minLevel) {
-          minLevel = teamLevel;
-          targetTeamIdx = i;
+        if (result[i].length < targetSizes[i]) {
+          teamsWithSpace.push(i);
         }
       }
 
-      result[targetTeamIdx].push(player);
+      // Among teams with space, we want to balance level, 
+      // but prioritize filling the "next" game teams (lower indexes)
+      // We'll pick from the first TWO teams that have space to balance between them,
+      // or just the single available team if only one has space.
+      const priorityTeams = teamsWithSpace.slice(0, 2); 
+      
+      priorityTeams.forEach(i => {
+        const teamLevel = result[i].reduce((sum, p) => sum + p.level, 0);
+        if (teamLevel < minLevel) {
+          minLevel = teamLevel;
+          targetTeamIdx = i;
+        }
+      });
+
+      if (targetTeamIdx !== -1) {
+        result[targetTeamIdx].push(player);
+      }
     });
 
-    // Shuffle each team internally for UI variety
-    result.forEach(team => team.sort(() => Math.random() - 0.5));
+    const POSITION_ORDER: Record<string, number> = {
+      'GOLEIRO': 0,
+      'ZAGUEIRO': 1,
+      'LATERAL': 2,
+      'VOLANTE': 3,
+      'MEIA': 4,
+      'ATACANTE': 5
+    };
+
+    // Sort each team by position
+    result.forEach(team => {
+      team.sort((a, b) => {
+        const posA = a.position || 'ATACANTE';
+        const posB = b.position || 'ATACANTE';
+        return (POSITION_ORDER[posA] ?? 99) - (POSITION_ORDER[posB] ?? 99);
+      });
+    });
 
     setTeams(result);
   };
@@ -94,9 +158,35 @@ export default function TeamDraw() {
     <div className="space-y-6">
       <div className="bg-primary/10 border border-primary/20 p-4 rounded-3xl mb-4">
         <p className="text-secondary text-xs text-center font-medium">
-          Sorteio baseado em <span className="font-bold">{confirmedPlayers.length}</span> jogadores confirmados.
+          Sorteio baseado em <span className="font-bold">{confirmedPlayers.length}</span> jogadores.
+          <br/>
+          <span className="opacity-70 mt-1 block">As equipes são preenchidas sequencialmente até o limite definido, equilibrando o nível técnico.</span>
         </p>
       </div>
+
+      {isAdmin && teams.length === 0 && (
+        <div className="bg-card border border-border/50 p-6 rounded-[2.5rem] space-y-6 shadow-xl animate-in fade-in zoom-in duration-300">
+          <div className="flex items-center space-x-3 mb-2">
+            <SettingsIcon className="text-primary" size={20} />
+            <h3 className="text-sm font-black uppercase tracking-widest text-white">Configurações do Jogo</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Jogadores por Time (Incluindo Goleiro)</label>
+              <select 
+                value={playersPerTeamSelected}
+                onChange={(e) => setPlayersPerTeamSelected(Number(e.target.value))}
+                className="w-full bg-bg border border-border p-4 rounded-2xl text-sm font-bold appearance-none text-white focus:border-primary outline-none"
+              >
+                {[4, 5, 6, 7, 8, 9, 10, 11].map(n => (
+                  <option key={n} value={n}>{n} vs {n}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       {teams.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center space-y-6">
@@ -106,16 +196,26 @@ export default function TeamDraw() {
           <div className="space-y-2">
             <h3 className="text-xl font-bold">Pronto para o Jogo?</h3>
             <p className="text-gray-500 text-sm max-w-[240px]">
-              O algoritmo irá equilibrar os times por nível técnico e posição.
+              {isAdmin 
+                ? "O algoritmo irá equilibrar os times por nível técnico e posição."
+                : "Aguarde o administrador realizar o sorteio dos times para a partida."}
             </p>
           </div>
-          <button 
-            onClick={drawTeams}
-            disabled={confirmedPlayers.length < 2}
-            className="bg-primary text-bg px-8 py-4 rounded-2xl font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all"
-          >
-            Sortear Times
-          </button>
+          {isAdmin ? (
+            <button 
+              onClick={drawTeams}
+              disabled={confirmedPlayers.length < 2}
+              className="bg-primary text-bg px-8 py-4 rounded-2xl font-black uppercase tracking-widest disabled:opacity-50 disabled:grayscale transition-all"
+            >
+              Sortear Times
+            </button>
+          ) : (
+            <div className="px-6 py-3 bg-primary/10 border border-primary/20 rounded-2xl">
+              <span className="text-primary text-[10px] font-black uppercase tracking-widest">
+                Aguardando Administrador...
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
@@ -138,21 +238,47 @@ export default function TeamDraw() {
                         player.position === 'GOLEIRO' ? 'text-yellow-500' : 'text-gray-500'
                       }`}>
                         {player.photoUrl ? (
-                          <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
                         ) : (
-                          player.name.charAt(0)
+                          (player.displayName || player.name).charAt(0)
                         )}
                       </div>
-                      <div>
-                        <h4 className="font-bold text-sm">{player.name}</h4>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm">{player.displayName || player.name}</h4>
+                          {player.number && (
+                            <span className={`text-[9px] font-black px-1 rounded ${duplicatedNumbers.has(player.number) ? 'bg-danger text-white animate-pulse' : 'bg-primary/20 text-primary border border-primary/20'} flex items-center gap-0.5`}>
+                              {duplicatedNumbers.has(player.number) && <AlertCircle size={7} />}
+                              #{player.number}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">{player.position}</span>
                       </div>
                     </div>
                     {isAdmin && (
-                      <div className="flex space-x-1">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
-                        ))}
+                      <div className="flex items-center space-x-3">
+                        <select 
+                          className="bg-bg border border-border rounded-lg text-[9px] font-bold uppercase p-1 text-gray-400 outline-none"
+                          value={idx}
+                          onChange={(e) => {
+                            const toIdx = Number(e.target.value);
+                            if (toIdx === idx) return;
+                            const newTeams = [...teams];
+                            newTeams[idx] = newTeams[idx].filter(p => p.id !== player.id);
+                            newTeams[toIdx] = [...newTeams[toIdx], player];
+                            setTeams(newTeams);
+                          }}
+                        >
+                          {teams.map((_, tIdx) => (
+                            <option key={tIdx} value={tIdx}>Para Time {tIdx + 1}</option>
+                          ))}
+                        </select>
+                        <div className="flex space-x-1">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -161,22 +287,22 @@ export default function TeamDraw() {
             </div>
           ))}
           
-          <div className="flex gap-4">
-            <button 
-              onClick={() => setTeams([])}
-              className="flex-1 py-4 bg-white/5 border border-border text-gray-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl active:scale-95 transition-all"
-            >
-              Refazer Sorteio
-            </button>
-            {isAdmin && (
+          {isAdmin && (
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setTeams([])}
+                className="flex-1 py-4 bg-white/5 border border-border text-gray-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl active:scale-95 transition-all"
+              >
+                Refazer Sorteio
+              </button>
               <button 
                 onClick={confirmTeams}
                 className="flex-1 py-4 bg-primary text-bg font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all"
               >
                 Definir Times
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

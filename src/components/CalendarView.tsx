@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePelada, Match, Player } from '../hooks/usePelada';
 import { 
   format, 
@@ -118,6 +118,25 @@ export default function CalendarView() {
 }
 
 function MatchModal({ match, players, onClose }: { match: Match, players: Player[], onClose: () => void }) {
+  const { getMatchGames } = usePelada();
+  const [matchGames, setMatchGames] = useState<any[]>([]);
+  const [loadingGames, setLoadingGames] = useState(false);
+
+  useEffect(() => {
+    const fetchGames = async () => {
+      setLoadingGames(true);
+      try {
+        const games = await getMatchGames(match.id);
+        setMatchGames(games);
+      } catch (e) {
+        console.error("Erro ao carregar jogos:", e);
+      } finally {
+        setLoadingGames(false);
+      }
+    };
+    fetchGames();
+  }, [match.id]);
+
   const matchDate = match.date.toDate ? match.date.toDate() : new Date(match.date);
   
   const confirmed = players.filter(p => match.confirmedIds.includes(p.id));
@@ -154,7 +173,7 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
         {/* Score if finished */}
         {match.status === 'FINISHED' && match.result && (
           <div className="bg-primary/10 p-6 rounded-3xl border border-primary/20 mb-6 text-center">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-2 block text-center">Resultado Final</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-2 block text-center">Resultado Final da Pelada</span>
             <div className="flex items-center justify-center space-x-8">
               <div className="text-center">
                 <div className="text-4xl font-black text-white italic">{match.result.scoreA}</div>
@@ -169,6 +188,47 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
           </div>
         )}
 
+        {/* History of Games */}
+        <div className="mb-8 space-y-4">
+          <div className="flex items-center space-x-2 text-primary px-1">
+            <Trophy size={14} />
+            <h4 className="text-[10px] font-black uppercase tracking-widest">Jogos Realizados</h4>
+          </div>
+
+          {loadingGames ? (
+            <div className="p-4 text-center text-[10px] font-bold text-gray-500 uppercase animate-pulse">Carregando jogos...</div>
+          ) : matchGames.length === 0 ? (
+            <div className="p-4 text-center text-[10px] font-bold text-gray-600 uppercase italic">Nenhum jogo individual registrado</div>
+          ) : (
+            <div className="space-y-3">
+              {matchGames.map((game, gIdx) => (
+                <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">
+                    <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
+                    <span className="text-[8px] font-bold text-primary">
+                      {game.scoreA} X {game.scoreB}
+                    </span>
+                  </div>
+                  <div className="p-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {game.events?.map((ev: any, evIdx: number) => {
+                        const scorer = players.find(p => p.id === ev.playerId);
+                        const scorerName = scorer?.displayName || scorer?.name || '';
+                        return (
+                          <div key={evIdx} className="flex items-center space-x-1 bg-bg/60 border border-border/20 px-2 py-0.5 rounded-md">
+                            <div className="w-1 h-1 rounded-full bg-primary" />
+                            <span className="text-[8px] font-bold text-white uppercase">{scorerName.split(' ')[0]}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="space-y-6">
           {/* Confirmed */}
           <section className="space-y-3">
@@ -180,9 +240,9 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
                {confirmed.map(p => (
                  <div key={p.id} className="flex items-center space-x-3 bg-bg/50 p-3 rounded-2xl border border-border/20">
                    <div className="w-8 h-8 rounded-full bg-bg border border-border overflow-hidden">
-                     {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{p.name.charAt(0)}</div>}
+                     {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{(p.displayName || p.name).charAt(0)}</div>}
                    </div>
-                   <span className="text-sm font-bold text-white">{p.name}</span>
+                   <span className="text-sm font-bold text-white">{p.displayName || p.name}</span>
                  </div>
                ))}
              </div>
@@ -198,7 +258,7 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
                <div className="grid grid-cols-1 gap-2">
                  {absentEntries.map((e, idx) => (
                    <div key={idx} className="flex items-center justify-between bg-bg/30 p-3 rounded-2xl border border-border/10">
-                     <span className="text-xs font-bold text-gray-400">{e.player?.name}</span>
+                     <span className="text-xs font-bold text-gray-400">{e.player?.displayName || e.player?.name}</span>
                      <span className="text-[9px] font-bold text-gray-600 italic">"{e.reason}"</span>
                    </div>
                  ))}

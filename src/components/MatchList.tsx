@@ -9,7 +9,17 @@ export default function MatchList() {
   const { user, role } = useAuth();
   const { players, matches, confirmPresence, markAbsent, loading } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
-  const nextMatch = matches.find(m => m.status === 'OPEN');
+  
+  const now = new Date();
+  const nextMatch = matches.find(m => {
+    if (m.status !== 'OPEN') return false;
+    const matchDate = m.date.toDate();
+    const dayAfterMatch = new Date(matchDate);
+    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
+    dayAfterMatch.setHours(0, 0, 0, 0);
+    return now < dayAfterMatch;
+  });
+
   const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
   
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
@@ -17,6 +27,11 @@ export default function MatchList() {
   const [searchPlayer, setSearchPlayer] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [confirmState, setConfirmState] = useState<{message: string, onConfirm: () => void} | null>(null);
+
+  const confirmAction = (message: string, action: () => void) => {
+    setConfirmState({ message, onConfirm: action });
+  };
 
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -53,12 +68,36 @@ export default function MatchList() {
     }
   };
 
+  const handleAdminConfirm = async (matchId: string, playerId: string) => {
+    setSubmitting(true);
+    try {
+      await confirmPresence(matchId, playerId);
+      showFeedback('success', 'Presença confirmada pelo Admin.');
+    } catch (e) {
+      showFeedback('error', 'Erro ao confirmar presença.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAdminAbsent = async (matchId: string, playerId: string) => {
+    setSubmitting(true);
+    try {
+      await markAbsent(matchId, playerId, 'Administrativo');
+      showFeedback('success', 'Ausência marcada pelo Admin.');
+    } catch (e) {
+      showFeedback('error', 'Erro ao marcar ausência.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando lista...</div>;
 
   const filterPlayersByName = (pIds: string[]) => {
     return players
       .filter(p => pIds.includes(p.id))
-      .filter(p => p.name.toLowerCase().includes(searchPlayer.toLowerCase()));
+      .filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase()));
   };
 
   return (
@@ -171,7 +210,11 @@ export default function MatchList() {
                           color="text-primary" 
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
-                          onRemove={(pid) => markAbsent(nextMatch.id, pid, 'Removido pelo Admin')}
+                          onRemove={(pid) => {
+                            confirmAction('Remover jogador da lista?', () => {
+                              markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
+                            });
+                          }}
                         />
                       </motion.div>
                     )}
@@ -204,7 +247,11 @@ export default function MatchList() {
                           color="text-yellow-400" 
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
-                          onRemove={(pid) => markAbsent(nextMatch.id, pid, 'Removido pelo Admin')}
+                          onRemove={(pid) => {
+                            confirmAction('Remover jogador da lista de espera?', () => {
+                              markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
+                            });
+                          }}
                         />
                       </motion.div>
                     )}
@@ -239,7 +286,7 @@ export default function MatchList() {
                             nextMatch.absentIds
                               .filter(a => {
                                 const p = players.find(player => player.id === a.userId);
-                                return p?.name.toLowerCase().includes(searchPlayer.toLowerCase());
+                                return (p?.displayName || p?.name || '').toLowerCase().includes(searchPlayer.toLowerCase());
                               })
                               .map((a, idx) => {
                                 const p = players.find(player => player.id === a.userId);
@@ -248,20 +295,20 @@ export default function MatchList() {
                                     <div className="flex items-center space-x-3">
                                       <div className="w-10 h-10 rounded-full bg-bg flex items-center justify-center font-bold text-gray-500 border border-border overflow-hidden">
                                         {p?.photoUrl ? (
-                                          <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                          <img src={p.photoUrl} alt={p.displayName || p.name} className="w-full h-full object-cover" />
                                         ) : (
-                                          p?.name.charAt(0)
+                                          (p?.displayName || p?.name || '').charAt(0)
                                         )}
                                       </div>
-                                      <div>
-                                        <h4 className="font-semibold text-sm">{p?.name}</h4>
-                                        <p className="text-[10px] text-danger italic">"{a.reason}"</p>
+                                      <div className="min-w-0">
+                                        <h4 className="font-semibold text-sm truncate">{p?.displayName || p?.name}</h4>
+                                        <p className="text-[10px] text-danger italic truncate">"{a.reason}"</p>
                                       </div>
                                     </div>
                                     {isAdmin && (
                                       <button 
                                         onClick={() => confirmPresence(nextMatch.id, a.userId)}
-                                        className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors"
+                                        className="text-primary hover:bg-primary/10 p-2 rounded-xl transition-colors shrink-0"
                                       >
                                         <Check size={16} />
                                       </button>
@@ -321,39 +368,85 @@ export default function MatchList() {
                 <div className="pt-8 space-y-4">
                   <div className="flex items-center justify-between px-2">
                     <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase">Elenco do Grupo</h3>
-                    <span className="text-[10px] font-bold text-gray-500">{players.length} ATLETAS</span>
+                    <span className="text-[10px] font-bold text-gray-500">
+                      {players.filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase())).length} ATLETAS
+                    </span>
                   </div>
                   
                   <div className="space-y-2">
-                    {players.sort((a,b) => a.name.localeCompare(b.name)).map(player => (
+                    {players
+                      .filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase()))
+                      .sort((a,b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
+                      .map(player => (
                       <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between shadow-sm">
                         <div className="flex items-center space-x-4">
                           <div className="w-12 h-12 rounded-full overflow-hidden bg-bg border border-border flex items-center justify-center">
                             {player.photoUrl ? (
-                              <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
                             ) : (
-                              <span className="text-gray-500 font-bold">{player.name.charAt(0)}</span>
+                              <span className="text-gray-500 font-bold">{(player.displayName || player.name).charAt(0)}</span>
                             )}
                           </div>
-                          <div>
-                            <h4 className="font-bold text-white text-base leading-tight tracking-tight">{player.name}</h4>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{player.position}</span>
+                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</span>
                               {isAdmin && (
-                                <span className={`text-[9px] font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                <span className={`text-[9px] font-black shrink-0 ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
                                   • R$ {(player.balance || 0).toFixed(2)}
                                 </span>
                               )}
                             </div>
                           </div>
                         </div>
-                        {isAdmin && (
-                          <div className="flex space-x-1">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex items-center space-x-3 shrink-0">
+                          {isAdmin && nextMatch && (
+                            <div className="flex items-center space-x-1 pr-2 border-r border-border/30 mr-1">
+                              {(() => {
+                                const isConfirmed = nextMatch.confirmedIds.includes(player.id);
+                                const isWaiting = nextMatch.waitingIds.includes(player.id);
+                                const isAbsent = nextMatch.absentIds.some(a => a.userId === player.id);
+
+                                return (
+                                  <>
+                                    <button 
+                                      onClick={() => handleAdminConfirm(nextMatch.id, player.id)}
+                                      disabled={submitting || isConfirmed || isWaiting}
+                                      className={`p-2 rounded-xl transition-all ${
+                                        isConfirmed || isWaiting 
+                                          ? 'bg-primary text-bg' 
+                                          : 'bg-white/5 text-gray-500 hover:text-primary hover:bg-primary/10'
+                                      }`}
+                                      title={isConfirmed ? "Confirmado" : isWaiting ? "Na Fila" : "Confirmar Jogador"}
+                                    >
+                                      <Check size={16} strokeWidth={3} />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleAdminAbsent(nextMatch.id, player.id)}
+                                      disabled={submitting || isAbsent}
+                                      className={`p-2 rounded-xl transition-all ${
+                                        isAbsent 
+                                          ? 'bg-danger text-white' 
+                                          : 'bg-white/5 text-gray-500 hover:text-danger hover:bg-danger/10'
+                                      }`}
+                                      title={isAbsent ? "Ausente" : "Marcar Ausente"}
+                                    >
+                                      <X size={16} strokeWidth={3} />
+                                    </button>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          
+                          {isAdmin && (
+                            <div className="hidden sm:flex space-x-1">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -420,6 +513,32 @@ export default function MatchList() {
           </motion.div>
         </div>
       )}
+
+      {/* Modal de Confirmação */}
+      {confirmState && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-sm bg-card border border-border rounded-[2.5rem] p-6 shadow-2xl relative"
+          >
+            <h3 className="text-xl font-black uppercase text-white mb-4">Confirmar Ação</h3>
+            <p className="text-sm font-bold text-gray-400 mb-8 whitespace-pre-wrap">{confirmState.message}</p>
+            <div className="flex gap-4">
+              <button onClick={() => setConfirmState(null)} className="flex-1 p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white">Cancelar</button>
+              <button 
+                onClick={() => {
+                  confirmState.onConfirm();
+                  setConfirmState(null);
+                }} 
+                className="flex-1 p-4 rounded-2xl bg-red-500 text-white font-black hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+              >
+                Confirmar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -446,9 +565,9 @@ function PresenceSection({ title, players, color, emptyMsg, isAdmin, onRemove }:
                 <div className="relative">
                   <div className="w-12 h-12 rounded-full overflow-hidden bg-bg border border-border flex items-center justify-center">
                     {player.photoUrl ? (
-                      <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-gray-500 font-bold">{player.name.charAt(0)}</span>
+                      <span className="text-gray-500 font-bold">{(player.displayName || player.name).charAt(0)}</span>
                     )}
                   </div>
                   <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold ${
@@ -457,12 +576,12 @@ function PresenceSection({ title, players, color, emptyMsg, isAdmin, onRemove }:
                     {player.type === 'MENSALISTA' ? 'M' : 'D'}
                   </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-white text-base leading-tight tracking-tight">{player.name}</h4>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{player.position}</p>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 shrink-0">
                 {isAdmin && (
                   <div className="flex space-x-1">
                     {Array.from({ length: 5 }).map((_, i) => (

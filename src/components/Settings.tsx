@@ -10,8 +10,10 @@ import {
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
 import { collection, addDoc, updateDoc, onSnapshot, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import ManagementModals from './ManagementModals';
+import { compressImageToBase64 } from '../lib/imageUtils';
+import ImageCropper from './ImageCropper';
 
 interface SettingsProps {
   onAddPlayer: () => void;
@@ -31,6 +33,9 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [saving, setSaving] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [uploadingPlayerId, setUploadingPlayerId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedCropImage, setSelectedCropImage] = useState<string | null>(null);
+  const [currentCroppingPlayerId, setCurrentCroppingPlayerId] = useState<string | null>(null);
   const [playerToDelete, setPlayerToDelete] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'level' | 'name' | 'position'>('name');
@@ -38,14 +43,22 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
   const filteredPlayers = players.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.displayName || p.name).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {
     if (sortBy === 'level') return (b.level || 0) - (a.level || 0);
     if (sortBy === 'position') return (a.position || '').localeCompare(b.position || '');
-    return a.name.localeCompare(b.name);
+    return (a.displayName || a.name).localeCompare(b.displayName || b.name);
   });
+
+  const duplicatedNumbers = players.reduce((acc, p) => {
+    if (p.number !== undefined && p.number !== null) {
+      const count = players.filter(hp => hp.number === p.number).length;
+      if (count > 1) acc.add(p.number);
+    }
+    return acc;
+  }, new Set<number>());
 
   const [adminEmail, setAdminEmail] = useState('');
   const [userRoles, setUserRoles] = useState<any[]>([]);
@@ -65,7 +78,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
     if (userToPromote) {
       try {
         await updateDoc(doc(db, 'user_roles', userToPromote.id), { role: 'ADMIN' });
-        showFeedback('success', `${userToPromote.name} agora é administrador.`);
+        showFeedback('success', `${userToPromote.displayName || userToPromote.name} agora é administrador.`);
         setAdminEmail('');
       } catch (e) {
         showFeedback('error', 'Erro ao promover usuário.');
@@ -101,7 +114,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const handleLevelChange = async (playerId: string, newLevel: number) => {
     try {
       await updatePlayer(playerId, { level: newLevel });
-      showFeedback('success', `Nível de ${players.find(p => p.id === playerId)?.name} atualizado!`);
+      const p = players.find(p => p.id === playerId);
+      showFeedback('success', `Nível de ${p?.displayName || p?.name} atualizado!`);
     } catch (e) {
       showFeedback('error', 'Erro ao atualizar nível.');
     }
@@ -111,31 +125,54 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
     try {
       const newType = currentType === 'MENSALISTA' ? 'DIARISTA' : 'MENSALISTA';
       await updatePlayer(playerId, { type: newType });
-      showFeedback('success', `${players.find(p => p.id === playerId)?.name} agora é ${newType.toLowerCase()}.`);
+      const p = players.find(p => p.id === playerId);
+      showFeedback('success', `${p?.displayName || p?.name} agora é ${newType.toLowerCase()}.`);
     } catch (e) {
       showFeedback('error', 'Erro ao atualizar tipo.');
     }
   };
 
-  const handlePhotoUpload = async (playerId: string, file: File) => {
-    setUploadingPlayerId(playerId);
+  const handleActiveToggle = async (playerId: string, currentActive: boolean) => {
     try {
-      const storageRef = ref(storage, `players/${playerId}_${Date.now()}`);
-      await uploadBytes(storageRef, file);
-      const photoUrl = await getDownloadURL(storageRef);
-      await updatePlayer(playerId, { photoUrl });
-      showFeedback('success', `Foto de ${players.find(p => p.id === playerId)?.name} atualizada!`);
-    } catch (error) {
-      console.error("Erro no upload da foto:", error);
-      showFeedback('error', 'Erro ao enviar foto.');
+      await updatePlayer(playerId, { active: !currentActive });
+      const p = players.find(p => p.id === playerId);
+      showFeedback('success', `Status de ${p?.displayName || p?.name} atualizado!`);
+    } catch (e) {
+      showFeedback('error', 'Erro ao atualizar status.');
+    }
+  };
+
+  const handlePhotoUpload = async (playerId: string, file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedCropImage(reader.result as string);
+      setCurrentCroppingPlayerId(playerId);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onCropComplete = async (croppedImage: string) => {
+    if (!currentCroppingPlayerId) return;
+    
+    setUploadingPlayerId(currentCroppingPlayerId);
+    setUploadProgress(100);
+    
+    try {
+      await updatePlayer(currentCroppingPlayerId, { photoUrl: croppedImage });
+      showFeedback('success', "Foto atualizada!");
+    } catch (error: any) {
+      showFeedback('error', "Falha ao salvar foto.");
     } finally {
       setUploadingPlayerId(null);
+      setSelectedCropImage(null);
+      setCurrentCroppingPlayerId(null);
     }
   };
 
   const handleDeletePlayer = async () => {
     if (playerToDelete) {
-      const playerName = players.find(p => p.id === playerToDelete)?.name;
+      const p = players.find(p => p.id === playerToDelete);
+      const playerName = p?.displayName || p?.name;
       try {
         await deletePlayer(playerToDelete);
         showFeedback('success', `${playerName} removido da lista.`);
@@ -181,12 +218,23 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         </div>
       )}
 
+      {selectedCropImage && (
+        <ImageCropper 
+          image={selectedCropImage} 
+          onCropComplete={onCropComplete} 
+          onCancel={() => {
+            setSelectedCropImage(null);
+            setCurrentCroppingPlayerId(null);
+          }} 
+        />
+      )}
+
       {/* User Profile Summary - Hidden when on profile tab to avoid redundancy */}
       {activeSettingsTab !== 'profile' && (
         <div className="bg-card rounded-[32px] p-6 border border-border/50 flex items-center gap-4 mb-2">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 transition-transform hover:scale-105 border border-primary/20 overflow-hidden">
             {currentUserPlayer?.photoUrl ? (
-              <img src={currentUserPlayer.photoUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={currentUserPlayer.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <UserCircle size={40} className="stroke-[1.5]" />
             )}
@@ -195,7 +243,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-black text-white leading-none truncate">
-                  {currentUserPlayer?.name || user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
+                  {currentUserPlayer?.displayName || currentUserPlayer?.name || user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
                 </h2>
                 {role === 'ADMIN' && (
                   <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
@@ -248,7 +296,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
             <div className="relative z-10 flex flex-col items-center text-center space-y-4 py-4">
               <div className="w-24 h-24 rounded-3xl bg-bg border-2 border-border/50 overflow-hidden shadow-2xl">
                 {currentUserPlayer?.photoUrl ? (
-                  <img src={currentUserPlayer.photoUrl} alt={currentUserPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={currentUserPlayer.photoUrl} alt={currentUserPlayer.displayName || currentUserPlayer.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary">
                     <User size={40} />
@@ -257,7 +305,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               </div>
               
               <div>
-                <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">{currentUserPlayer?.name}</h3>
+                <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">{currentUserPlayer?.displayName || currentUserPlayer?.name}</h3>
                 <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em] mt-1">
                   {currentUserPlayer?.position} • {currentUserPlayer?.type}
                 </p>
@@ -357,13 +405,22 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <label className="relative group/photo cursor-pointer inline-block shrink-0">
-                      <div className="w-12 h-12 rounded-2xl bg-bg border border-border flex items-center justify-center font-bold text-gray-400 text-base overflow-hidden transition-all group-hover/photo:border-primary">
+                      <div className="w-12 h-12 rounded-2xl bg-bg border border-border flex items-center justify-center font-bold text-gray-400 text-base overflow-hidden transition-all group-hover/photo:border-primary relative">
                         {uploadingPlayerId === player.id ? (
-                          <Loader2 className="animate-spin text-primary" size={18} />
+                          <div className="flex flex-col items-center">
+                            <Loader2 className="animate-spin text-primary" size={20} />
+                            <span className="text-[9px] font-black text-primary mt-1 leading-none">{uploadProgress}%</span>
+                          </div>
                         ) : player.photoUrl ? (
-                          <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
                         ) : (
-                          player.name.charAt(0)
+                          (player.displayName || player.name).charAt(0)
+                        )}
+                        {player.number && (
+                          <div className={`absolute top-0 right-0 ${duplicatedNumbers.has(player.number) ? 'bg-danger animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-primary'} text-bg text-[8px] font-black px-1.5 py-0.5 rounded-bl-lg shadow-lg flex items-center gap-1`}>
+                            {duplicatedNumbers.has(player.number) && <AlertCircle size={8} />}
+                            #{player.number}
+                          </div>
                         )}
                       </div>
                       {(isAdmin || player.id === user?.uid) && (
@@ -384,30 +441,38 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         </>
                       )}
                     </label>
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <h4 className="font-bold text-white tracking-tight text-sm truncate max-w-[120px]">{player.name}</h4>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <h4 className="font-bold text-white tracking-tight text-sm truncate">{player.displayName || player.name}</h4>
                         {(isAdmin || player.id === user?.uid) && (
                           <button 
                             onClick={() => onEditPlayer(player)}
-                            className="p-1.5 bg-white/5 rounded-lg text-gray-400 hover:text-primary transition-all"
+                            className="p-1.5 bg-white/5 rounded-lg text-gray-400 hover:text-primary transition-all shrink-0"
                           >
                             <Edit2 size={10} />
                           </button>
                         )}
                       </div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border ${
+                      <div className="flex items-center space-x-2 mt-0.5 overflow-hidden">
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
                             player.type === 'MENSALISTA' ? 'bg-primary/20 border-primary/30 text-primary' : 'bg-gray-800 border-border text-gray-400'
                           }`}>
                             {player.type}
                         </span>
-                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">{player.position}</span>
+                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider truncate">{player.position}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right">
+                  <div className="flex flex-col items-end shrink-0">
+                    <button 
+                      onClick={() => handleActiveToggle(player.id, player.active)}
+                      className={`text-[8px] font-black px-1.5 py-0.5 rounded border mb-2 transition-all ${
+                        player.active ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
+                      }`}
+                    >
+                      {player.active ? 'ATIVO' : 'INATIVO'}
+                    </button>
                     {isAdmin && (
                       <div className={`text-sm font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
                         R$ {(player.balance || 0).toFixed(2)}
@@ -482,12 +547,14 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         </button>
                       ))}
                     </div>
-                    <button 
-                      onClick={() => setPlayerToDelete(player.id)}
-                      className="p-2 text-danger/50 hover:text-danger transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {player.email !== 'ramonbelem1@gmail.com' && (
+                      <button 
+                        onClick={() => setPlayerToDelete(player.id)}
+                        className="p-2 text-danger/50 hover:text-danger transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -519,24 +586,33 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           <div className="space-y-3">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-gray-500 uppercase px-2">Lista de Acessos</h3>
             {userRoles.map(ur => (
-              <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+              <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
                     {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
                   </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-gray-200 leading-tight">{ur.name || 'Usuário'}</h4>
-                    <p className="text-[10px] text-gray-500">{ur.email}</p>
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{ur.displayName || ur.name || 'Usuário'}</h4>
+                    <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
+                  <button 
+                    onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
+                    disabled={ur.id === user?.uid}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
+                      ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
+                    } disabled:opacity-50`}
+                  >
+                    {ur.approved ? 'OK' : 'PEND'}
+                  </button>
                   <select 
                     value={ur.role}
                     onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
                     disabled={ur.id === user?.uid}
-                    className="bg-bg border border-border rounded-lg px-2 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50"
+                    className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
                   >
-                    <option value="ADMIN">ADMIN</option>
+                    <option value="ADMIN">ADM</option>
                     <option value="USER">USER</option>
                   </select>
                 </div>

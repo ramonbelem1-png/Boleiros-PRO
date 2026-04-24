@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Player, usePelada } from '../hooks/usePelada';
-import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2 } from 'lucide-react';
+import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle } from 'lucide-react';
 import { storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthProvider';
+import { compressImageToBase64 } from '../lib/imageUtils';
+import ImageCropper from './ImageCropper';
 
 interface ModalProps {
   type: 'match' | 'finance' | 'player' | null;
@@ -170,9 +172,12 @@ function CreateTransactionModal({ onSave, onClose }: any) {
 }
 
 function PlayerModal({ onSave, onClose, initialData }: any) {
+  const { players } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
-  const [name, setName] = useState(initialData?.name || '');
+  const [fullName, setFullName] = useState(initialData?.fullName || '');
+  const [displayName, setDisplayName] = useState(initialData?.displayName || initialData?.name || '');
+  const [email, setEmail] = useState(initialData?.email || '');
   const [pos, setPos] = useState(initialData?.position || 'VOLANTE');
   const [secondaryPos, setSecondaryPos] = useState(initialData?.secondaryPosition || '');
   const [level, setLevel] = useState(initialData?.level || 3);
@@ -183,40 +188,52 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   const [vitorias, setVitorias] = useState(initialData?.vitorias || 0);
   const [derrotas, setDerrotas] = useState(initialData?.derrotas || 0);
   const [empates, setEmpates] = useState(initialData?.empates || 0);
+  const [number, setNumber] = useState(initialData?.number || '');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // Unicidade do número em tempo real
+  const takenBy = number !== '' ? players.find(p => p.number === Number(number) && p.id !== initialData?.id) : null;
+  const numberIsTaken = !!takenBy;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Basic size check (2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert("A imagem deve ter no máximo 2MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      alert("A imagem deve ter no máximo 5MB.");
       return;
     }
 
-    setUploading(true);
-    try {
-      console.log("Iniciando upload de foto...");
-      const storageRef = ref(storage, `players/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      console.log("Upload concluído, obtendo URL...");
-      const url = await getDownloadURL(snapshot.ref);
-      setPhotoUrl(url);
-      console.log("URL de foto salva no estado:", url);
-      alert("Foto enviada com sucesso! Clique em 'Salvar Alterações' para finalizar.");
-    } catch (error: any) {
-      console.error("Erro ao subir imagem:", error);
-      alert("Erro ao subir imagem: " + (error.message || "Erro desconhecido."));
-    } finally {
-      setUploading(false);
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onCropComplete = (croppedImage: string) => {
+    setPhotoUrl(croppedImage);
+    setSelectedImage(null);
+    showFeedback('success', "Foto recortada!");
+  };
+
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const showFeedback = (type: 'success' | 'error', msg: string) => {
+    setFeedback({ type, msg });
+    setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleSave = async () => {
-    if(!name) {
-      alert("Por favor, insira o nome.");
+    if(!fullName || !displayName) {
+      alert("Por favor, preencha os campos de nome.");
+      return;
+    }
+
+    if (numberIsTaken) {
+      alert(`O número ${number} já está sendo usado por ${takenBy?.displayName || takenBy?.name}!`);
       return;
     }
     
@@ -224,7 +241,10 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
     // Campos permitidos para usuários comuns nas regras do Firestore
     // Note: secondaryPosition must be string, not null, based on our previous logic
     const userData = {
-      name: name.trim(),
+      name: displayName.trim(), // Use display name for generic 'name' field if still needed elsewhere
+      fullName: fullName.trim(),
+      displayName: displayName.trim(),
+      email: email.trim().toLowerCase(),
       position: pos,
       secondaryPosition: secondaryPos || "NENHUMA",
       photoUrl: photoUrl || ""
@@ -239,7 +259,8 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       assistencias: Number(assistencias) || 0,
       vitorias: Number(vitorias) || 0,
       derrotas: Number(derrotas) || 0,
-      empates: Number(empates) || 0
+      empates: Number(empates) || 0,
+      number: number !== '' ? Number(number) : null
     };
 
     try {
@@ -265,15 +286,32 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
 
   return (
     <div className="space-y-6 max-h-[85vh] overflow-y-auto pr-2 scrollbar-thin">
+      {selectedImage && (
+        <ImageCropper 
+          image={selectedImage} 
+          onCropComplete={onCropComplete} 
+          onCancel={() => setSelectedImage(null)} 
+        />
+      )}
+
       <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-4 text-white">
         {initialData ? 'Editar Perfil' : 'Novo Jogador'}
       </h3>
+
+      {/* Local Feedback Toast */}
+      {feedback && (
+        <div className={`fixed top-12 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-2 animate-in fade-in zoom-in duration-300 ${
+          feedback.type === 'success' ? 'bg-primary text-bg' : 'bg-danger text-white'
+        }`}>
+          <span className="text-xs font-bold uppercase tracking-widest">{feedback.msg}</span>
+        </div>
+      )}
       
       <div className="flex flex-col items-center space-y-4 mb-4">
         <label className="relative group cursor-pointer">
           <div className="w-20 h-20 rounded-full bg-bg border-2 border-border/50 flex items-center justify-center overflow-hidden transition-all group-hover:border-primary">
             {photoUrl ? (
-              <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
             ) : (
               <div className="text-gray-600 flex flex-col items-center">
                 {uploading ? <Loader2 className="animate-spin" size={20} /> : <Camera size={20} />}
@@ -286,18 +324,79 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             <Upload size={10} />
           </div>
         </label>
-        {uploading && <p className="text-[10px] text-primary animate-pulse font-bold uppercase">Enviando foto...</p>}
+        {uploading && (
+          <div className="w-full flex flex-col items-center space-y-2">
+            <div className="w-full bg-bg border border-border h-2 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-300" 
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-primary animate-pulse font-bold uppercase tracking-widest">
+              Processando (v2.1)... {uploadProgress}%
+            </p>
+          </div>
+        )}
+        {isAdmin && (
+          <div className="pt-2 w-full max-w-[120px] relative">
+             <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa</label>
+             <input 
+              type="number"
+              className={`w-full bg-bg border ${numberIsTaken ? 'border-danger' : 'border-border'} rounded-xl p-2.5 text-center text-primary font-black outline-none focus:border-primary text-sm`}
+              placeholder="00"
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+            />
+            {numberIsTaken && (
+              <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-48 text-center animate-in fade-in slide-in-from-top-1">
+                <span className="text-[8px] font-black text-danger uppercase tracking-tighter bg-danger/10 px-2 py-1 rounded-md border border-danger/20 flex items-center justify-center gap-1">
+                  <AlertCircle size={10} />
+                  Já em uso por: {takenBy?.displayName || takenBy?.name}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4">
         <div className="space-y-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nome</label>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nome Completo</label>
           <input 
             className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 focus:border-primary outline-none text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: João Silva de Souza"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
           />
         </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Nome de Exibição (Partidas)</label>
+            <span className={`text-[10px] font-bold ${displayName.length >= 15 ? 'text-danger' : 'text-gray-600'}`}>
+              {displayName.length}/15
+            </span>
+          </div>
+          <input 
+            className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 focus:border-primary outline-none text-sm"
+            placeholder="Ex: João Silva"
+            value={displayName}
+            maxLength={15}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+        </div>
+
+        {isAdmin && (
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">E-mail (Para login)</label>
+            <input 
+              className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 focus:border-primary outline-none text-sm"
+              placeholder="exemplo@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

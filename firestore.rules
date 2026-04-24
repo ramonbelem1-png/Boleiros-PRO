@@ -24,12 +24,15 @@ service cloud.firestore {
       );
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function isApproved() {
+      return isAdmin() || (
+        exists(/databases/$(database)/documents/user_roles/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.approved == true
+      );
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function incoming() { return request.resource.data; }
@@ -45,33 +48,37 @@ service cloud.firestore {
     // User Roles
     match /user_roles/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isVerified() && userId == request.auth.uid && incoming().role == 'USER';
-      allow create: if isAdmin() && userId == request.auth.uid; // Admin can create themselves
+      allow create: if isSignedIn() && (userId == request.auth.uid || isAdmin());
       allow update: if isAdmin();
     }
 
+    function isValidPlayer(data) {
+      return data.displayName is string && data.displayName.size() <= 15
+          && data.fullName is string && data.fullName.size() <= 100;
+    }
+
     match /players/{playerId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if (request.auth.token.email == 'ramonbelem1@gmail.com') || isAdmin() || (
-        isSignedIn() && (isOwner(playerId) || (existing().email == request.auth.token.email)) && 
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt'])
+      allow read: if isApproved() || isOwner(playerId);
+      allow create: if isApproved() && isValidPlayer(incoming());
+      allow update: if isAdmin() || (
+        isOwner(playerId) && isApproved() && isValidPlayer(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active'])
       );
-      allow delete: if (request.auth.token.email == 'ramonbelem1@gmail.com') || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // Matches
     match /matches/{matchId} {
-      allow read: if isSignedIn();
+      allow read: if isApproved();
       allow create: if isAdmin();
       allow update: if isAdmin() || (
-        isSignedIn() && 
+        isApproved() && 
         incoming().diff(existing()).affectedKeys().hasOnly(['confirmedIds', 'absentIds', 'waitingIds'])
       );
       
       // Games subcollection (Live games)
       match /games/{gameId} {
-        allow read: if isSignedIn();
+        allow read: if isApproved();
         allow write: if isAdmin();
       }
     }
@@ -89,7 +96,7 @@ service cloud.firestore {
 
     // Awards (Destaques)
     match /awards/{awardId} {
-      allow read: if isSignedIn();
+      allow read: if isApproved();
       allow write: if isAdmin();
     }
   }

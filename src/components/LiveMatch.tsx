@@ -21,6 +21,7 @@ export default function LiveMatch() {
     removeGameEvent, 
     finishGame,
     updateMatch,
+    finishMatch,
     confirmPresence,
     deleteGame,
     pauseGame,
@@ -55,6 +56,7 @@ export default function LiveMatch() {
   const [submitting, setSubmitting] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [showConfirmFinish, setShowConfirmFinish] = useState(false);
+  const [showConfirmFinishRound, setShowConfirmFinishRound] = useState(false);
   const [finishStatus, setFinishStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', text: string }>({ type: 'idle', text: '' });
   
   // New state for scheduling and editing
@@ -387,6 +389,37 @@ export default function LiveMatch() {
 
   const teamAPlayers = liveGame ? sortPlayersByPosition(liveGame.teamA_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
   const teamBPlayers = liveGame ? sortPlayersByPosition(liveGame.teamB_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
+
+  const handleFinishRound = async () => {
+    if (!activeMatch) return;
+    setIsFinishing(true);
+    setShowConfirmFinishRound(false);
+    setFinishStatus({ type: 'loading', text: 'Encerrando rodada...' });
+    try {
+      // 1. Finalize current live game if any
+      if (liveGame && liveGame.status === 'RUNNING') {
+        await finishGame(activeMatch.id, liveGame.id, {
+          scoreA: liveGame.scoreA,
+          scoreB: liveGame.scoreB,
+          teamA: liveGame.teamA_ids,
+          teamB: liveGame.teamB_ids
+        });
+      }
+
+      // 2. Finalize the match/round
+      await finishMatch(activeMatch.id);
+      
+      setFinishStatus({ type: 'success', text: 'RODADA FINALIZADA COM SUCESSO!' });
+      setTimeout(() => {
+        setFinishStatus({ type: 'idle', text: '' });
+      }, 3000);
+    } catch (error: any) {
+      console.error("Erro ao finalizar rodada:", error);
+      setFinishStatus({ type: 'error', text: 'Erro ao finalizar rodada: ' + error.message });
+    } finally {
+      setIsFinishing(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -1345,6 +1378,65 @@ export default function LiveMatch() {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+      {/* FINALIZAR RODADA (End of page) */}
+      {isAdmin && activeMatch && (
+        <div className="pt-12 px-2">
+          <div className="bg-danger/5 border border-danger/20 rounded-[2.5rem] p-8 space-y-4 text-center">
+            <div className="w-16 h-16 bg-danger/10 text-danger rounded-full flex items-center justify-center mx-auto mb-2">
+              <Square size={32} fill="currentColor" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-black uppercase italic tracking-tighter text-danger">Finalizar Rodada</h3>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest max-w-[240px] mx-auto leading-relaxed">
+                Encerre todas as atividades de hoje para que os dados sejam compilados no Ranking da Rodada.
+              </p>
+            </div>
+
+            <div className="pt-4 max-w-xs mx-auto">
+              {finishStatus.text && finishStatus.type !== 'idle' && (
+                <div className={`mb-4 p-3 rounded-xl text-center font-bold text-[10px] animate-in slide-in-from-top-2 ${
+                  finishStatus.type === 'error' ? 'bg-danger/20 text-danger border border-danger/30' :
+                  finishStatus.type === 'success' ? 'bg-success/20 text-success border border-success/30' :
+                  'bg-primary/20 text-primary border border-primary/30'
+                }`}>
+                  {finishStatus.text}
+                </div>
+              )}
+
+              {showConfirmFinishRound ? (
+                <div className="flex space-x-2 animate-in zoom-in-95 duration-200">
+                  <button 
+                    onClick={() => setShowConfirmFinishRound(false)}
+                    disabled={isFinishing}
+                    className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase"
+                  >
+                    Voltar
+                  </button>
+                  <button 
+                    onClick={handleFinishRound}
+                    disabled={isFinishing}
+                    className="flex-[2] py-4 bg-danger text-white rounded-2xl text-[10px] font-black uppercase shadow-xl shadow-danger/20 active:scale-95 transition-all"
+                  >
+                    Confirmar Encerramento
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setShowConfirmFinishRound(true)}
+                  disabled={isFinishing}
+                  className="w-full py-5 bg-danger text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] flex items-center justify-center space-x-3 shadow-xl shadow-danger/20 hover:bg-danger/90 active:scale-95 transition-all"
+                >
+                  <Trophy size={18} fill="currentColor" />
+                  <span>Finalizar Rodada de Hoje</span>
+                </button>
+              )}
+            </div>
+            <p className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter italic">
+              * A rodada também será encerrada automaticamente às 23:59 de hoje.
+            </p>
+          </div>
         </div>
       )}
     </div>

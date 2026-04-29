@@ -190,13 +190,11 @@ export function usePelada() {
     matches.forEach(async (match) => {
       if (match.status === 'OPEN') {
         const matchDate = match.date.toDate();
-        // A pelada só deve ser encerrada às 23:59:59 da data da pelada.
-        // Ou seja, ela é encerrada quando o dia atual for maior que o dia da pelada.
-        const dayAfterMatch = new Date(matchDate);
-        dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
-        dayAfterMatch.setHours(0, 0, 0, 0);
+        // Finaliza automaticamente às 23:59 do dia da rodada
+        const autoFinishTime = new Date(matchDate);
+        autoFinishTime.setHours(23, 59, 0, 0);
 
-        if (now >= dayAfterMatch) {
+        if (now >= autoFinishTime) {
           console.log(`[Auto-Finish] Encerrando pelada expirada: ${match.id} (Data: ${matchDate})`);
           await finishMatch(match.id);
         }

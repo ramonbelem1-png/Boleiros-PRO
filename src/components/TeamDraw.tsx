@@ -43,6 +43,15 @@ export default function TeamDraw() {
   const [saving, setSaving] = useState(false);
   const [playersPerTeamSelected, setPlayersPerTeamSelected] = useState(6);
 
+  const shuffle = <T,>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
   const confirmTeams = async () => {
     if (!nextMatch) return;
     setSaving(true);
@@ -84,9 +93,22 @@ export default function TeamDraw() {
     const goalkeepers = confirmedPlayers.filter(p => p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO');
     const fieldPlayers = confirmedPlayers.filter(p => !goalkeepers.find(gk => gk.id === p.id));
 
-    // 3. Sort by level (descending)
-    const sortedGKs = [...goalkeepers].sort((a, b) => getAdjustedLevel(b) - getAdjustedLevel(a));
-    const sortedField = [...fieldPlayers].sort((a, b) => getAdjustedLevel(b) - getAdjustedLevel(a));
+    // 3. Shuffle first, then sort by level (descending)
+    // Shuffling first ensures that players with the SAME adjusted level will have random relative order
+    const shuffledGKs = shuffle<Player>(goalkeepers);
+    const sortedGKs = shuffledGKs.sort((a: Player, b: Player) => getAdjustedLevel(b) - getAdjustedLevel(a));
+    
+    // For field players, we'll use a slightly more "elastic" sort to allow close levels to swap for variety
+    const shuffledField = shuffle<Player>(fieldPlayers);
+    const sortedField = shuffledField.sort((a: Player, b: Player) => {
+      const scoreA = getAdjustedLevel(a);
+      const scoreB = getAdjustedLevel(b);
+      // If levels are very close (within 0.3), introduce 50% chance of swapping
+      if (Math.abs(scoreA - scoreB) < 0.3) {
+        return Math.random() - 0.5;
+      }
+      return scoreB - scoreA;
+    });
 
     // 4. Distribute Goalkeepers (max 1 per team, fill sequentially)
     let currentGKIdx = 0;
@@ -127,17 +149,23 @@ export default function TeamDraw() {
 
       // Among teams with space, we want to balance level, 
       // but prioritize filling the "next" game teams (lower indexes)
-      // We'll pick from the first TWO teams that have space to balance between them,
-      // or just the single available team if only one has space.
       const priorityTeams = teamsWithSpace.slice(0, 2); 
       
-      priorityTeams.forEach(i => {
-        const teamLevel = result[i].reduce((sum, p) => sum + getAdjustedLevel(p), 0);
-        if (teamLevel < minLevel) {
-          minLevel = teamLevel;
-          targetTeamIdx = i;
+      // If we have two options and their levels are identical or very close, pick randomly
+      if (priorityTeams.length === 2) {
+        const level0 = result[priorityTeams[0]].reduce((sum, p: Player) => sum + getAdjustedLevel(p), 0);
+        const level1 = result[priorityTeams[1]].reduce((sum, p: Player) => sum + getAdjustedLevel(p), 0);
+        
+        if (Math.abs(level0 - level1) < 0.1) {
+          targetTeamIdx = priorityTeams[Math.random() > 0.5 ? 0 : 1];
+        } else if (level0 < level1) {
+          targetTeamIdx = priorityTeams[0];
+        } else {
+          targetTeamIdx = priorityTeams[1];
         }
-      });
+      } else if (priorityTeams.length === 1) {
+        targetTeamIdx = priorityTeams[0];
+      }
 
       if (targetTeamIdx !== -1) {
         result[targetTeamIdx].push(player);
@@ -309,10 +337,15 @@ export default function TeamDraw() {
           {isAdmin && (
             <div className="flex gap-4">
               <button 
-                onClick={() => setTeams([])}
-                className="flex-1 py-4 bg-white/5 border border-border text-gray-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl active:scale-95 transition-all"
+                onClick={() => {
+                  setTeams([]);
+                  // Trigger redraw immediately for better UX
+                  setTimeout(() => drawTeams(), 50);
+                }}
+                className="flex-1 py-4 bg-white/5 border border-border text-gray-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl active:scale-95 transition-all flex items-center justify-center space-x-2"
               >
-                Refazer Sorteio
+                <Shuffle size={14} />
+                <span>Refazer Sorteio</span>
               </button>
               <button 
                 onClick={confirmTeams}

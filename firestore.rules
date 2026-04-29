@@ -101,24 +101,5 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Evaluations
-    function isValidEvaluation(data) {
-      return data.matchId is string && data.matchId.size() <= 128
-          && data.evaluatorId is string && data.evaluatorId.size() <= 128
-          && data.targetId is string && data.targetId.size() <= 128
-          && data.technical is number && data.technical >= 1 && data.technical <= 5
-          && data.effort is number && data.effort >= 1 && data.effort <= 5
-          && data.fairplay is number && data.fairplay >= 1 && data.fairplay <= 5;
-    }
-
-    match /evaluations/{evalId} {
-      // Evaluations can be read by approved users (for highlights) or the target player
-      allow read: if isApproved();
-      // Users can only create evaluations for others (cannot evaluate themselves as per UI intended logic)
-      // And we verify the evaluatorId matches the auth UID
-      allow create: if isApproved() && isValidEvaluation(incoming()) && incoming().evaluatorId == request.auth.uid;
-      // Evaluations should generally be immutable or only editable by admins
-      allow update, delete: if isAdmin();
-    }
   }
 }

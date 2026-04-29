@@ -111,22 +111,6 @@
         "perebaId": { "type": "string" },
         "bolaMurchaId": { "type": "string" }
       }
-    },
-    "Evaluation": {
-      "title": "Evaluation",
-      "description": "Avaliações pós-partida entre jogadores",
-      "type": "object",
-      "properties": {
-        "matchId": { "type": "string" },
-        "evaluatorId": { "type": "string", "description": "ID do jogador que está avaliando" },
-        "targetId": { "type": "string", "description": "ID do jogador sendo avaliado" },
-        "technical": { "type": "number", "description": "Nota técnica (1-5)" },
-        "effort": { "type": "number", "description": "Nota de esforço (1-5)" },
-        "fairplay": { "type": "number", "description": "Nota de fair play (1-5)" },
-        "comment": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["matchId", "evaluatorId", "targetId", "technical", "effort", "fairplay"]
     }
   },
   "firestore": {
@@ -135,7 +119,6 @@
     "matches": { "schema": "Match", "description": "Histórico e próximas peladas" },
     "transactions": { "schema": "Transaction", "description": "Financeiro consolidado" },
     "awards": { "schema": "Award", "description": "Histórico de premiações de cada match" },
-    "evaluations": { "schema": "Evaluation", "description": "Avaliações de desempenho entre pares" },
     "user_roles": { "schema": "UserRole", "description": "Gerenciamento de permissões" }
   }
 }

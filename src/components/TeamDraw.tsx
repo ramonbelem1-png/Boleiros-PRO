@@ -5,18 +5,13 @@ import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon, Trending
 import { motion } from 'motion/react';
 
 export default function TeamDraw() {
-  const { players, matches, evaluations, setMatchTeams } = usePelada();
+  const { players, matches, setMatchTeams } = usePelada();
   const { user, role } = useAuth();
   const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
 
-  // Helper to get adjusted level based on peer reviews
+  // Helper to get adjusted level
   const getAdjustedLevel = (player: Player) => {
-    const playerEvals = evaluations.filter(e => e.targetId === player.id);
-    if (playerEvals.length === 0) return player.level;
-    
-    const avgPeerTechnical = playerEvals.reduce((acc, e) => acc + e.technical, 0) / playerEvals.length;
-    // We mix 70% official level and 30% peer evaluation for a balanced adjustment
-    return (player.level * 0.7) + (avgPeerTechnical * 0.3);
+    return player.level;
   };
 
   const now = new Date();
@@ -302,12 +297,6 @@ export default function TeamDraw() {
                             <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
                           ))}
                         </div>
-                        {getAdjustedLevel(player).toFixed(1) !== player.level.toFixed(1) && (
-                          <span className="text-[7px] font-black uppercase text-primary mt-1 flex items-center gap-0.5">
-                            <TrendingUp size={6} />
-                            Ajustado: {getAdjustedLevel(player).toFixed(1)}
-                          </span>
-                        )}
                       </div>
                       {isAdmin && (
                         <select 

@@ -90,18 +90,6 @@ export interface Transaction {
   referenceMonth?: string;
 }
 
-export interface Evaluation {
-  id: string;
-  matchId: string;
-  evaluatorId: string;
-  targetId: string;
-  technical: number;
-  effort: number;
-  fairplay: number;
-  comment?: string;
-  createdAt: any;
-}
-
 export interface GroupSettings {
   monthlyFee: number;
   monthlyFeeDueDay: number;
@@ -118,7 +106,6 @@ export function usePelada() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [liveGame, setLiveGame] = useState<Game | null>(null);
   const [activeGames, setActiveGames] = useState<Game[]>([]);
   const [settings, setSettings] = useState<GroupSettings>({
@@ -157,12 +144,6 @@ export function usePelada() {
       });
     }
 
-    const unsubEvals = onSnapshot(query(collection(db, 'evaluations'), orderBy('createdAt', 'desc'), limit(100)), (snap) => {
-      setEvaluations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Evaluation)));
-    }, (error) => {
-      handleFirestoreError(error, 'get', 'evaluations');
-    });
-
     const unsubSettings = onSnapshot(doc(db, 'groups', 'main'), (snap) => {
       if (snap.exists()) {
         setSettings(prev => ({ ...prev, ...snap.data() }));
@@ -177,7 +158,6 @@ export function usePelada() {
       unsubPlayers();
       unsubMatches();
       unsubTransactions();
-      unsubEvals();
       unsubSettings();
     };
   }, [user, isAdmin]);
@@ -312,17 +292,6 @@ export function usePelada() {
       isPaused: false,
       lastStartedAt: serverTimestamp()
     });
-  };
-
-  const submitEvaluation = async (evalData: Omit<Evaluation, 'id' | 'createdAt'>) => {
-    try {
-      await addDoc(collection(db, 'evaluations'), {
-        ...evalData,
-        createdAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, 'create', 'evaluations');
-    }
   };
 
   const updateSettings = async (newSettings: GroupSettings) => {
@@ -986,9 +955,6 @@ export function usePelada() {
       const gamesRef = collection(db, 'matches', matchId, 'games');
       const gamesSnap = await getDocs(gamesRef);
       
-      const evalsQuery = query(collection(db, 'evaluations'), where('matchId', '==', matchId));
-      const evalsSnap = await getDocs(evalsQuery);
-
       let currentBatch = writeBatch(db);
       let opCount = 0;
       const MAX_OPS = 450; // Guard channel for batch limit
@@ -1055,13 +1021,6 @@ export function usePelada() {
         await commitIfFull();
       }
 
-      console.log(`[usePelada] Removendo ${evalsSnap.docs.length} avaliações...`);
-      for (const evDoc of evalsSnap.docs) {
-        currentBatch.delete(evDoc.ref);
-        opCount++;
-        await commitIfFull();
-      }
-
       currentBatch.delete(doc(db, 'matches', matchId));
       opCount++;
       
@@ -1090,7 +1049,6 @@ export function usePelada() {
     players,
     matches,
     transactions,
-    evaluations,
     settings,
     loading,
     liveGame,
@@ -1101,7 +1059,6 @@ export function usePelada() {
     createTransaction,
     updateTransaction,
     deleteTransaction,
-    submitEvaluation,
     addPlayer,
     updatePlayer,
     deletePlayer,

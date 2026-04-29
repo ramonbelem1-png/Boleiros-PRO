@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { usePelada, Player, Game } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2, Star, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import EvaluationDialog from './EvaluationDialog';
 
 export default function LiveMatch() {
   const { 
@@ -69,7 +68,6 @@ export default function LiveMatch() {
   const [isEditingRules, setIsEditingRules] = useState(false);
   const [editPlayersPerTeam, setEditPlayersPerTeam] = useState(6);
   const [savingRules, setSavingRules] = useState(false);
-  const [showEvaluation, setShowEvaluation] = useState(false);
 
   const handleSaveRules = async () => {
     if (!activeMatch) return;
@@ -208,10 +206,9 @@ export default function LiveMatch() {
       setFinishStatus({ type: 'success', text: 'PARTIDA FINALIZADA!\nEstatísticas atualizadas com sucesso.' });
       setShowConfirmFinish(false);
       
-      // Auto show evaluation for admin too after finishing
+      // Auto show finish status logic
       setTimeout(() => {
         setFinishStatus({ type: 'idle', text: '' });
-        setShowEvaluation(true);
       }, 2000);
     } catch (error: any) {
       console.error("[LiveMatch] Erro capturado no handleFinish:", error);
@@ -762,13 +759,9 @@ export default function LiveMatch() {
 
             {!isAdmin && (
                <div className="pt-4 border-t border-border/50">
-                <button 
-                  onClick={() => setShowEvaluation(true)}
-                  className="w-full py-4 bg-primary/10 border border-primary/20 text-primary rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center space-x-2 hover:bg-primary hover:text-bg transition-all"
-                >
-                  <Star size={14} fill="currentColor" />
-                  <span>Avaliar Jogadores</span>
-                </button>
+                <div className="w-full py-4 bg-primary/5 border border-primary/10 text-gray-500 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center space-x-2">
+                  <span>Acompanhando Partida</span>
+                </div>
               </div>
             )}
           </div>
@@ -1238,15 +1231,6 @@ export default function LiveMatch() {
       )}
       {/* MODALS */}
       <AnimatePresence>
-        {showEvaluation && activeMatch && (
-          <EvaluationDialog 
-            matchId={activeMatch.id}
-            playersToEvaluate={players.filter(p => 
-              (liveGame?.teamA_ids.includes(p.id) || liveGame?.teamB_ids.includes(p.id)) && p.active
-            )}
-            onClose={() => setShowEvaluation(false)}
-          />
-        )}
       </AnimatePresence>
 
       {showEventModal && (

@@ -3,51 +3,32 @@ import { usePelada } from '../hooks/usePelada';
 import { Trophy, Star, Medal, Share2, Frown, ShieldAlert, TrendingUp } from 'lucide-react';
 
 export default function SocialStats() {
-  const { players, matches, evaluations, loading, getMatchGames } = usePelada();
+  const { players, matches, loading, getMatchGames } = usePelada();
   const [rankingTab, setRankingTab] = React.useState<'total' | 'gols' | 'assists' | 'wins'>('total');
   const [period, setPeriod] = React.useState<'geral' | 'temporada' | 'mes' | 'rodada'>('geral');
   const [periodStats, setPeriodStats] = React.useState<Record<string, any>>({});
   const [calculating, setCalculating] = React.useState(false);
 
-  // Calculate most effort and fair play from evaluations
-  const highlightsByEval = React.useMemo(() => {
-    if (!evaluations.length) return { effort: null, fairplay: null };
-
-    const stats: Record<string, { effortTotal: number, fairplayTotal: number, technicalTotal: number, count: number }> = {};
-
-    evaluations.forEach(ev => {
-      if (!stats[ev.targetId]) stats[ev.targetId] = { effortTotal: 0, fairplayTotal: 0, technicalTotal: 0, count: 0 };
-      stats[ev.targetId].effortTotal += ev.effort;
-      stats[ev.targetId].fairplayTotal += ev.fairplay;
-      stats[ev.targetId].technicalTotal += ev.technical;
-      stats[ev.targetId].count++;
-    });
-
-    const averages = Object.entries(stats).map(([id, s]) => ({
-      id,
-      effortAvg: s.effortTotal / s.count,
-      fairplayAvg: s.fairplayTotal / s.count,
-      technicalAvg: s.technicalTotal / s.count,
-      count: s.count
-    })).filter(h => h.count > 0);
-
-    const mostEffort = [...averages].sort((a, b) => b.effortAvg - a.effortAvg)[0];
-    const bestFairplay = [...averages].sort((a, b) => b.fairplayAvg - a.fairplayAvg)[0];
-
-    const effortPlayer = mostEffort ? players.find(p => p.id === mostEffort.id) : null;
-    const fairplayPlayer = bestFairplay ? players.find(p => p.id === bestFairplay.id) : null;
-
-    return { effort: effortPlayer, fairplay: fairplayPlayer };
-  }, [evaluations, players]);
-  
   const handleShare = async () => {
     const list = getSortedRanking();
-    const topScorer = list.sort((a, b) => (b.gols || 0) - (a.gols || 0))[0];
-    const topAssister = list.sort((a, b) => (b.assistencias || 0) - (a.assistencias || 0))[0];
-    const topWinner = list.sort((a, b) => (b.vitorias || 0) - (a.vitorias || 0))[0];
+    
+    const topScorerShare = [...list].sort((a, b) => {
+      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+      return b.totalPts - a.totalPts;
+    })[0];
+    
+    const topAssisterShare = [...list].sort((a, b) => {
+      if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
+      return b.totalPts - a.totalPts;
+    })[0];
+    
+    const topWinnerShare = [...list].sort((a, b) => {
+      if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
+      return b.totalPts - a.totalPts;
+    })[0];
     
     const periodLabel = period === 'geral' ? 'Geral' : period === 'temporada' ? 'Temporada' : period === 'mes' ? 'Mês' : 'Rodada';
-    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${topScorer?.displayName || topScorer?.name || '-'}\n🎯 Garçom: ${topAssister?.displayName || topAssister?.name || '-'}\n🔥 Vencedor: ${topWinner?.displayName || topWinner?.name || '-'}\n\n#Futebol #Pelada #BoleirosPRO`;
+    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${topScorerShare?.displayName || topScorerShare?.name || '-'}\n🎯 Garçom: ${topAssisterShare?.displayName || topAssisterShare?.name || '-'}\n🔥 Vencedor: ${topWinnerShare?.displayName || topWinnerShare?.name || '-'}\n\n#Futebol #Pelada #BoleirosPRO`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -155,16 +136,50 @@ export default function SocialStats() {
       list = list.filter(p => p.totalPts > 0 || (p.vitorias || 0) > 0 || (p.derrotas || 0) > 0 || (p.empates || 0) > 0);
     }
 
-    if (rankingTab === 'total') return list.sort((a, b) => b.totalPts - a.totalPts || (b.vitorias || 0) - (a.vitorias || 0));
-    if (rankingTab === 'gols') return list.sort((a, b) => (b.gols || 0) - (a.gols || 0));
-    if (rankingTab === 'assists') return list.sort((a, b) => (b.assistencias || 0) - (a.assistencias || 0));
-    return list.sort((a, b) => (b.vitorias || 0) - (a.vitorias || 0));
+    if (rankingTab === 'total') {
+      return list.sort((a, b) => {
+        if (b.totalPts !== a.totalPts) return b.totalPts - a.totalPts;
+        if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+        if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
+        return (b.assistencias || 0) - (a.assistencias || 0);
+      });
+    }
+    if (rankingTab === 'gols') {
+      return list.sort((a, b) => {
+        if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+        return b.totalPts - a.totalPts;
+      });
+    }
+    if (rankingTab === 'assists') {
+      return list.sort((a, b) => {
+        if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
+        return b.totalPts - a.totalPts;
+      });
+    }
+    return list.sort((a, b) => {
+      if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
+      return b.totalPts - a.totalPts;
+    });
   };
 
   const currentRanking = getSortedRanking();
   const topOverall = currentRanking[0];
-  const topScorer = [...currentRanking].sort((a, b) => (b.gols || 0) - (a.gols || 0))[0];
-  const topAssister = [...currentRanking].sort((a, b) => (b.assistencias || 0) - (a.assistencias || 0))[0];
+  
+  // Scorer, Assister and Winner derived from full list with robust sorting
+  const topScorer = [...currentRanking].sort((a, b) => {
+    if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+    return b.totalPts - a.totalPts;
+  })[0];
+  
+  const topAssister = [...currentRanking].sort((a, b) => {
+    if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
+    return b.totalPts - a.totalPts;
+  })[0];
+
+  const topWinner = [...currentRanking].sort((a, b) => {
+    if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
+    return b.totalPts - a.totalPts;
+  })[0];
 
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Rankings...</div>;
 
@@ -204,7 +219,7 @@ export default function SocialStats() {
           </div>
           
           <div className="flex bg-card p-1 rounded-xl border border-border/50 self-start sm:self-center">
-            {([['total', 'G+A'], ['gols', 'Gols'], ['assists', 'Assists'], ['wins', 'Vits']] as const).map(([tab, label]) => (
+            {([['total', 'Pontos'], ['gols', 'Gols'], ['assists', 'Assists'], ['wins', 'Vits']] as const).map(([tab, label]) => (
               <button 
                 key={tab}
                 onClick={() => setRankingTab(tab)}
@@ -327,8 +342,6 @@ export default function SocialStats() {
             <div className="grid grid-cols-2 gap-y-8 gap-x-6">
               <AwardItem label="CRAQUE" name={topOverall ? (topOverall.displayName || topOverall.name) : "-"} icon={<Trophy size={14} />} />
               <AwardItem label="GOLEADOR" name={topScorer ? (topScorer.displayName || topScorer.name) : "-"} icon={<Star size={14} />} />
-              <AwardItem label="MAIS ESFORÇADO" name={highlightsByEval.effort ? (highlightsByEval.effort.displayName || highlightsByEval.effort.name) : "-"} icon={<Star size={14} className="text-danger" />} />
-              <AwardItem label="FAIR PLAY" name={highlightsByEval.fairplay ? (highlightsByEval.fairplay.displayName || highlightsByEval.fairplay.name) : "-"} icon={<Star size={14} className="text-blue-400" />} />
               <AwardItem label="GARÇOM" name={topAssister ? (topAssister.displayName || topAssister.name) : "-"} icon={<Star size={14} />} />
               <AwardItem label="PONTUAÇÃO" name={`${(topOverall?.totalPts || 0)} PTS`} icon={<TrendingUp size={14} />} />
             </div>

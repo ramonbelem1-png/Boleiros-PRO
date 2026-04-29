@@ -3,11 +3,42 @@ import { usePelada } from '../hooks/usePelada';
 import { Trophy, Star, Medal, Share2, Frown, ShieldAlert, TrendingUp } from 'lucide-react';
 
 export default function SocialStats() {
-  const { players, matches, loading, getMatchGames } = usePelada();
+  const { players, matches, evaluations, loading, getMatchGames } = usePelada();
   const [rankingTab, setRankingTab] = React.useState<'total' | 'gols' | 'assists' | 'wins'>('total');
   const [period, setPeriod] = React.useState<'geral' | 'temporada' | 'mes' | 'rodada'>('geral');
   const [periodStats, setPeriodStats] = React.useState<Record<string, any>>({});
   const [calculating, setCalculating] = React.useState(false);
+
+  // Calculate most effort and fair play from evaluations
+  const highlightsByEval = React.useMemo(() => {
+    if (!evaluations.length) return { effort: null, fairplay: null };
+
+    const stats: Record<string, { effortTotal: number, fairplayTotal: number, technicalTotal: number, count: number }> = {};
+
+    evaluations.forEach(ev => {
+      if (!stats[ev.targetId]) stats[ev.targetId] = { effortTotal: 0, fairplayTotal: 0, technicalTotal: 0, count: 0 };
+      stats[ev.targetId].effortTotal += ev.effort;
+      stats[ev.targetId].fairplayTotal += ev.fairplay;
+      stats[ev.targetId].technicalTotal += ev.technical;
+      stats[ev.targetId].count++;
+    });
+
+    const averages = Object.entries(stats).map(([id, s]) => ({
+      id,
+      effortAvg: s.effortTotal / s.count,
+      fairplayAvg: s.fairplayTotal / s.count,
+      technicalAvg: s.technicalTotal / s.count,
+      count: s.count
+    })).filter(h => h.count > 0);
+
+    const mostEffort = [...averages].sort((a, b) => b.effortAvg - a.effortAvg)[0];
+    const bestFairplay = [...averages].sort((a, b) => b.fairplayAvg - a.fairplayAvg)[0];
+
+    const effortPlayer = mostEffort ? players.find(p => p.id === mostEffort.id) : null;
+    const fairplayPlayer = bestFairplay ? players.find(p => p.id === bestFairplay.id) : null;
+
+    return { effort: effortPlayer, fairplay: fairplayPlayer };
+  }, [evaluations, players]);
   
   const handleShare = async () => {
     const list = getSortedRanking();
@@ -296,6 +327,8 @@ export default function SocialStats() {
             <div className="grid grid-cols-2 gap-y-8 gap-x-6">
               <AwardItem label="CRAQUE" name={topOverall ? (topOverall.displayName || topOverall.name) : "-"} icon={<Trophy size={14} />} />
               <AwardItem label="GOLEADOR" name={topScorer ? (topScorer.displayName || topScorer.name) : "-"} icon={<Star size={14} />} />
+              <AwardItem label="MAIS ESFORÇADO" name={highlightsByEval.effort ? (highlightsByEval.effort.displayName || highlightsByEval.effort.name) : "-"} icon={<Star size={14} className="text-danger" />} />
+              <AwardItem label="FAIR PLAY" name={highlightsByEval.fairplay ? (highlightsByEval.fairplay.displayName || highlightsByEval.fairplay.name) : "-"} icon={<Star size={14} className="text-blue-400" />} />
               <AwardItem label="GARÇOM" name={topAssister ? (topAssister.displayName || topAssister.name) : "-"} icon={<Star size={14} />} />
               <AwardItem label="PONTUAÇÃO" name={`${(topOverall?.totalPts || 0)} PTS`} icon={<TrendingUp size={14} />} />
             </div>

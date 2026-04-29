@@ -7,7 +7,7 @@ import CalendarView from './CalendarView';
 
 export default function MatchList() {
   const { user, role } = useAuth();
-  const { players, matches, confirmPresence, markAbsent, loading } = usePelada();
+  const { players, matches, settings, confirmPresence, markAbsent, loading } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   
   const now = new Date();
@@ -20,7 +20,7 @@ export default function MatchList() {
     return now < dayAfterMatch;
   });
 
-  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
   
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -162,7 +162,7 @@ export default function MatchList() {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Confirmados</span>
-                    <div className="text-2xl font-bold text-primary">{players.filter(p => nextMatch.confirmedIds.includes(p.id)).length} / 20</div>
+                    <div className="text-2xl font-bold text-primary">{players.filter(p => nextMatch.confirmedIds.includes(p.id)).length} / {settings.maxPlayers}</div>
                   </div>
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Ausentes</span>

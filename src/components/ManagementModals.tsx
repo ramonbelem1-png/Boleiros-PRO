@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Player, usePelada } from '../hooks/usePelada';
-import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Player, Transaction, usePelada } from '../hooks/usePelada';
+import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthProvider';
@@ -10,24 +10,38 @@ import ImageCropper from './ImageCropper';
 interface ModalProps {
   type: 'match' | 'finance' | 'player' | null;
   editingPlayer?: Player | null;
+  editingTransaction?: Transaction | null;
   onClose: () => void;
 }
 
-export default function ManagementModals({ type, editingPlayer, onClose }: ModalProps) {
-  const { createMatch, createTransaction, addPlayer, updatePlayer } = usePelada();
+export default function ManagementModals({ type, editingPlayer, editingTransaction, onClose }: ModalProps) {
+  const { createMatch, createTransaction, updateTransaction, addPlayer, updatePlayer } = usePelada();
 
   if (!type) return null;
 
   return (
     <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-      <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl relative">
-        <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors"><X size={24}/></button>
+      <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl relative max-h-[90vh] overflow-hidden flex flex-col">
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors z-10"><X size={24}/></button>
 
-        {type === 'match' && <CreateMatchModal onSave={createMatch} onClose={onClose} />}
-        {type === 'finance' && <CreateTransactionModal onSave={createTransaction} onClose={onClose} />}
-        {type === 'player' && (
-          <PlayerModal 
-            onSave={async (data: any) => {
+        <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin">
+          {type === 'match' && <CreateMatchModal onSave={createMatch} onClose={onClose} />}
+          {type === 'finance' && (
+            <TransactionModal 
+              onSave={async (data: any) => {
+                if (editingTransaction) {
+                  await updateTransaction(editingTransaction.id, data);
+                } else {
+                  await createTransaction(data);
+                }
+              }} 
+              onClose={onClose} 
+              initialData={editingTransaction}
+            />
+          )}
+          {type === 'player' && (
+            <PlayerModal 
+              onSave={async (data: any) => {
               try {
                 if (editingPlayer) {
                   await updatePlayer(editingPlayer.id, data);
@@ -44,6 +58,7 @@ export default function ManagementModals({ type, editingPlayer, onClose }: Modal
             initialData={editingPlayer}
           />
         )}
+        </div>
       </div>
     </div>
   );
@@ -117,20 +132,75 @@ function CreateMatchModal({ onSave, onClose }: any) {
   );
 }
 
-function CreateTransactionModal({ onSave, onClose }: any) {
-  const [amount, setAmount] = useState('');
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
-  const [desc, setDesc] = useState('');
+function TransactionModal({ onSave, onClose, initialData }: any) {
+  const { players } = usePelada();
+  
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(val);
+  };
+
+  const [amount, setAmount] = useState(initialData?.amount || 0);
+  const [displayAmount, setDisplayAmount] = useState(formatCurrency(initialData?.amount || 0));
+  const [type, setType] = useState<'INCOME' | 'EXPENSE'>(initialData?.type || 'INCOME');
+  const [desc, setDesc] = useState(initialData?.description || '');
+  const [category, setCategory] = useState(initialData?.category || 'OTHER');
+  const [playerId, setPlayerId] = useState(initialData?.playerId || '');
+  
+  // Ref mensalidade
+  const now = new Date();
+  const [refMonth, setRefMonth] = useState(initialData?.referenceMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (category === 'MONTHLY') {
+      const [year, month] = refMonth.split('-');
+      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      setDesc(`Mensalidade - ${monthNames[parseInt(month) - 1]}/${year.substring(2)}`);
+    } else if (category === 'DAILY') {
+      setDesc('Diarista');
+    }
+  }, [category, refMonth]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    const digits = v.replace(/\D/g, "");
+    const numericValue = digits ? parseInt(digits, 10) / 100 : 0;
+    setAmount(numericValue);
+    setDisplayAmount(formatCurrency(numericValue));
+  };
+
+  const categories = [
+    { id: 'MONTHLY', label: 'Mensalidade' },
+    { id: 'DAILY', label: 'Diarista' },
+    { id: 'FIELD_RENT', label: 'Aluguel' },
+    { id: 'BALL', label: 'Bola' },
+    { id: 'OTHER', label: 'Outros' }
+  ];
+
+  const months = [
+    { id: '01', name: 'Jan' }, { id: '02', name: 'Fev' }, { id: '03', name: 'Mar' }, { id: '04', name: 'Abr' },
+    { id: '05', name: 'Mai' }, { id: '06', name: 'Jun' }, { id: '07', name: 'Jul' }, { id: '08', name: 'Ago' },
+    { id: '09', name: 'Set' }, { id: '10', name: 'Out' }, { id: '11', name: 'Nov' }, { id: '12', name: 'Dez' }
+  ];
+
+  const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-8">Novo Lançamento</h3>
+    <div className="space-y-6 pb-4">
+      <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-8">
+        {initialData ? 'Editar Lançamento' : 'Novo Lançamento'}
+      </h3>
+      
       <div className="flex gap-2">
         {['INCOME', 'EXPENSE'].map(t => (
           <button 
             key={t}
             onClick={() => setType(t as any)}
-            className={`flex-1 py-3 rounded-xl border text-[10px] font-black tracking-widest ${
+            className={`flex-1 py-3 rounded-xl border text-[10px] font-black tracking-widest transition-all ${
               type === t ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
             }`}
           >
@@ -138,43 +208,147 @@ function CreateTransactionModal({ onSave, onClose }: any) {
           </button>
         ))}
       </div>
+
       <div className="space-y-2">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Valor (R$)</label>
-        <input 
-          type="number"
-          className="w-full bg-bg border border-border rounded-2xl p-4 text-gray-100 focus:border-primary outline-none"
-          placeholder="0,00"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Categoria</label>
+        <div className="grid grid-cols-2 gap-2">
+          {categories.map(cat => (
+            <button 
+              key={cat.id}
+              onClick={() => setCategory(cat.id as any)}
+              className={`py-2 px-3 rounded-lg border text-[8px] font-black tracking-widest text-left flex items-center justify-between transition-all ${
+                category === cat.id ? 'bg-primary/20 border-primary text-primary' : 'border-border text-gray-500'
+              }`}
+            >
+              {cat.label.toUpperCase()}
+              {category === cat.id && <Check size={10} />}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {category === 'MONTHLY' && (
+        <div className="space-y-2 p-3 bg-bg/50 rounded-2xl border border-border/50">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-primary px-1">Referência do Mês</label>
+          <div className="grid grid-cols-4 gap-1">
+            {months.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setRefMonth(`${refMonth.split('-')[0]}-${m.id}`)}
+                className={`py-1.5 rounded-lg text-[9px] font-bold border ${
+                  refMonth.split('-')[1] === m.id ? 'bg-primary text-bg border-primary' : 'border-border/30 text-gray-500'
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1 mt-2">
+            {years.map(y => (
+              <button
+                key={y}
+                onClick={() => setRefMonth(`${y}-${refMonth.split('-')[1]}`)}
+                className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border ${
+                  Number(refMonth.split('-')[0]) === y ? 'bg-white/10 text-white border-white/20' : 'border-border/30 text-gray-500'
+                }`}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(category === 'MONTHLY' || category === 'DAILY') && (
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Jogador Responsável</label>
+            {playerId && (
+              <button onClick={() => setPlayerId('')} className="text-[10px] text-primary font-bold">Limpar</button>
+            )}
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-1 p-2 bg-bg/50 rounded-xl border border-border/50 scrollbar-thin">
+            {players.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPlayerId(p.id)}
+                className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-all ${
+                  playerId === p.id ? 'bg-primary text-bg' : 'hover:bg-white/5 text-gray-400'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    playerId === p.id ? 'bg-bg/20' : 'bg-gray-800'
+                  }`}>
+                    {(p.displayName || p.name).charAt(0)}
+                  </div>
+                  <span className="text-xs font-semibold truncate">{p.displayName || p.name}</span>
+                </div>
+                {playerId === p.id && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Valor</label>
+        <div className="relative">
+          <input 
+            type="text"
+            inputMode="numeric"
+            className="w-full bg-bg border border-border rounded-2xl p-4 text-gray-100 focus:border-primary outline-none text-xl font-black"
+            placeholder="R$ 0,00"
+            value={displayAmount}
+            onChange={handleAmountChange}
+          />
+        </div>
+      </div>
+
       <div className="space-y-2">
         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Descrição</label>
         <input 
           className="w-full bg-bg border border-border rounded-2xl p-4 text-gray-100 focus:border-primary outline-none"
-          placeholder="Ex: Mensalidade, Aluguel..."
+          placeholder="Ex: Mensalidade João, Aluguel Quadra..."
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
         />
       </div>
+
       <button 
+        disabled={saving}
         onClick={async () => {
           if(!amount || !desc) return;
-          await onSave({ amount: Number(amount), type, description: desc, category: 'OTHER' });
-          onClose();
+          setSaving(true);
+          try {
+            await onSave({ 
+              amount, 
+              type, 
+              description: desc, 
+              category,
+              referenceMonth: category === 'MONTHLY' ? refMonth : null,
+              playerId: playerId || null 
+            });
+            onClose();
+          } catch (e) {
+            alert("Erro ao salvar lançamento");
+          } finally {
+            setSaving(false);
+          }
         }}
-        className="w-full py-5 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 transition-all active:scale-95"
+        className="w-full py-5 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
       >
-        Lançar no Caixa
+        {saving && <Loader2 className="animate-spin" size={18} />}
+        {initialData ? 'Salvar Alterações' : 'Lançar no Caixa'}
       </button>
     </div>
   );
 }
 
 function PlayerModal({ onSave, onClose, initialData }: any) {
-  const { players } = usePelada();
+  const { players, settings } = usePelada();
   const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
   const [fullName, setFullName] = useState(initialData?.fullName || '');
   const [displayName, setDisplayName] = useState(initialData?.displayName || initialData?.name || '');
   const [email, setEmail] = useState(initialData?.email || '');
@@ -193,6 +367,8 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const squadFull = !initialData && players.length >= settings.maxSquadSize;
 
   // Unicidade do número em tempo real
   const takenBy = number !== '' ? players.find(p => p.number === Number(number) && p.id !== initialData?.id) : null;
@@ -229,6 +405,11 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   const handleSave = async () => {
     if(!fullName || !displayName) {
       alert("Por favor, preencha os campos de nome.");
+      return;
+    }
+
+    if (squadFull) {
+      alert("Limite de elenco atingido! Aumente o limite nas configurações.");
       return;
     }
 
@@ -294,9 +475,26 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         />
       )}
 
-      <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-4 text-white">
-        {initialData ? 'Editar Perfil' : 'Novo Jogador'}
-      </h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 text-white">
+          {initialData ? 'Editar Perfil' : 'Novo Jogador'}
+        </h3>
+        {!initialData && (
+          <span className={`text-[10px] font-black px-2 py-1 rounded-full ${squadFull ? 'bg-danger/20 text-danger' : 'bg-primary/20 text-primary'}`}>
+            ELENCO: {players.length}/{settings.maxSquadSize}
+          </span>
+        )}
+      </div>
+
+      {squadFull && (
+        <div className="bg-danger/10 border border-danger/20 p-4 rounded-2xl flex items-start space-x-3 mb-4">
+          <AlertCircle className="text-danger shrink-0" size={18} />
+          <p className="text-[10px] text-danger font-bold uppercase leading-relaxed">
+            Limite do elenco atingido ({settings.maxSquadSize}). 
+            Aumente o limite nas configurações para adicionar novos jogadores.
+          </p>
+        </div>
+      )}
 
       {/* Local Feedback Toast */}
       {feedback && (

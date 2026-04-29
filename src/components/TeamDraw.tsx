@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
 import { usePelada, Player } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon } from 'lucide-react';
+import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function TeamDraw() {
-  const { players, matches, setMatchTeams } = usePelada();
+  const { players, matches, evaluations, setMatchTeams } = usePelada();
   const { user, role } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+
+  // Helper to get adjusted level based on peer reviews
+  const getAdjustedLevel = (player: Player) => {
+    const playerEvals = evaluations.filter(e => e.targetId === player.id);
+    if (playerEvals.length === 0) return player.level;
+    
+    const avgPeerTechnical = playerEvals.reduce((acc, e) => acc + e.technical, 0) / playerEvals.length;
+    // We mix 70% official level and 30% peer evaluation for a balanced adjustment
+    return (player.level * 0.7) + (avgPeerTechnical * 0.3);
+  };
+
   const now = new Date();
   const nextMatch = matches.find(m => {
     if (m.status !== 'OPEN') return false;
@@ -74,8 +85,8 @@ export default function TeamDraw() {
     const fieldPlayers = confirmedPlayers.filter(p => !goalkeepers.find(gk => gk.id === p.id));
 
     // 3. Sort by level (descending)
-    const sortedGKs = [...goalkeepers].sort((a, b) => b.level - a.level);
-    const sortedField = [...fieldPlayers].sort((a, b) => b.level - a.level);
+    const sortedGKs = [...goalkeepers].sort((a, b) => getAdjustedLevel(b) - getAdjustedLevel(a));
+    const sortedField = [...fieldPlayers].sort((a, b) => getAdjustedLevel(b) - getAdjustedLevel(a));
 
     // 4. Distribute Goalkeepers (max 1 per team, fill sequentially)
     let currentGKIdx = 0;
@@ -121,7 +132,7 @@ export default function TeamDraw() {
       const priorityTeams = teamsWithSpace.slice(0, 2); 
       
       priorityTeams.forEach(i => {
-        const teamLevel = result[i].reduce((sum, p) => sum + p.level, 0);
+        const teamLevel = result[i].reduce((sum, p) => sum + getAdjustedLevel(p), 0);
         if (teamLevel < minLevel) {
           minLevel = teamLevel;
           targetTeamIdx = i;
@@ -256,8 +267,21 @@ export default function TeamDraw() {
                         <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">{player.position}</span>
                       </div>
                     </div>
-                    {isAdmin && (
-                      <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex flex-col items-end">
+                        <div className="flex space-x-1">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
+                          ))}
+                        </div>
+                        {getAdjustedLevel(player).toFixed(1) !== player.level.toFixed(1) && (
+                          <span className="text-[7px] font-black uppercase text-primary mt-1 flex items-center gap-0.5">
+                            <TrendingUp size={6} />
+                            Ajustado: {getAdjustedLevel(player).toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      {isAdmin && (
                         <select 
                           className="bg-bg border border-border rounded-lg text-[9px] font-bold uppercase p-1 text-gray-400 outline-none"
                           value={idx}
@@ -274,13 +298,8 @@ export default function TeamDraw() {
                             <option key={tIdx} value={tIdx}>Para Time {tIdx + 1}</option>
                           ))}
                         </select>
-                        <div className="flex space-x-1">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <div key={i} className={`w-1 h-1 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-800'}`} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

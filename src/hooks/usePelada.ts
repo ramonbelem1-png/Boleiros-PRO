@@ -13,6 +13,7 @@ import {
   Timestamp,
   where,
   getDoc,
+  getDocs,
   getDocFromServer,
   serverTimestamp,
   writeBatch,
@@ -86,12 +87,27 @@ export interface Transaction {
   category: 'MONTHLY' | 'DAILY' | 'FIELD_RENT' | 'BALL' | 'OTHER';
   description: string;
   playerId?: string;
+  referenceMonth?: string;
+}
+
+export interface Evaluation {
+  id: string;
+  matchId: string;
+  evaluatorId: string;
+  targetId: string;
+  technical: number;
+  effort: number;
+  fairplay: number;
+  comment?: string;
+  createdAt: any;
 }
 
 export interface GroupSettings {
   monthlyFee: number;
+  monthlyFeeDueDay: number;
   dailyFee: number;
   maxPlayers: number;
+  maxSquadSize: number;
 }
 
 import { useAuth } from '../components/AuthProvider';
@@ -102,12 +118,15 @@ export function usePelada() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [liveGame, setLiveGame] = useState<Game | null>(null);
   const [activeGames, setActiveGames] = useState<Game[]>([]);
   const [settings, setSettings] = useState<GroupSettings>({
     monthlyFee: 50,
+    monthlyFeeDueDay: 10,
     dailyFee: 15,
-    maxPlayers: 20
+    maxPlayers: 20,
+    maxSquadSize: 30
   });
   const [loading, setLoading] = useState(true);
 
@@ -119,23 +138,38 @@ export function usePelada() {
 
     const unsubPlayers = onSnapshot(query(collection(db, 'players'), orderBy('name')), (snap) => {
       setPlayers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
+    }, (error) => {
+      handleFirestoreError(error, 'get', 'players');
     });
 
     const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('date', 'desc'), limit(50)), (snap) => {
       setMatches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match)));
+    }, (error) => {
+      handleFirestoreError(error, 'get', 'matches');
     });
 
     let unsubTransactions: () => void = () => {};
     if (isAdmin) {
       unsubTransactions = onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(50)), (snap) => {
         setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+      }, (error) => {
+        handleFirestoreError(error, 'get', 'transactions');
       });
     }
 
+    const unsubEvals = onSnapshot(query(collection(db, 'evaluations'), orderBy('createdAt', 'desc'), limit(100)), (snap) => {
+      setEvaluations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Evaluation)));
+    }, (error) => {
+      handleFirestoreError(error, 'get', 'evaluations');
+    });
+
     const unsubSettings = onSnapshot(doc(db, 'groups', 'main'), (snap) => {
       if (snap.exists()) {
-        setSettings(snap.data() as GroupSettings);
+        setSettings(prev => ({ ...prev, ...snap.data() }));
       }
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, 'get', 'groups/main');
       setLoading(false);
     });
 
@@ -143,6 +177,7 @@ export function usePelada() {
       unsubPlayers();
       unsubMatches();
       unsubTransactions();
+      unsubEvals();
       unsubSettings();
     };
   }, [user, isAdmin]);
@@ -202,7 +237,7 @@ export function usePelada() {
         setLiveGame(null);
       }
     }, (error) => {
-      console.error("[usePelada] Erro no snapshot de liveGame:", error);
+      handleFirestoreError(error, 'get', `matches/${openMatchId}/games (sub: RUNNING)`);
     });
 
     // 2. Snapshot para TODOS os jogos da pelada atual (histórico do dia)
@@ -215,6 +250,8 @@ export function usePelada() {
       const games = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
       console.log(`[usePelada] Atualizando lista de jogos (${games.length} encontrados)`);
       setActiveGames(games);
+    }, (error) => {
+      handleFirestoreError(error, 'get', `matches/${openMatchId}/games`);
     });
 
     return () => {
@@ -277,6 +314,17 @@ export function usePelada() {
       isPaused: false,
       lastStartedAt: serverTimestamp()
     });
+  };
+
+  const submitEvaluation = async (evalData: Omit<Evaluation, 'id' | 'createdAt'>) => {
+    try {
+      await addDoc(collection(db, 'evaluations'), {
+        ...evalData,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, 'create', 'evaluations');
+    }
   };
 
   const updateSettings = async (newSettings: GroupSettings) => {
@@ -353,10 +401,9 @@ export function usePelada() {
     try {
       const docRef = await addDoc(collection(db, 'transactions'), {
         ...data,
-        date: Timestamp.fromDate(new Date())
+        date: data.date || serverTimestamp()
       });
 
-      // Se for uma transação associada a um jogador, atualiza o saldo dele
       if (data.playerId) {
         const player = players.find(p => p.id === data.playerId);
         if (player) {
@@ -367,6 +414,78 @@ export function usePelada() {
       return docRef;
     } catch (error) {
       handleFirestoreError(error, 'create', 'transactions');
+    }
+  };
+
+  const updateTransaction = async (id: string, data: Partial<Transaction>) => {
+    try {
+      const transRef = doc(db, 'transactions', id);
+      const transSnap = await getDoc(transRef);
+      if (!transSnap.exists()) return;
+      const oldTrans = { id: transSnap.id, ...transSnap.data() } as Transaction;
+
+      await updateDoc(transRef, data);
+
+      // Re-calculate balance if amount, type or playerId changed
+      const amountChanged = data.amount !== undefined && data.amount !== oldTrans.amount;
+      const typeChanged = data.type !== undefined && data.type !== oldTrans.type;
+      const playerChanged = data.playerId !== undefined && data.playerId !== oldTrans.playerId;
+
+      if (amountChanged || typeChanged || playerChanged) {
+        // 1. Revert Old Impact
+        if (oldTrans.playerId) {
+          const oldPRef = doc(db, 'players', oldTrans.playerId);
+          const oldPSnap = await getDoc(oldPRef);
+          if (oldPSnap.exists()) {
+            const oldImpact = oldTrans.type === 'INCOME' ? oldTrans.amount : -oldTrans.amount;
+            await updateDoc(oldPRef, { balance: (oldPSnap.data().balance || 0) - oldImpact });
+          }
+        }
+
+        // 2. Apply New Impact
+        const finalTrans = { ...oldTrans, ...data };
+        if (finalTrans.playerId) {
+          const newPRef = doc(db, 'players', finalTrans.playerId);
+          const newPSnap = await getDoc(newPRef);
+          if (newPSnap.exists()) {
+            const newImpact = finalTrans.type === 'INCOME' ? finalTrans.amount : -finalTrans.amount;
+            await updateDoc(newPRef, { balance: (newPSnap.data().balance || 0) + newImpact });
+          }
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, 'update', `transactions/${id}`);
+    }
+  };
+
+  const deleteTransaction = async (id: string) => {
+    try {
+      console.log(`[usePelada] Excluindo transação: ${id}`);
+      const transRef = doc(db, 'transactions', id);
+      const transSnap = await getDoc(transRef);
+      
+      if (!transSnap.exists()) {
+        console.warn("[usePelada] Transação não encontrada para exclusão");
+        return;
+      }
+      
+      const t = { id: transSnap.id, ...transSnap.data() } as Transaction;
+
+      if (t.playerId) {
+        const pRef = doc(db, 'players', t.playerId);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          const impact = t.type === 'INCOME' ? t.amount : -t.amount;
+          console.log(`[usePelada] Revertendo impacto de ${impact} no saldo do jogador ${t.playerId}`);
+          await updateDoc(pRef, { balance: (pSnap.data().balance || 0) - impact });
+        }
+      }
+      
+      await deleteDoc(transRef);
+      console.log("[usePelada] Transação excluída com sucesso");
+    } catch (error) {
+      console.error("[usePelada] Erro ao excluir transação:", error);
+      handleFirestoreError(error, 'delete', `transactions/${id}`);
     }
   };
 
@@ -428,6 +547,9 @@ export function usePelada() {
       scoreA: 0,
       scoreB: 0,
       startTime: serverTimestamp(),
+      lastStartedAt: serverTimestamp(),
+      accumulatedTime: 0,
+      isPaused: false,
       status: 'RUNNING',
       events: []
     };
@@ -647,6 +769,140 @@ export function usePelada() {
     }
   };
 
+  const recalculateAllStats = async () => {
+    console.log("[usePelada] Iniciando recalculateAllStats...");
+    if (!isAdmin) {
+      console.error("[usePelada] Acesso negado: Usuário não é administrador.");
+      return;
+    }
+    try {
+      setLoading(true);
+      console.log("[usePelada] Iniciando recálculo total de estatísticas...");
+      
+      // 1. Get all players to reset their stats
+      const playersSnap = await getDocs(collection(db, 'players'));
+      let batch = writeBatch(db);
+      let opCount = 0;
+
+      console.log(`[usePelada] Resetando ${playersSnap.docs.length} jogadores...`);
+      for (const pDoc of playersSnap.docs) {
+        batch.update(pDoc.ref, {
+          gols: 0,
+          assistencias: 0,
+          vitorias: 0,
+          derrotas: 0,
+          empates: 0
+        });
+        opCount++;
+        if (opCount >= 450) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
+      }
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
+      // 2. Map to accumulate new stats
+      const statsMap: Record<string, { gols: number, assistencias: number, vitorias: number, derrotas: number, empates: number }> = {};
+      const ensurePlayer = (id: string) => {
+        if (!statsMap[id]) statsMap[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+      };
+
+      // 3. Get all matches
+      const matchesSnap = await getDocs(collection(db, 'matches'));
+      console.log(`[usePelada] Escaneando ${matchesSnap.docs.length} peladas...`);
+      let matchesProcessed = 0;
+      let gamesProcessed = 0;
+
+      for (const mDoc of matchesSnap.docs) {
+        try {
+          const gamesRef = collection(db, 'matches', mDoc.id, 'games');
+          const gamesSnap = await getDocs(gamesRef);
+          matchesProcessed++;
+          gamesProcessed += gamesSnap.docs.length;
+          
+          for (const gDoc of gamesSnap.docs) {
+            const game = gDoc.data() as Game;
+            
+            // Count Goals and Assists
+            if (game.events) {
+              game.events.forEach(ev => {
+                if (ev.type === 'GOAL') {
+                  const pId = ev.playerId;
+                  if (pId && typeof pId === 'string') {
+                    ensurePlayer(pId);
+                    statsMap[pId].gols++;
+                  }
+                  
+                  const aId = ev.assistId;
+                  if (aId && typeof aId === 'string') {
+                    ensurePlayer(aId);
+                    statsMap[aId].assistencias++;
+                  }
+                }
+              });
+            }
+
+            // Count Wins/Losses/Draws (only for finished games)
+            if (game.status === 'FINISHED') {
+              const sA = game.scoreA || 0;
+              const sB = game.scoreB || 0;
+              const tA = game.teamA_ids || [];
+              const tB = game.teamB_ids || [];
+              const isDraw = sA === sB;
+              const winA = sA > sB;
+              const winB = sB > sA;
+              
+              const allInGame = Array.from(new Set([...(tA || []), ...(tB || [])])).filter(id => id && typeof id === 'string');
+              allInGame.forEach(id => {
+                ensurePlayer(id);
+                const isTeamA = (tA || []).includes(id);
+                if (isDraw) {
+                  statsMap[id].empates++;
+                } else if ((isTeamA && winA) || (!isTeamA && winB)) {
+                  statsMap[id].vitorias++;
+                } else {
+                  statsMap[id].derrotas++;
+                }
+              });
+            }
+          }
+        } catch (matchErr) {
+          console.error(`[usePelada] Erro ao processar pelada ${mDoc.id}:`, matchErr);
+        }
+      }
+
+      // 4. Update players with new totals
+      console.log("[usePelada] Aplicando novos totais aos jogadores...");
+      batch = writeBatch(db);
+      opCount = 0;
+      
+      for (const [playerId, stats] of Object.entries(statsMap)) {
+        const pRef = doc(db, 'players', playerId);
+        batch.update(pRef, stats);
+        opCount++;
+        if (opCount >= 450) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
+      }
+      if (opCount > 0) {
+        await batch.commit();
+      }
+      
+      console.log("[usePelada] Recálculo concluído com sucesso!");
+    } catch (error) {
+      console.error("[usePelada] Erro ao recalcular estatísticas:", error);
+      handleFirestoreError(error, 'write' as any, 'recompute_all');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const deleteGame = async (matchId: string, gameId: string) => {
     console.log(`[usePelada] Tentando excluir partida. MatchID: ${matchId}, GameID: ${gameId}`);
     if (!matchId || !gameId) {
@@ -654,8 +910,62 @@ export function usePelada() {
       return;
     }
     try {
-      await deleteDoc(doc(db, 'matches', matchId, 'games', gameId));
-      console.log("[usePelada] Partida excluída com sucesso");
+      const gameRef = doc(db, 'matches', matchId, 'games', gameId);
+      const gameSnap = await getDoc(gameRef);
+      
+      if (gameSnap.exists()) {
+        const game = gameSnap.data() as Game;
+        const batch = writeBatch(db);
+
+        // 1. Revert Score and Personal Stats (Goals/Assists)
+        if (game.events && game.events.length > 0) {
+          for (const event of game.events) {
+            if (event.type === 'GOAL') {
+              const pRef = doc(db, 'players', event.playerId);
+              batch.update(pRef, { gols: increment(-1) });
+
+              if (event.assistId) {
+                const aRef = doc(db, 'players', event.assistId);
+                batch.update(aRef, { assistencias: increment(-1) });
+              }
+            }
+          }
+        }
+
+        // 2. Revert Win/Loss/Draw stats if finished
+        if (game.status === 'FINISHED') {
+          const sA = game.scoreA || 0;
+          const sB = game.scoreB || 0;
+          const isDraw = sA === sB;
+          const winA = sA > sB;
+          const winB = sB > sA;
+
+          const teamA = game.teamA_ids || [];
+          const teamB = game.teamB_ids || [];
+          const allPlayerIds = Array.from(new Set([...teamA, ...teamB])).filter(id => id && typeof id === 'string');
+
+          allPlayerIds.forEach(id => {
+            const pRef = doc(db, 'players', id);
+            const isTeamA = teamA.includes(id);
+
+            if (isDraw) {
+              batch.update(pRef, { empates: increment(-1) });
+            } else if ((isTeamA && winA) || (!isTeamA && winB)) {
+              batch.update(pRef, { vitorias: increment(-1) });
+            } else {
+              batch.update(pRef, { derrotas: increment(-1) });
+            }
+          });
+        }
+
+        // 3. Delete the game
+        batch.delete(gameRef);
+        await batch.commit();
+        console.log("[usePelada] Partida e estatísticas relacionadas excluídas com sucesso");
+      } else {
+        await deleteDoc(gameRef);
+      }
+      
       alert("Partida excluída com sucesso!");
     } catch (error) {
       console.error("[usePelada] Erro ao excluir partida:", error);
@@ -664,8 +974,112 @@ export function usePelada() {
     }
   };
 
+  const deleteMatch = async (matchId: string) => {
+    console.log("[usePelada] deleteMatch iniciado para:", matchId);
+    if (!isAdmin) {
+      console.error("[usePelada] Usuário não é ADMIN. Abortando.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`[usePelada] Iniciando exclusão da pelada: ${matchId}`);
+      
+      const gamesRef = collection(db, 'matches', matchId, 'games');
+      const gamesSnap = await getDocs(gamesRef);
+      
+      const evalsQuery = query(collection(db, 'evaluations'), where('matchId', '==', matchId));
+      const evalsSnap = await getDocs(evalsQuery);
+
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+      const MAX_OPS = 450; // Guard channel for batch limit
+
+      const commitIfFull = async () => {
+        if (opCount >= MAX_OPS) {
+          console.log(`[usePelada] Limit de batch atingido (${opCount}). Commitando e criando novo...`);
+          await currentBatch.commit();
+          currentBatch = writeBatch(db);
+          opCount = 0;
+        }
+      };
+
+      console.log(`[usePelada] Revertendo estatísticas de ${gamesSnap.docs.length} jogos...`);
+
+      for (const gameDoc of gamesSnap.docs) {
+        const game = gameDoc.data() as Game;
+        
+        if (game.events && game.events.length > 0) {
+          for (const event of game.events) {
+            if (event.type === 'GOAL') {
+              const pRef = doc(db, 'players', event.playerId);
+              currentBatch.update(pRef, { gols: increment(-1) });
+              opCount++;
+              await commitIfFull();
+
+              if (event.assistId) {
+                const aRef = doc(db, 'players', event.assistId);
+                currentBatch.update(aRef, { assistencias: increment(-1) });
+                opCount++;
+                await commitIfFull();
+              }
+            }
+          }
+        }
+
+        if (game.status === 'FINISHED') {
+          const sA = game.scoreA || 0;
+          const sB = game.scoreB || 0;
+          const isDraw = sA === sB;
+          const winA = sA > sB;
+          const winB = sB > sA;
+          const teamA = game.teamA_ids || [];
+          const teamB = game.teamB_ids || [];
+          const allPlayerIds = Array.from(new Set([...(teamA || []), ...(teamB || [])])).filter(id => id && typeof id === 'string');
+
+          for (const id of allPlayerIds) {
+            const pRef = doc(db, 'players', id);
+            const isTeamA = (teamA || []).includes(id);
+            if (isDraw) {
+              currentBatch.update(pRef, { empates: increment(-1) });
+            } else if ((isTeamA && winA) || (!isTeamA && winB)) {
+              currentBatch.update(pRef, { vitorias: increment(-1) });
+            } else {
+              currentBatch.update(pRef, { derrotas: increment(-1) });
+            }
+            opCount++;
+            await commitIfFull();
+          }
+        }
+        
+        currentBatch.delete(gameDoc.ref);
+        opCount++;
+        await commitIfFull();
+      }
+
+      console.log(`[usePelada] Removendo ${evalsSnap.docs.length} avaliações...`);
+      for (const evDoc of evalsSnap.docs) {
+        currentBatch.delete(evDoc.ref);
+        opCount++;
+        await commitIfFull();
+      }
+
+      currentBatch.delete(doc(db, 'matches', matchId));
+      opCount++;
+      
+      await currentBatch.commit();
+      console.log("[usePelada] Pelada e todos os dados relacionados excluídos com sucesso");
+      alert("Pelada excluída com sucesso!");
+    } catch (error) {
+      console.error("[usePelada] Erro ao excluir pelada:", error);
+      handleFirestoreError(error, 'delete', `matches/${matchId}`);
+      alert("Erro ao excluir pelada. Verifique os logs.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getMatchGames = async (matchId: string) => {
-    const { getDocs } = await import('firebase/firestore');
     const q = query(
       collection(db, 'matches', matchId, 'games'),
       orderBy('startTime', 'asc')
@@ -678,6 +1092,7 @@ export function usePelada() {
     players,
     matches,
     transactions,
+    evaluations,
     settings,
     loading,
     liveGame,
@@ -686,6 +1101,9 @@ export function usePelada() {
     markAbsent,
     createMatch,
     createTransaction,
+    updateTransaction,
+    deleteTransaction,
+    submitEvaluation,
     addPlayer,
     updatePlayer,
     deletePlayer,
@@ -694,6 +1112,8 @@ export function usePelada() {
     setMatchTeams,
     updateMatch,
     finishMatch,
+    recalculateAllStats,
+    deleteMatch,
     startLiveGame,
     startGame,
     createScheduledGame,

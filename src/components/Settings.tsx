@@ -6,7 +6,7 @@ import {
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
   History, Calendar, Users, Camera, Upload, Loader2, Trash2, Edit, 
   CheckCircle2, AlertCircle, ArrowUpDown, Filter, Star, Type, Target,
-  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search
+  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
 import { collection, addDoc, updateDoc, onSnapshot, doc } from 'firebase/firestore';
@@ -24,9 +24,9 @@ interface SettingsProps {
 }
 
 export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, settings, onUpdateSettings }: SettingsProps) {
-  const { players, matches, deletePlayer } = usePelada();
+  const { players, matches, deletePlayer, recalculateAllStats } = usePelada();
   const { logout, role, user } = useAuth();
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
   const currentUserPlayer = players.find(p => p.id === user?.uid);
 
   const [localSettings, setLocalSettings] = useState<GroupSettings>(settings);
@@ -40,7 +40,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'level' | 'name' | 'position'>('name');
   const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'loading', msg: string } | null>(null);
+  const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
 
   const filteredPlayers = players.filter(p => 
     (p.displayName || p.name).toLowerCase().includes(searchTerm.toLowerCase())
@@ -101,9 +102,23 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
     }
   };
 
-  const showFeedback = (type: 'success' | 'error', msg: string) => {
+  const handleRecalculate = async () => {
+    setShowRecalculateConfirm(false);
+    showFeedback('loading', 'Recalculando estatísticas...');
+    try {
+      await recalculateAllStats();
+      // No alert needed, usePelada should handle success but since I will remove alert from there too, I'll show it here if it doesn't throw
+      showFeedback('success', 'Estatísticas recalculadas com sucesso!');
+    } catch (e) {
+      showFeedback('error', 'Erro ao recalcular estatísticas.');
+    }
+  };
+
+  const showFeedback = (type: 'success' | 'error' | 'loading', msg: string) => {
     setFeedback({ type, msg });
-    setTimeout(() => setFeedback(null), 3000);
+    if (type !== 'loading') {
+      setTimeout(() => setFeedback(null), 3000);
+    }
   };
 
   // Sync with prop when data finishes loading
@@ -211,9 +226,13 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
       {/* Feedback Toast */}
       {feedback && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-2 animate-in fade-in zoom-in duration-300 ${
-          feedback.type === 'success' ? 'bg-primary text-bg' : 'bg-danger text-white'
+          feedback.type === 'success' ? 'bg-primary text-bg' : 
+          feedback.type === 'loading' ? 'bg-bg border border-primary text-primary' :
+          'bg-danger text-white'
         }`}>
-          {feedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          {feedback.type === 'success' ? <CheckCircle2 size={18} /> : 
+           feedback.type === 'loading' ? <Loader2 size={18} className="animate-spin" /> :
+           <AlertCircle size={18} />}
           <span className="text-xs font-bold uppercase tracking-widest">{feedback.msg}</span>
         </div>
       )}
@@ -347,8 +366,11 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           </div>
 
           <div className="bg-card rounded-3xl border border-border/50 divide-y divide-border/20 overflow-hidden shadow-xl">
-            <SettingsLink icon={<Bell size={18}/>} label="Notificações" />
-            <SettingsLink icon={<Info size={18}/>} label="Ajuda & Suporte" />
+            <SettingsLink 
+              icon={<Bell size={18}/>} 
+              label="Notificações" 
+              onClick={() => showFeedback('success', 'Central de notificações em desenvolvimento!')}
+            />
           </div>
 
           <button 
@@ -607,7 +629,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     {ur.approved ? 'OK' : 'PEND'}
                   </button>
                   <select 
-                    value={ur.role}
+                    value={ur.role || 'USER'}
                     onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
                     disabled={ur.id === user?.uid}
                     className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
@@ -626,6 +648,26 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         <div className="space-y-6">
           <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
             <div className="flex items-center justify-between">
+              <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Acesso Rápido Financeiro</h3>
+            </div>
+            <button 
+              onClick={() => {
+                alert("Use o ícone de cifrão (R$) na barra inferior para acessar o Extrato completo.");
+              }}
+              className="w-full bg-bg p-4 rounded-2xl border border-border/50 flex items-center justify-between group active:scale-95 transition-all"
+            >
+              <div className="flex items-center space-x-3 text-primary">
+                <div className="p-2 bg-primary/10 rounded-xl group-hover:bg-primary group-hover:text-bg transition-colors">
+                  <DollarSign size={18} />
+                </div>
+                <span className="font-bold text-sm text-white">Visualizar Extrato (Financeiro)</span>
+              </div>
+              <ArrowRight size={16} className="text-gray-500 group-hover:text-white transition-colors" />
+            </button>
+          </div>
+
+          <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
+            <div className="flex items-center justify-between">
               <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Configurações Gerais</h3>
               {saving && <Loader2 className="animate-spin text-primary" size={16} />}
             </div>
@@ -635,19 +677,33 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 icon={<DollarSign size={14}/>} 
                 label="Mensalidade" 
                 value={localSettings.monthlyFee}
+                isCurrency
                 onChange={(v) => setLocalSettings({...localSettings, monthlyFee: Number(v)})}
               />
               <SettingsInput 
                 icon={<DollarSign size={14}/>} 
                 label="Diarista" 
                 value={localSettings.dailyFee}
+                isCurrency
                 onChange={(v) => setLocalSettings({...localSettings, dailyFee: Number(v)})}
               />
               <SettingsInput 
+                icon={<Calendar size={14}/>} 
+                label="Dia Vencimento Mensalidade" 
+                value={localSettings.monthlyFeeDueDay}
+                onChange={(v) => setLocalSettings({...localSettings, monthlyFeeDueDay: Number(v)})}
+              />
+              <SettingsInput 
                 icon={<Users size={14}/>} 
-                label="Máximo de Jogadores" 
+                label="Limite de Jogadores (Pelada)" 
                 value={localSettings.maxPlayers}
                 onChange={(v) => setLocalSettings({...localSettings, maxPlayers: Number(v)})}
+              />
+              <SettingsInput 
+                icon={<Users size={14}/>} 
+                label="Limite de Jogadores (Elenco)" 
+                value={localSettings.maxSquadSize}
+                onChange={(v) => setLocalSettings({...localSettings, maxSquadSize: Number(v)})}
               />
             </div>
 
@@ -661,9 +717,56 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
             </button>
           </div>
 
-          <div className="bg-card rounded-3xl border border-border/50 divide-y divide-border/20 overflow-hidden shadow-xl">
-            <SettingsLink icon={<Bell size={18}/>} label="Notificações" />
-            <SettingsLink icon={<Info size={18}/>} label="Ajuda & Suporte" />
+          {isAdmin && (
+            <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <h3 className="text-[11px] font-bold tracking-[0.2em] text-danger uppercase">Ferramentas de Manutenção</h3>
+                </div>
+                <span className="text-[9px] font-black bg-danger/10 text-danger px-2 py-0.5 rounded-full uppercase tracking-tighter">Admin Access</span>
+              </div>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-relaxed">
+                Use esta ferramenta se as estatísticas do ranking estiverem incorretas ou se você excluiu partidas manualmente e os dados não foram sincronizados.
+              </p>
+              
+              {!showRecalculateConfirm ? (
+                <button 
+                  onClick={() => setShowRecalculateConfirm(true)}
+                  className="w-full py-4 bg-white/5 border border-danger/30 text-danger rounded-2xl font-black uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-danger/10 transition-all active:scale-95"
+                >
+                  <TrendingUp size={18} />
+                  <span>Recalcular Estatísticas</span>
+                </button>
+              ) : (
+                <div className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-300">
+                  <p className="text-[10px] font-black text-danger text-center bg-danger/5 p-3 rounded-xl border border-danger/20">
+                    TEM CERTEZA? ISSO IRÁ RESETAR E RECONSTRUIR TODO O RANKING.
+                  </p>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setShowRecalculateConfirm(false)}
+                      className="flex-1 py-4 bg-bg border border-border text-gray-500 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={handleRecalculate}
+                      className="flex-[2] py-4 bg-danger text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-danger/20 active:scale-95 transition-all"
+                    >
+                      Confirmar Recálculo
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="bg-card rounded-3xl border border-border/20 divide-y divide-border/20 overflow-hidden shadow-xl">
+            <SettingsLink 
+              icon={<Bell size={18}/>} 
+              label="Notificações" 
+              onClick={() => showFeedback('success', 'Central de notificações em desenvolvimento!')}
+            />
           </div>
 
           <button 
@@ -706,9 +809,12 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   );
 }
 
-function SettingsLink({ icon, label }: { icon: React.ReactNode, label: string }) {
+function SettingsLink({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick?: () => void }) {
   return (
-    <div className="flex items-center justify-between p-5 hover:bg-white/5 transition-colors cursor-pointer group">
+    <div 
+      onClick={onClick}
+      className="flex items-center justify-between p-5 hover:bg-white/5 transition-colors cursor-pointer group"
+    >
       <div className="flex items-center space-x-4">
         <div className="text-gray-500 flex items-center justify-center w-5 h-5 shrink-0 group-hover:text-primary transition-colors">{icon}</div>
         <span className="font-semibold text-sm">{label}</span>
@@ -718,7 +824,58 @@ function SettingsLink({ icon, label }: { icon: React.ReactNode, label: string })
   );
 }
 
-function SettingsInput({ icon, label, value, onChange }: { icon: React.ReactNode, label: string, value: number, onChange: (v: string) => void }) {
+function SettingsInput({ 
+  icon, 
+  label, 
+  value, 
+  onChange,
+  isCurrency = false
+}: { 
+  icon: React.ReactNode, 
+  label: string, 
+  value: number, 
+  onChange: (v: string) => void,
+  isCurrency?: boolean
+}) {
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(val);
+  };
+
+  const [internalValue, setInternalValue] = React.useState(
+    isCurrency ? formatCurrency(value) : value.toString()
+  );
+
+  React.useEffect(() => {
+    if (isCurrency) {
+      setInternalValue(formatCurrency(value));
+    } else if (parseFloat(internalValue) !== value && internalValue !== "") {
+      setInternalValue(value.toString());
+    }
+  }, [value, isCurrency]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value;
+
+    if (isCurrency) {
+      // Remove everything except digits
+      const digits = v.replace(/\D/g, "");
+      const numericValue = digits ? parseInt(digits, 10) / 100 : 0;
+      
+      setInternalValue(formatCurrency(numericValue));
+      onChange(numericValue.toString());
+    } else {
+      setInternalValue(v);
+      if (v !== "") {
+        onChange(v);
+      } else {
+        onChange("0");
+      }
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center space-x-2 text-gray-500 mb-1">
@@ -726,10 +883,16 @@ function SettingsInput({ icon, label, value, onChange }: { icon: React.ReactNode
         <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
       </div>
       <input 
-        type="number"
+        type={isCurrency ? "text" : "number"}
+        inputMode={isCurrency ? "numeric" : "decimal"}
         className="w-full bg-bg border border-border rounded-xl p-3 text-white focus:border-primary outline-none text-sm transition-all shadow-inner"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={internalValue}
+        onChange={handleInputChange}
+        onBlur={() => {
+          if (!isCurrency && internalValue === "") {
+            setInternalValue(value.toString());
+          }
+        }}
       />
     </div>
   );

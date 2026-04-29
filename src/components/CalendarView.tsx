@@ -14,13 +14,19 @@ import {
   isToday
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, X, Clock, Users, Trophy, UserX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Users, Trophy, UserX, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from './AuthProvider';
 
 export default function CalendarView() {
-  const { matches, players } = usePelada();
+  const { matches, players, deleteMatch, deleteGame } = usePelada();
+  const { role, user } = useAuth();
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
+  const [confirmDeleteGame, setConfirmDeleteGame] = useState<{matchId: string, gameId: string} | null>(null);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -42,62 +48,171 @@ export default function CalendarView() {
     });
   };
 
+  const sortedMatches = [...matches].sort((a, b) => {
+    const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date);
+    const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date);
+    return dateB.getTime() - dateA.getTime();
+  });
+
   return (
     <div className="space-y-6">
-      {/* Calendar Header */}
-      <div className="flex items-center justify-between bg-card p-4 rounded-[32px] border border-border/50 shadow-lg">
-        <button onClick={prevMonth} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-          <ChevronLeft size={20} className="text-primary" />
-        </button>
-        <h2 className="text-base font-black uppercase tracking-widest text-white">
-          {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
-        </h2>
-        <button onClick={nextMonth} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-          <ChevronRight size={20} className="text-primary" />
-        </button>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex bg-card p-1 rounded-xl border border-border/50">
+          <button 
+            onClick={() => setViewMode('calendar')}
+            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${viewMode === 'calendar' ? 'bg-primary text-bg' : 'text-gray-500'}`}
+          >
+            Calendário
+          </button>
+          <button 
+            onClick={() => setViewMode('list')}
+            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${viewMode === 'list' ? 'bg-primary text-bg' : 'text-gray-500'}`}
+          >
+            Lista
+          </button>
+        </div>
       </div>
 
-      {/* Days Labels */}
-      <div className="grid grid-cols-7 gap-1 px-2">
-        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
-          <div key={i} className="text-center text-[10px] font-black text-gray-600 py-2 uppercase tracking-tighter">
-            {day}
-          </div>
-        ))}
-      </div>
+      <AnimatePresence mode="wait">
+        {viewMode === 'calendar' ? (
+          <motion.div
+            key="calendar"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            {/* Calendar Header */}
+            <div className="flex items-center justify-between bg-card p-4 rounded-[32px] border border-border/50 shadow-lg">
+              <button onClick={prevMonth} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                <ChevronLeft size={20} className="text-primary" />
+              </button>
+              <h2 className="text-base font-black uppercase tracking-widest text-white">
+                {format(currentDate, 'MMMM yyyy', { locale: ptBR })}
+              </h2>
+              <button onClick={nextMonth} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                <ChevronRight size={20} className="text-primary" />
+              </button>
+            </div>
 
-      {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-2">
-        {days.map((day, i) => {
-          const match = getMatchForDay(day);
-          const isCurrentMonth = isSameMonth(day, monthStart);
-          const active = match && match.status === 'OPEN';
-          const finished = match && match.status === 'FINISHED';
-          
-          return (
-            <button
-              key={i}
-              onClick={() => match && setSelectedMatch(match)}
-              disabled={!match}
-              className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center transition-all border ${
-                !isCurrentMonth ? 'opacity-20 border-transparent' : 
-                match ? 'bg-card border-primary/30 shadow-md active:scale-90 cursor-pointer' : 
-                'bg-transparent border-border/10'
-              } ${isToday(day) ? 'ring-2 ring-primary ring-offset-4 ring-offset-bg' : ''}`}
-            >
-              <span className={`text-xs font-bold ${match ? 'text-white' : 'text-gray-600'}`}>
-                {format(day, 'd')}
-              </span>
-              
-              {match && (
-                <div className="absolute bottom-1.5 flex gap-0.5">
-                  <div className={`w-1 h-1 rounded-full ${finished ? 'bg-gray-500' : 'bg-primary animate-pulse'}`} />
+            {/* Days Labels */}
+            <div className="grid grid-cols-7 gap-1 px-2">
+              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
+                <div key={i} className="text-center text-[10px] font-black text-gray-600 py-2 uppercase tracking-tighter">
+                  {day}
                 </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
+              ))}
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-2">
+              {days.map((day, i) => {
+                const match = getMatchForDay(day);
+                const isCurrentMonth = isSameMonth(day, monthStart);
+                const active = match && match.status === 'OPEN';
+                const finished = match && match.status === 'FINISHED';
+                
+                return (
+                  <button
+                    key={i}
+                    onClick={() => match && setSelectedMatch(match)}
+                    disabled={!match}
+                    className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center transition-all border ${
+                      !isCurrentMonth ? 'opacity-20 border-transparent' : 
+                      match ? 'bg-card border-primary/30 shadow-md active:scale-90 cursor-pointer' : 
+                      'bg-transparent border-border/10'
+                    } ${isToday(day) ? 'ring-2 ring-primary ring-offset-4 ring-offset-bg' : ''}`}
+                  >
+                    <span className={`text-xs font-bold ${match ? 'text-white' : 'text-gray-600'}`}>
+                      {format(day, 'd')}
+                    </span>
+                    
+                    {match && (
+                      <div className="absolute bottom-1.5 flex gap-0.5">
+                        <div className={`w-1 h-1 rounded-full ${finished ? 'bg-gray-500' : 'bg-primary animate-pulse'}`} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="list"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-3"
+          >
+            {sortedMatches.length === 0 ? (
+              <div className="bg-card p-12 rounded-[40px] border border-dashed border-border flex flex-col items-center justify-center text-center">
+                <Clock className="text-gray-700 mb-4" size={48} />
+                <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Nenhuma partida registrada</p>
+              </div>
+            ) : (
+              sortedMatches.map(match => {
+                const date = match.date.toDate ? match.date.toDate() : new Date(match.date);
+                const isFinished = match.status === 'FINISHED';
+                return (
+                  <div 
+                    key={match.id}
+                    onClick={() => setSelectedMatch(match)}
+                    className="w-full bg-card p-5 rounded-[2.5rem] border border-border/50 flex items-center justify-between group active:scale-[0.98] transition-all shadow-lg hover:border-primary/30 cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-12 h-12 rounded-2xl flex flex-col items-center justify-center ${isFinished ? 'bg-white/5 text-gray-500' : 'bg-primary/10 text-primary animate-pulse'}`}>
+                        <span className="text-[10px] font-black leading-none">{format(date, 'MMM', { locale: ptBR }).toUpperCase()}</span>
+                        <span className="text-lg font-black leading-none">{format(date, 'dd')}</span>
+                      </div>
+                      <div className="text-left">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-black text-sm text-white uppercase italic tracking-tight">Pelada Oficial</h4>
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter ${isFinished ? 'bg-gray-800 text-gray-500' : 'bg-primary/20 text-primary'}`}>
+                            {isFinished ? 'Finalizada' : 'Aberta'}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-3 mt-1 text-gray-500">
+                          <div className="flex items-center space-x-1">
+                            <Clock size={10} />
+                            <span className="text-[9px] font-bold uppercase">{format(date, 'HH:mm')}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Users size={10} />
+                            <span className="text-[9px] font-bold uppercase">{match.confirmedIds.length} Atletas</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                      {isFinished && match.result && (
+                        <div className="flex items-center space-x-2 bg-bg px-3 py-2 rounded-xl border border-border/50">
+                          <span className="text-sm font-black text-white italic">{match.result.scoreA}</span>
+                          <span className="text-[8px] font-bold text-gray-600">X</span>
+                          <span className="text-sm font-black text-white italic">{match.result.scoreB}</span>
+                        </div>
+                      )}
+                      {isAdmin && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteMatch(match.id);
+                          }}
+                          className="p-3 bg-danger/10 text-danger rounded-xl hover:bg-danger hover:text-white transition-all active:scale-90"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                      <ChevronRight size={20} className="text-gray-700 group-hover:text-primary transition-colors" />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Match Detail Modal */}
       <AnimatePresence>
@@ -106,7 +221,81 @@ export default function CalendarView() {
             match={selectedMatch} 
             players={players} 
             onClose={() => setSelectedMatch(null)} 
+            onDeleteMatch={(id) => setConfirmDeleteMatch(id)}
+            onDeleteGame={(mId, gId) => setConfirmDeleteGame({matchId: mId, gameId: gId})}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDeleteMatch && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-card border border-border rounded-[2.5rem] p-6 shadow-2xl relative"
+            >
+              <h3 className="text-xl font-black uppercase text-white mb-4">Confirmar Ação</h3>
+              <p className="text-sm font-bold text-gray-400 mb-8 whitespace-pre-wrap">
+                Tem certeza que deseja excluir esta pelada inteira? Todas as partidas, gols e estatísticas dela serão apagadas permanentemente.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfirmDeleteMatch(null)} 
+                  className="flex-1 p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    deleteMatch(confirmDeleteMatch);
+                    setConfirmDeleteMatch(null);
+                  }} 
+                  className="flex-1 p-4 rounded-2xl bg-danger text-white font-black hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDeleteGame && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-card border border-border rounded-[2.5rem] p-6 shadow-2xl relative"
+            >
+              <h3 className="text-xl font-black uppercase text-white mb-4">Confirmar Ação</h3>
+              <p className="text-sm font-bold text-gray-400 mb-8 whitespace-pre-wrap">
+                Deseja excluir este jogo e reverter os gols/estatísticas?
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfirmDeleteGame(null)} 
+                  className="flex-1 p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    if (confirmDeleteGame) {
+                      deleteGame(confirmDeleteGame.matchId, confirmDeleteGame.gameId);
+                      setConfirmDeleteGame(null);
+                    }
+                  }} 
+                  className="flex-1 p-4 rounded-2xl bg-danger text-white font-black hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
       
@@ -117,8 +306,10 @@ export default function CalendarView() {
   );
 }
 
-function MatchModal({ match, players, onClose }: { match: Match, players: Player[], onClose: () => void }) {
+function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { match: Match, players: Player[], onClose: () => void, onDeleteMatch: (id: string) => void, onDeleteGame: (mId: string, gId: string) => void }) {
   const { getMatchGames } = usePelada();
+  const { role, user } = useAuth();
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
   const [matchGames, setMatchGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
 
@@ -190,9 +381,23 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
 
         {/* History of Games */}
         <div className="mb-8 space-y-4">
-          <div className="flex items-center space-x-2 text-primary px-1">
-            <Trophy size={14} />
-            <h4 className="text-[10px] font-black uppercase tracking-widest">Jogos Realizados</h4>
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center space-x-2 text-primary">
+              <Trophy size={14} />
+              <h4 className="text-[10px] font-black uppercase tracking-widest">Jogos Realizados</h4>
+            </div>
+            {isAdmin && (
+               <button 
+                onClick={() => {
+                  onDeleteMatch(match.id);
+                  onClose();
+                }}
+                className="flex items-center space-x-1 px-3 py-1 bg-danger/10 text-danger rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-danger hover:text-white transition-all"
+               >
+                 <Trash2 size={10} />
+                 <span>Excluir Pelada</span>
+               </button>
+            )}
           </div>
 
           {loadingGames ? (
@@ -202,9 +407,21 @@ function MatchModal({ match, players, onClose }: { match: Match, players: Player
           ) : (
             <div className="space-y-3">
               {matchGames.map((game, gIdx) => (
-                <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden">
+                <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden relative group/game">
                   <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">
-                    <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
+                    <div className="flex items-center space-x-2">
+                       <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
+                       {isAdmin && (
+                         <button 
+                          onClick={() => {
+                            onDeleteGame(match.id, game.id);
+                          }}
+                          className="p-1 text-danger/50 hover:text-danger"
+                         >
+                          <Trash2 size={10} />
+                         </button>
+                       )}
+                    </div>
                     <span className="text-[8px] font-bold text-primary">
                       {game.scoreA} X {game.scoreB}
                     </span>

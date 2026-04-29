@@ -26,7 +26,7 @@ import LiveMatch from './components/LiveMatch';
 import SocialStats from './components/SocialStats';
 import Settings from './components/Settings';
 import ManagementModals from './components/ManagementModals';
-import { usePelada, Player } from './hooks/usePelada';
+import { usePelada, Player, Transaction } from './hooks/usePelada';
 import Logo from './components/Logo';
 import { useAuth } from './components/AuthProvider';
 
@@ -38,8 +38,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  const isAdmin = role === 'ADMIN' || user?.email === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
 
   useEffect(() => {
     // Test connection to Firestore
@@ -62,7 +63,10 @@ export default function App() {
   const handlePlusClick = () => {
     if (!isAdmin) return;
     if (activeTab === 'list') setModalType('match');
-    if (activeTab === 'finance') setModalType('finance');
+    if (activeTab === 'finance') {
+      setEditingTransaction(null);
+      setModalType('finance');
+    }
     if (activeTab === 'settings') {
       setEditingPlayer(null);
       setModalType('player');
@@ -72,7 +76,14 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'list': return <MatchList />;
-      case 'finance': return isAdmin ? <Financial /> : <MatchList />;
+      case 'finance': return isAdmin ? (
+        <Financial 
+          onEditTransaction={(t) => {
+            setEditingTransaction(t);
+            setModalType('finance');
+          }}
+        />
+      ) : <MatchList />;
       case 'play': return <TeamDraw />;
       case 'live': return <LiveMatch />;
       case 'social': return <SocialStats />;
@@ -175,7 +186,7 @@ export default function App() {
               active={activeTab === 'finance'} 
               onClick={() => setActiveTab('finance')}
               icon={<Coins size={20} />}
-              label="Caixa"
+              label="Finance"
             />
           )}
           
@@ -211,9 +222,11 @@ export default function App() {
       <ManagementModals 
         type={modalType} 
         editingPlayer={editingPlayer}
+        editingTransaction={editingTransaction}
         onClose={() => {
           setModalType(null);
           setEditingPlayer(null);
+          setEditingTransaction(null);
         }} 
       />
     </div>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { usePelada, Player, Game } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2, Star, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { doc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import EvaluationDialog from './EvaluationDialog';
 
 export default function LiveMatch() {
   const { 
@@ -23,7 +24,8 @@ export default function LiveMatch() {
     confirmPresence,
     deleteGame,
     pauseGame,
-    resumeGame
+    resumeGame,
+    deleteMatch
   } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
@@ -65,6 +67,7 @@ export default function LiveMatch() {
   const [isEditingRules, setIsEditingRules] = useState(false);
   const [editPlayersPerTeam, setEditPlayersPerTeam] = useState(6);
   const [savingRules, setSavingRules] = useState(false);
+  const [showEvaluation, setShowEvaluation] = useState(false);
 
   const handleSaveRules = async () => {
     if (!activeMatch) return;
@@ -91,21 +94,28 @@ export default function LiveMatch() {
   useEffect(() => {
     let interval: any;
     if (liveGame && liveGame.status === 'RUNNING') {
+      // Capture initial time when effect runs to avoid 00:00 flickering while waiting for server timestamp
+      const localStartTime = Date.now();
+      
       interval = setInterval(() => {
         if (liveGame.isPaused) {
           setElapsed(Math.floor((liveGame.accumulatedTime || 0) / 1000));
         } else {
-          const lastStarted = liveGame.lastStartedAt?.toDate?.()?.getTime() || liveGame.startTime?.toDate?.()?.getTime() || Date.now();
+          // Use lastStartedAt, then startTime, then our stable localStartTime
+          const lastStarted = liveGame.lastStartedAt?.toDate?.()?.getTime() || 
+                             liveGame.startTime?.toDate?.()?.getTime() || 
+                             localStartTime;
+          
           const currentSession = Date.now() - lastStarted;
           const totalMs = (liveGame.accumulatedTime || 0) + currentSession;
-          setElapsed(Math.floor(totalMs / 1000));
+          setElapsed(Math.max(0, Math.floor(totalMs / 1000)));
         }
       }, 1000);
     } else {
       setElapsed(0);
     }
     return () => clearInterval(interval);
-  }, [liveGame?.id, liveGame?.status, liveGame?.isPaused, liveGame?.accumulatedTime, liveGame?.lastStartedAt]);
+  }, [liveGame?.id, liveGame?.status, liveGame?.isPaused, liveGame?.accumulatedTime, liveGame?.lastStartedAt, liveGame?.startTime]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -195,8 +205,12 @@ export default function LiveMatch() {
       console.log("[LiveMatch] Sucesso retornado da hook!");
       setFinishStatus({ type: 'success', text: 'PARTIDA FINALIZADA!\nEstatísticas atualizadas com sucesso.' });
       setShowConfirmFinish(false);
-      // Tempo para ler a msg de sucesso antes da tela trocar sozinha
-      setTimeout(() => setFinishStatus({ type: 'idle', text: '' }), 3000);
+      
+      // Auto show evaluation for admin too after finishing
+      setTimeout(() => {
+        setFinishStatus({ type: 'idle', text: '' });
+        setShowEvaluation(true);
+      }, 2000);
     } catch (error: any) {
       console.error("[LiveMatch] Erro capturado no handleFinish:", error);
       let errorMessage = "";
@@ -712,6 +726,18 @@ export default function LiveMatch() {
                 )}
               </div>
             )}
+
+            {!isAdmin && (
+               <div className="pt-4 border-t border-border/50">
+                <button 
+                  onClick={() => setShowEvaluation(true)}
+                  className="w-full py-4 bg-primary/10 border border-primary/20 text-primary rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center space-x-2 hover:bg-primary hover:text-bg transition-all"
+                >
+                  <Star size={14} fill="currentColor" />
+                  <span>Avaliar Jogadores</span>
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -822,7 +848,19 @@ export default function LiveMatch() {
             <Trophy size={16} className="text-primary" />
             <span>Partidas de Hoje</span>
           </h3>
-          <span className="text-[10px] font-bold text-gray-500">{activeGames.length} JOGOS</span>
+          <div className="flex items-center space-x-3">
+            <span className="text-[10px] font-bold text-gray-500">{activeGames.length} JOGOS</span>
+            {isAdmin && activeMatch && (
+              <button 
+                onClick={() => confirmAction("Tem certeza que deseja excluir esta pelada inteira? Todas as partidas, gols e estatísticas dela serão apagadas permanentemente.", () => deleteMatch(activeMatch.id))}
+                className="p-2 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all flex items-center space-x-1.5"
+                title="Excluir Pelada Inteira"
+              >
+                <Trash2 size={14} />
+                <span className="text-[9px] font-black uppercase tracking-widest">Excluir Pelada</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -1165,6 +1203,19 @@ export default function LiveMatch() {
           </motion.div>
         </div>
       )}
+      {/* MODALS */}
+      <AnimatePresence>
+        {showEvaluation && activeMatch && (
+          <EvaluationDialog 
+            matchId={activeMatch.id}
+            playersToEvaluate={players.filter(p => 
+              (liveGame?.teamA_ids.includes(p.id) || liveGame?.teamB_ids.includes(p.id)) && p.active
+            )}
+            onClose={() => setShowEvaluation(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {showEventModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/90 backdrop-blur-md">
           <motion.div 

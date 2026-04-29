@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isApproved = data.approved === true;
             
             // Garantir que o email solicitado seja ADMIN e APONTADO
-            if (u.email === 'ramonbelem1@gmail.com') {
+            if (u.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com') {
               assignedRole = 'ADMIN';
               isApproved = true;
               if (data.role !== 'ADMIN' || data.approved !== true) {
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Se não houver configurações, o primeiro a logar vira admin (bootstrap)
             const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
             
-            if (!firstUserCheck.exists() || u.email === 'ramonbelem1@gmail.com') {
+            if (!firstUserCheck.exists() || u.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com') {
               assignedRole = 'ADMIN';
               isApproved = true;
             } else {

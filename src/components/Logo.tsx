@@ -30,7 +30,7 @@ export default function Logo({
 
   return (
     <div className={`flex group ${vertical ? 'flex-col space-y-3 items-center text-center' : 'items-center space-x-3'} ${className}`}>
-      <div className={`${iconSizes[size]} relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/20 overflow-hidden`}>
+      <div className={`${iconSizes[size]} relative flex items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/20 overflow-hidden`}>
         <Trophy size={size === 'lg' ? 36 : iconSizeValue} className="text-bg relative z-10 drop-shadow-sm transition-transform group-hover:scale-110 duration-300" />
         
         {/* Brilho Pulsante no Hover */}

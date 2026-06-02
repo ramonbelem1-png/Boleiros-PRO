@@ -362,11 +362,48 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   const [vitorias, setVitorias] = useState(initialData?.vitorias || 0);
   const [derrotas, setDerrotas] = useState(initialData?.derrotas || 0);
   const [empates, setEmpates] = useState(initialData?.empates || 0);
-  const [number, setNumber] = useState(initialData?.number || '');
+  const [contra, setContra] = useState(initialData?.contra || 0);
+  const [number, setNumber] = useState(initialData?.number !== undefined && initialData?.number !== null ? String(initialData.number) : '');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialData) {
+      setFullName(initialData.fullName || '');
+      setDisplayName(initialData.displayName || initialData.name || '');
+      setEmail(initialData.email || '');
+      setPos(initialData.position || 'VOLANTE');
+      setSecondaryPos(initialData.secondaryPosition && initialData.secondaryPosition !== 'NENHUMA' ? initialData.secondaryPosition : '');
+      setLevel(initialData.level || 3);
+      setType(initialData.type || 'DIARISTA');
+      setPhotoUrl(initialData.photoUrl || '');
+      setGols(initialData.gols || 0);
+      setAssistencias(initialData.assistencias || 0);
+      setVitorias(initialData.vitorias || 0);
+      setDerrotas(initialData.derrotas || 0);
+      setEmpates(initialData.empates || 0);
+      setContra(initialData.contra || 0);
+      setNumber(initialData.number !== undefined && initialData.number !== null ? String(initialData.number) : '');
+    } else {
+      setFullName('');
+      setDisplayName('');
+      setEmail('');
+      setPos('VOLANTE');
+      setSecondaryPos('');
+      setLevel(3);
+      setType('DIARISTA');
+      setPhotoUrl('');
+      setGols(0);
+      setAssistencias(0);
+      setVitorias(0);
+      setDerrotas(0);
+      setEmpates(0);
+      setContra(0);
+      setNumber('');
+    }
+  }, [initialData]);
 
   const squadFull = !initialData && players.length >= settings.maxSquadSize;
 
@@ -404,17 +441,17 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
 
   const handleSave = async () => {
     if(!fullName || !displayName) {
-      alert("Por favor, preencha os campos de nome.");
+      showFeedback('error', "Por favor, preencha os campos de nome.");
       return;
     }
 
     if (squadFull) {
-      alert("Limite de elenco atingido! Aumente o limite nas configurações.");
+      showFeedback('error', "Limite de elenco atingido! Aumente o limite nas configurações.");
       return;
     }
 
     if (numberIsTaken) {
-      alert(`O número ${number} já está sendo usado por ${takenBy?.displayName || takenBy?.name}!`);
+      showFeedback('error', `O número ${number} já está sendo usado por ${takenBy?.displayName || takenBy?.name}!`);
       return;
     }
     
@@ -441,6 +478,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       vitorias: Number(vitorias) || 0,
       derrotas: Number(derrotas) || 0,
       empates: Number(empates) || 0,
+      contra: Number(contra) || 0,
       number: number !== '' ? Number(number) : null
     };
 
@@ -457,7 +495,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       if (error.message?.includes('permission-denied')) {
         errorMsg = "Permissão negada no banco de dados. Verifique se você é o dono deste perfil.";
       }
-      alert(errorMsg + "\n" + (error.message || ""));
+      showFeedback('error', errorMsg + "\n" + (error.message || ""));
     } finally {
       setSaving(false);
     }
@@ -639,7 +677,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
           <div className="p-4 bg-bg/50 rounded-2xl border border-border/50 space-y-4">
             <label className="text-[10px] font-bold uppercase tracking-widest text-primary block text-center">Estatísticas (Manual)</label>
             
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
                 <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Gols</label>
                 <input 
@@ -656,6 +694,15 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
                   value={assistencias}
                   onChange={(e) => setAssistencias(Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Contra</label>
+                <input 
+                  type="number"
+                  className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
+                  value={contra}
+                  onChange={(e) => setContra(Number(e.target.value))}
                 />
               </div>
             </div>

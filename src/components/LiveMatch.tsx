@@ -123,6 +123,7 @@ export default function LiveMatch() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+
   const currentTeamA = players.filter(p => liveGame?.teamA_ids.includes(p.id));
   const currentTeamB = players.filter(p => liveGame?.teamB_ids.includes(p.id));
 
@@ -526,246 +527,195 @@ export default function LiveMatch() {
           )}
         </section>
       ) : (
-        <>
-          {/* Placar e Timer */}
-          <div className="bg-card rounded-[2.5rem] p-8 border border-border text-center space-y-6 relative overflow-hidden">
-            <div className="flex items-center justify-center space-x-6">
+        <div className="bg-bg min-h-screen -mt-6 -mx-4 pb-20 relative overflow-hidden">
+          {/* Header */}
+          <div className="border-b border-white/5 p-6 mb-2">
+            <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <Timer size={16} className="text-primary" />
-                <span className={`font-mono text-2xl font-bold tabular-nums ${liveGame.isPaused ? 'text-gray-500' : 'text-primary'}`}>
-                  {formatTime(elapsed)}
-                </span>
-                {isAdmin && (
-                  <div className="flex items-center space-x-2 ml-2">
-                    {liveGame.isPaused ? (
-                      <button 
-                        onClick={() => resumeGame(activeMatch.id, liveGame.id)}
-                        className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary/30 transition-all"
-                        title="Retomar Tempo"
-                      >
-                        <Play size={14} fill="currentColor" />
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => pauseGame(activeMatch.id, liveGame.id)}
-                        className="p-2 bg-yellow-500/20 text-yellow-500 rounded-xl hover:bg-yellow-500/30 transition-all font-bold"
-                        title="Pausar Tempo"
-                      >
-                        <Pause size={14} fill="currentColor" />
-                      </button>
-                    )}
-                  </div>
-                )}
+                <div className="w-10 h-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
+                  <Timer size={20} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black uppercase italic tracking-tighter text-white">Ao Vivo</h2>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">{activeMatch.name}</p>
+                </div>
               </div>
-              {isAdmin && (
-                <div className="flex items-center space-x-2">
-                  <button 
-                    onClick={() => setEditingGame(liveGame)}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-white/5 border border-border/50 rounded-xl text-[9px] font-black uppercase text-white/50 hover:text-white hover:bg-white/10 transition-all"
-                  >
-                    <Edit2 size={12} />
-                    <span>Editar Escalação</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      confirmAction('Deseja excluir esta partida permanentemente?', () => {
-                        console.log("[LiveMatch] Chamando deleteGame (Live) para liveGame.id:", liveGame.id);
-                        deleteGame(activeMatch.id, liveGame.id);
-                      });
-                    }}
-                    className="p-3 bg-red-500/10 border border-red-500/50 rounded-2xl text-red-500 hover:bg-red-500 hover:text-white transition-all"
-                    title="Excluir partida"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+              <button 
+                onClick={() => setEditingGame(liveGame)}
+                className="p-3 bg-white/5 border border-white/5 rounded-2xl text-gray-400 hover:text-white transition-all"
+              >
+                <Edit2 size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Time & Score Dashboard */}
+          <div className="p-6">
+            <div className="bg-card rounded-[2.5rem] border border-border p-8 relative overflow-hidden shadow-2xl">
+              <div className="flex items-center justify-between relative z-10">
+                {/* Score Team A */}
+                <div className="flex flex-col items-center flex-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Time A</span>
+                  <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreA}</div>
+                </div>
+
+                {/* Central Timer & Controls */}
+                <div className="flex flex-col items-center space-y-4 px-4 border-x border-white/5">
+                  <div className={`font-mono text-4xl font-black tabular-nums transition-all ${liveGame.isPaused ? 'text-gray-600 scale-90' : 'text-primary drop-shadow-[0_0_10px_rgba(0,255,187,0.3)]'}`}>
+                    {formatTime(elapsed)}
+                  </div>
+                  
+                  {isAdmin && (
+                    <div className="flex items-center space-x-3">
+                      {liveGame.isPaused ? (
+                        <button 
+                          onClick={() => resumeGame(activeMatch.id, liveGame.id)}
+                          className="flex flex-col items-center group"
+                        >
+                          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-bg shadow-lg shadow-primary/30 group-active:scale-95 transition-all">
+                            <Play size={18} fill="currentColor" />
+                          </div>
+                          <span className="text-[8px] font-black uppercase mt-1.5 text-primary tracking-widest">Retomar</span>
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => pauseGame(activeMatch.id, liveGame.id)}
+                          className="flex flex-col items-center group"
+                        >
+                          <div className="w-10 h-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary group-active:scale-95 transition-all">
+                            <Pause size={18} fill="currentColor" />
+                          </div>
+                          <span className="text-[8px] font-black uppercase mt-1.5 text-primary tracking-widest">Pausar</span>
+                        </button>
+                      )}
+
+                      <button 
+                        onClick={() => confirmAction(`Deseja finalizar a partida atual com o placar de ${liveGame.scoreA} x ${liveGame.scoreB}?`, handleFinish)}
+                        className="flex flex-col items-center group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-500 group-active:scale-95 transition-all">
+                          <Square size={18} fill="currentColor" />
+                        </div>
+                        <span className="text-[8px] font-black uppercase mt-1.5 text-red-500 tracking-widest">Finalizar</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Score Team B */}
+                <div className="flex flex-col items-center flex-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Time B</span>
+                  <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreB}</div>
+                </div>
+              </div>
+
+              {finishStatus.text && finishStatus.type !== 'idle' && (
+                <div className={`mt-4 p-3 rounded-2xl text-center font-bold text-xs relative z-10 animate-in slide-in-from-top-2 ${
+                  finishStatus.type === 'error' ? 'bg-danger/20 text-danger border border-danger/30' :
+                  finishStatus.type === 'success' ? 'bg-success/20 text-success border border-success/30' :
+                  'bg-primary/20 text-primary border border-primary/30'
+                }`}>
+                  {finishStatus.text}
                 </div>
               )}
+
+              {/* Background Glow */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
             </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex-1 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">TIME A</span>
-                <div className="text-6xl font-black italic mb-4">{liveGame.scoreA}</div>
-                
-                <div className="space-y-1 mb-6 min-h-[40px]">
-                  {liveGame.events.map((e, i) => ({ e, i })).filter(({e}) => e.teamSide === 'A').map(({ e, i }) => (
-                    <div key={i} className="group text-[10px] font-bold text-white uppercase tracking-tighter flex items-center justify-center space-x-1">
-                      <div className="flex items-center space-x-1">
-                        <Circle size={10} className="fill-primary text-primary shrink-0" />
-                        <span className="truncate max-w-[150px]">
-                          {(() => {
-                            const p = players.find(p => p.id === e.playerId);
-                            return p?.displayName || p?.name;
-                          })()}
-                          {e.type === 'OWN_GOAL' && <span className="text-danger ml-1">(GC)</span>}
-                        </span>
-                      </div>
-                      {isAdmin && (
-                        <div className="hidden group-hover:flex items-center space-x-1 ml-2">
-                          <button 
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setShowEventModal({ type: 'GOAL', teamSide: 'A', editIdx: i });
-                              setSelectedScorer(e.playerId);
-                              setSelectedAssister(e.assistId || '');
-                              setIsOwnGoal(e.type === 'OWN_GOAL');
-                            }}
-                            className="p-2.5 hover:text-primary bg-primary/10 rounded-xl transition-colors"
-                            title="Editar gol"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              handleRemoveEvent(i);
-                            }}
-                            className="p-2.5 hover:text-danger bg-danger/10 rounded-xl transition-colors"
-                            title="Excluir gol"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {isAdmin && (
-                  <button 
-                    onClick={() => {
-                      setShowEventModal({ type: 'GOAL', teamSide: 'A' });
-                      setIsOwnGoal(false);
-                    }}
-                    className="group flex flex-col items-center justify-center w-16 h-16 rounded-full bg-primary/10 border border-primary/20 hover:bg-primary hover:text-bg transition-all active:scale-95 shadow-lg shadow-primary/10"
-                    title="Registrar Gol Time A"
-                  >
-                    <Plus size={24} className="group-hover:scale-110 transition-transform" />
-                    <span className="text-[8px] font-black uppercase mt-0.5">GOL</span>
-                  </button>
-                )}
-              </div>
-              
-              <div className="px-4 flex flex-col items-center">
-                <div className="text-2xl font-black text-border/50 italic mb-10">VS</div>
-              </div>
-
-              <div className="flex-1 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">TIME B</span>
-                <div className="text-6xl font-black italic mb-4">{liveGame.scoreB}</div>
-
-                <div className="space-y-1 mb-6 min-h-[40px]">
-                  {liveGame.events.map((e, i) => ({ e, i })).filter(({e}) => e.teamSide === 'B').map(({ e, i }) => (
-                    <div key={i} className="group text-[10px] font-bold text-white uppercase tracking-tighter flex items-center justify-center space-x-1">
-                      <div className="flex items-center space-x-1">
-                        <Circle size={10} className="fill-primary text-primary shrink-0" />
-                        <span className="truncate max-w-[150px]">
-                          {(() => {
-                            const p = players.find(p => p.id === e.playerId);
-                            return p?.displayName || p?.name;
-                          })()}
-                          {e.type === 'OWN_GOAL' && <span className="text-danger ml-1">(GC)</span>}
-                        </span>
-                      </div>
-                      {isAdmin && (
-                        <div className="hidden group-hover:flex items-center space-x-1 ml-2">
-                          <button 
-                             onClick={(ev) => {
-                              ev.stopPropagation();
-                              setShowEventModal({ type: 'GOAL', teamSide: 'B', editIdx: i });
-                              setSelectedScorer(e.playerId);
-                              setSelectedAssister(e.assistId || '');
-                              setIsOwnGoal(e.type === 'OWN_GOAL');
-                            }}
-                            className="p-2.5 hover:text-primary bg-primary/10 rounded-xl transition-colors"
-                            title="Editar gol"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              handleRemoveEvent(i);
-                            }}
-                            className="p-2.5 hover:text-danger bg-danger/10 rounded-xl transition-colors"
-                            title="Excluir gol"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {isAdmin && (
-                  <button 
-                    onClick={() => {
-                      setShowEventModal({ type: 'GOAL', teamSide: 'B' });
-                      setIsOwnGoal(false);
-                    }}
-                    className="group flex flex-col items-center justify-center w-16 h-16 rounded-full bg-white/5 border border-border/50 hover:bg-white hover:text-bg transition-all active:scale-95 shadow-lg"
-                    title="Registrar Gol Time B"
-                  >
-                    <Plus size={24} className="group-hover:scale-110 transition-transform" />
-                    <span className="text-[8px] font-black uppercase mt-0.5">GOL</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Finish Button inside Card */}
-            {isAdmin && (
-              <div className="pt-4 border-t border-border/50">
-                {finishStatus.text && (
-                  <div className={`mb-4 p-3 rounded-xl text-center font-bold text-[10px] ${
-                    finishStatus.type === 'error' ? 'bg-danger/20 text-danger border border-danger/30' :
-                    finishStatus.type === 'success' ? 'bg-success/20 text-success border border-success/30' :
-                    'bg-primary/20 text-primary border border-primary/30'
-                  }`}>
-                    {finishStatus.text}
-                  </div>
-                )}
-
-                {showConfirmFinish ? (
-                  <div className="flex space-x-2 animate-in slide-in-from-bottom-2">
-                    <button 
-                      onClick={() => setShowConfirmFinish(false)}
-                      disabled={isFinishing}
-                      className="flex-1 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase disabled:opacity-50"
-                    >
-                      Cancelar
-                    </button>
-                    <button 
-                      onClick={handleFinish}
-                      disabled={isFinishing}
-                      className="flex-1 py-3 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-red-600 disabled:opacity-50 shadow-lg shadow-red-500/20"
-                    >
-                      {isFinishing ? 'Salvando...' : 'Confirmar'}
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setShowConfirmFinish(true)}
-                    disabled={isFinishing}
-                    className="w-full py-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center space-x-2 hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
-                  >
-                    <Square size={14} fill="currentColor" />
-                    <span>Finalizar Partida</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {!isAdmin && (
-               <div className="pt-4 border-t border-border/50">
-                <div className="w-full py-4 bg-primary/5 border border-primary/10 text-gray-500 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center space-x-2">
-                  <span>Acompanhando Partida</span>
-                </div>
-              </div>
-            )}
           </div>
-        </>
+
+          {/* Parallel Player Rows */}
+          <div className="px-6 space-y-4">
+            <div className="flex items-center justify-between px-6 py-1">
+              <div className="flex items-center space-x-2">
+                <Trophy size={14} className="text-primary" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white italic">Time A</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white italic">Time B</span>
+                <Trophy size={14} className="text-blue-400" />
+              </div>
+            </div>
+
+            <div className="space-y-px border border-white/5 rounded-[2rem] overflow-hidden">
+               {(() => {
+                 const maxRows = Math.max(teamAPlayers.length, teamBPlayers.length);
+                 return Array.from({ length: maxRows }).map((_, idx) => {
+                   const playerA = teamAPlayers[idx];
+                   const playerB = teamBPlayers[idx];
+
+                   return (
+                     <div key={idx} className="flex h-16 divide-x divide-white/5 border-b border-white/5 last:border-b-0">
+                       {/* Player A slot */}
+                       <div className="flex-1">
+                         {playerA ? (
+                           <button 
+                             onClick={() => {
+                               if (isAdmin) {
+                                 setShowEventModal({ type: 'GOAL', teamSide: 'A' });
+                                 setSelectedScorer(playerA.id);
+                                 setIsOwnGoal(false);
+                                 setSelectedAssister('');
+                               }
+                             }}
+                             disabled={!isAdmin}
+                             className="w-full h-full flex items-center px-4 space-x-3 hover:bg-white/5 transition-all text-left group"
+                           >
+                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden border border-white/10 group-active:scale-90 transition-transform">
+                                {playerA.photoUrl ? (
+                                  <img src={playerA.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={16} className="text-gray-500" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerA.displayName || playerA.name}</p>
+                                <p className="text-[8px] font-bold text-primary/70 uppercase tracking-widest mt-0.5">{playerA.position}</p>
+                              </div>
+                           </button>
+                         ) : (
+                           <div className="w-full h-full" />
+                         )}
+                       </div>
+
+                       {/* Player B slot */}
+                       <div className="flex-1">
+                         {playerB ? (
+                           <button 
+                             onClick={() => {
+                               if (isAdmin) {
+                                 setShowEventModal({ type: 'GOAL', teamSide: 'B' });
+                                 setSelectedScorer(playerB.id);
+                                 setIsOwnGoal(false);
+                                 setSelectedAssister('');
+                               }
+                             }}
+                             disabled={!isAdmin}
+                             className="w-full h-full flex items-center px-4 space-x-3 hover:bg-white/5 transition-all text-right justify-end group"
+                           >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerB.displayName || playerB.name}</p>
+                                <p className="text-[8px] font-bold text-blue-400/70 uppercase tracking-widest mt-0.5">{playerB.position}</p>
+                              </div>
+                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden border border-white/10 group-active:scale-90 transition-transform">
+                                {playerB.photoUrl ? (
+                                  <img src={playerB.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={16} className="text-gray-500" />
+                                )}
+                              </div>
+                           </button>
+                         ) : (
+                           <div className="w-full h-full" />
+                         )}
+                       </div>
+                     </div>
+                   );
+                 });
+                })()}
+             </div>
+          </div>
+        </div>
       )}
 
       {/* TODAS AS ESCALAÇÕES (Always visible at bottom) */}
@@ -1006,9 +956,9 @@ export default function LiveMatch() {
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-2xl bg-card border border-border rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-2xl bg-card border border-border rounded-[2.5rem] shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-8 pb-4">
               <div>
                 <h3 className="text-xl font-bold uppercase italic tracking-tighter">
                   {editingGame ? 'Editar Escalação' : `Editar Equipe ${editingTeamIndex! + 1}`}
@@ -1027,7 +977,8 @@ export default function LiveMatch() {
               </button>
             </div>
 
-            <div className={`grid ${editingGame ? 'grid-cols-2' : 'grid-cols-1'} gap-8`}>
+            <div className="flex-1 overflow-y-auto p-8 pt-0 custom-scrollbar">
+              <div className="grid grid-cols-1 gap-8">
               {editingGame ? (
                 <>
                     <div className="space-y-4">
@@ -1102,8 +1053,8 @@ export default function LiveMatch() {
               ) : (
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-primary tracking-widest">Membros da Equipe</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {sortPlayersByPosition(activeMatch.teams![String(editingTeamIndex!)] || []).map((id) => (
+                  <div className="grid grid-cols-1 gap-2">
+                    {sortPlayersByPosition(activeMatch.teams?.[String(editingTeamIndex!)] || []).map((id) => (
                       <div key={id} className="flex items-center gap-2 group">
                         <button 
                           onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', replacedPlayerId: id, mode: 'SWAP' })}
@@ -1134,98 +1085,141 @@ export default function LiveMatch() {
                 </div>
               )}
             </div>
-
-            {swapTarget && (
-              <div className="p-4 bg-primary/5 border border-primary/20 rounded-3xl space-y-4 animate-in slide-in-from-bottom-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-primary text-center">
-                  {swapTarget.mode === 'ADD' ? 'Selecionar jogador para Adicionar' : 'Selecionar substituto'}
-                </p>
-                <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                  {(() => {
-                    const confirmedIds = activeMatch.confirmedIds || [];
-                    const confirmed = players.filter(p => confirmedIds.includes(p.id));
-                    const lateArrivals = players.filter(p => !confirmedIds.includes(p.id));
-                    
-                    const filterAlreadyInTeam = (list: Player[]) => list.filter(p => {
-                      if (editingGame) {
-                        return !editingGame.teamA_ids.includes(p.id) && !editingGame.teamB_ids.includes(p.id);
-                      }
-                      return !activeMatch.teams![String(editingTeamIndex!)].includes(p.id);
-                    });
-
-                    const availableConfirmed = filterAlreadyInTeam(confirmed);
-                    const availableLate = filterAlreadyInTeam(lateArrivals);
-
-                    // Separate confirmed into "In other teams" and "On bench"
-                    const inOtherTeams: Player[] = [];
-                    const onBench: Player[] = [];
-
-                    availableConfirmed.forEach(p => {
-                      let found = false;
-                      Object.values(activeMatch.teams!).forEach((teamIds: any) => {
-                        if (teamIds.includes(p.id)) found = true;
-                      });
-                      if (found) inOtherTeams.push(p);
-                      else onBench.push(p);
-                    });
-
-                    const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE') => {
-                      const borderColor = type === 'LATE' ? 'border-warning/30' : 'border-primary/30';
-                      const textColor = type === 'LATE' ? 'text-warning' : 'text-primary';
-                      const tag = type === 'OTHER' ? 'Equipe' : type === 'BENCH' ? 'Banco' : 'Atrasado';
-
-                      return (
-                        <button 
-                          key={p.id}
-                          onClick={() => handleSelectPlayerForTeam(p.id)}
-                          className={`p-3 bg-white/5 border ${borderColor} rounded-xl text-[10px] font-bold uppercase text-left hover:border-primary transition-all group relative overflow-hidden`}
-                        >
-                          <div className="relative z-10 flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="truncate text-white">{p.displayName || p.name}</span>
-                              <span className={`text-[8px] opacity-70 ${textColor}`}>{tag} • {p.position}</span>
-                            </div>
-                            <Plus size={12} className="text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                          <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
-                      );
-                    };
-
-                    return (
-                      <div className="space-y-6">
-                        {onBench.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-primary/70">No Banco</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                              {onBench.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'BENCH'))}
-                            </div>
-                          </div>
-                        )}
-
-                        {inOtherTeams.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-400/70">Em Outras Equipes</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                              {inOtherTeams.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'OTHER'))}
-                            </div>
-                          </div>
-                        )}
-
-                        {availableLate.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-warning/70">Chegaram Atrasados</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                              {availableLate.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'LATE'))}
-                            </div>
-                          </div>
-                        )}
+          </div>
+            
+            {/* Modal de Seleção de Jogador (Window Overlay) */}
+            <AnimatePresence>
+              {swapTarget && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-md"
+                >
+                  <motion.div 
+                    initial={{ y: 20 }}
+                    animate={{ y: 0 }}
+                    className="w-full max-w-lg bg-card border border-primary/20 rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between p-8 pb-4">
+                      <div>
+                        <h4 className="text-lg font-black uppercase italic tracking-tighter text-primary">
+                          {swapTarget.mode === 'ADD' ? 'Adicionar Jogador' : 'Substituir Jogador'}
+                        </h4>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                          Escolha um atleta disponível abaixo
+                        </p>
                       </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
+                      <button 
+                        onClick={() => setSwapTarget(null)} 
+                        className="p-3 bg-white/5 rounded-2xl text-gray-400 hover:text-white"
+                      >
+                        <Plus className="rotate-45" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-8 pt-0 custom-scrollbar">
+                      <div className="space-y-6 pb-6">
+                        {(() => {
+                          const confirmedIds = activeMatch.confirmedIds || [];
+                          const activePlayers = players.filter(p => p.active);
+                          const confirmed = activePlayers.filter(p => confirmedIds.includes(p.id));
+                          const lateArrivals = activePlayers.filter(p => !confirmedIds.includes(p.id));
+                          
+                          const filterAlreadyInTeam = (list: Player[]) => list.filter(p => {
+                            if (editingGame) {
+                              return !editingGame.teamA_ids.includes(p.id) && !editingGame.teamB_ids.includes(p.id);
+                            }
+                            const teamKey = String(editingTeamIndex);
+                            const currentTeam = activeMatch.teams?.[teamKey] || [];
+                            return !currentTeam.includes(p.id);
+                          });
+
+                          const availableConfirmed = filterAlreadyInTeam(confirmed);
+                          const availableLate = filterAlreadyInTeam(lateArrivals);
+
+                          // Separate confirmed into "In other teams" and "On bench"
+                          const inOtherTeams: Player[] = [];
+                          const onBench: Player[] = [];
+
+                          availableConfirmed.forEach(p => {
+                            let found = false;
+                            const teams = activeMatch.teams || {};
+                            Object.values(teams).forEach((teamIds: any) => {
+                              if (Array.isArray(teamIds) && teamIds.includes(p.id)) found = true;
+                            });
+                            if (found) inOtherTeams.push(p);
+                            else onBench.push(p);
+                          });
+
+                          const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE') => {
+                            const borderColor = type === 'LATE' ? 'border-warning/30' : 'border-primary/30';
+                            const textColor = type === 'LATE' ? 'text-warning' : 'text-primary';
+                            const tag = type === 'OTHER' ? 'Equipe' : type === 'BENCH' ? 'Banco' : 'Atrasado';
+
+                            return (
+                              <button 
+                                key={p.id}
+                                onClick={() => handleSelectPlayerForTeam(p.id)}
+                                className={`p-4 bg-white/5 border ${borderColor} rounded-2xl text-[10px] font-bold uppercase text-left hover:border-primary transition-all group relative overflow-hidden`}
+                              >
+                                <div className="relative z-10 flex items-center justify-between">
+                                  <div className="flex flex-col">
+                                    <span className="truncate text-white text-xs">{p.displayName || p.name}</span>
+                                    <span className={`text-[8px] opacity-70 mt-0.5 ${textColor}`}>{tag} • {p.position}</span>
+                                  </div>
+                                  <Plus size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </button>
+                            );
+                          };
+
+                          return (
+                            <div className="space-y-8">
+                              {onBench.length === 0 && inOtherTeams.length === 0 && availableLate.length === 0 && (
+                                <div className="py-12 text-center space-y-2">
+                                  <User size={48} className="mx-auto text-gray-600 opacity-20" />
+                                  <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Nenhum jogador disponível</p>
+                                  <p className="text-xs text-gray-600">Verifique se há atletas ativos cadastrados.</p>
+                                </div>
+                              )}
+
+                              {onBench.length > 0 && (
+                                <div className="space-y-3">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">Disponíveis no Banco</h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {onBench.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'BENCH'))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {inOtherTeams.length > 0 && (
+                                <div className="space-y-3">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-400/70 ml-1">Vindos de Outras Equipes</h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {inOtherTeams.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'OTHER'))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {availableLate.length > 0 && (
+                                <div className="space-y-3">
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-warning/70 ml-1">Atletas que chegaram agora</h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {availableLate.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name)).map(p => renderPlayerButton(p, 'LATE'))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
       )}
@@ -1267,7 +1261,6 @@ export default function LiveMatch() {
                 <button
                   onClick={() => {
                     setIsOwnGoal(!isOwnGoal);
-                    setSelectedScorer('');
                     setSelectedAssister('');
                   }}
                   className={`w-12 h-6 rounded-full transition-all relative ${isOwnGoal ? 'bg-danger' : 'bg-gray-700'}`}
@@ -1278,7 +1271,7 @@ export default function LiveMatch() {
 
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">
-                  {isOwnGoal ? 'Quem marcou contra? (Time Oposto)' : 'Quem marcou?'} *
+                  {isOwnGoal ? 'Quem marcou contra?' : 'Quem marcou?'} *
                 </label>
                 <select 
                   value={selectedScorer}
@@ -1287,9 +1280,7 @@ export default function LiveMatch() {
                 >
                   <option value="" className="bg-bg">Selecione o jogador</option>
                   {(() => {
-                    const availablePlayers = isOwnGoal 
-                      ? (showEventModal.teamSide === 'A' ? teamBPlayers : teamAPlayers)
-                      : (showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers);
+                    const availablePlayers = showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers;
                     
                     if (availablePlayers.length === 0) {
                       return <option disabled className="bg-bg italic">Nenhum jogador encontrado neste time</option>;

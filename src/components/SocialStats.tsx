@@ -80,13 +80,16 @@ export default function SocialStats() {
           // Aggregating goals/assists
           game.events?.forEach(event => {
             if (event.type === 'GOAL') {
-              if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+              if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
               stats[event.playerId].gols++;
               
               if (event.assistId) {
-                if (!stats[event.assistId]) stats[event.assistId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+                if (!stats[event.assistId]) stats[event.assistId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
                 stats[event.assistId].assistencias++;
               }
+            } else if (event.type === 'OWN_GOAL') {
+              if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
+              stats[event.playerId].contra++;
             }
           });
 
@@ -98,16 +101,16 @@ export default function SocialStats() {
 
           if (isDraw) {
             allPlayers.forEach(id => {
-              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
               stats[id].empates++;
             });
           } else {
             winners.forEach(id => {
-              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
               stats[id].vitorias++;
             });
             losers.forEach(id => {
-              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+              if (!stats[id]) stats[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
               stats[id].derrotas++;
             });
           }
@@ -123,7 +126,7 @@ export default function SocialStats() {
 
   const getSortedRanking = () => {
     let list = players.map(p => {
-      const stats = period === 'geral' ? p : (periodStats[p.id] || { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 });
+      const stats = period === 'geral' ? p : (periodStats[p.id] || { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 });
       return { 
         ...p, 
         ...stats,

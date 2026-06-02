@@ -472,11 +472,42 @@ export function usePelada() {
   const updatePlayer = async (playerId: string, data: Partial<Player>) => {
     try {
       console.log(`[usePelada] Iniciando updateDoc para jogador ${playerId}...`);
+      
+      // Clean undefined properties
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
+
       await updateDoc(doc(db, 'players', playerId), {
-        ...data,
+        ...cleanData,
         updatedAt: serverTimestamp()
       });
-      console.log(`[usePelada] Jogador ${playerId} atualizado!`);
+      console.log(`[usePelada] Jogador ${playerId} atualizado na coleção players!`);
+
+      // Sincronizar dados com a coleção 'user_roles' caso as informações fundamentais tenham sido alteradas
+      try {
+        const userRolesRef = doc(db, 'user_roles', playerId);
+        const userRolesSnap = await getDoc(userRolesRef);
+        if (userRolesSnap.exists()) {
+          const roleData: any = {};
+          if (data.displayName !== undefined) {
+            roleData.displayName = data.displayName;
+            roleData.name = data.displayName;
+          }
+          if (data.fullName !== undefined) {
+            roleData.fullName = data.fullName;
+          }
+          if (data.email !== undefined) {
+            roleData.email = data.email;
+          }
+          if (Object.keys(roleData).length > 0) {
+            await updateDoc(userRolesRef, roleData);
+            console.log(`[usePelada] Tabela de acesso 'user_roles' sincronizada para o jogador ${playerId}`);
+          }
+        }
+      } catch (roleErr) {
+        console.log(`[usePelada] Erro não-fatal ao sincronizar com user_roles para jogador ${playerId}:`, roleErr);
+      }
     } catch (error: any) {
       console.error(`[usePelada] ERRO ao atualizar jogador ${playerId}:`, error);
       throw error;
@@ -561,9 +592,16 @@ export function usePelada() {
           }
         }
       } else if (event.type === 'OWN_GOAL') {
-        if (event.teamSide === 'A') newScoreA++;
-        else newScoreB++;
-        // Own goals don't count for personal "gols" stat currently (can be added if needed)
+        // Own goal scores for the opposite team side
+        if (event.teamSide === 'A') newScoreB++;
+        else newScoreA++;
+        
+        // Own goal deducts personal player points via -1 in ranking, we save this stat in 'contra'
+        const pRef = doc(db, 'players', event.playerId);
+        const pSnap = await getDoc(pRef);
+        if (pSnap.exists()) {
+          await updateDoc(pRef, { contra: (pSnap.data().contra || 0) + 1 });
+        }
       }
 
       await updateDoc(gameRef, { 
@@ -600,6 +638,12 @@ export function usePelada() {
             await updateDoc(oldARef, { assistencias: Math.max(0, (oldASnap.data().assistencias || 0) - 1) });
           }
         }
+      } else if (oldEvent.type === 'OWN_GOAL') {
+        const oldPRef = doc(db, 'players', oldEvent.playerId);
+        const oldPSnap = await getDoc(oldPRef);
+        if (oldPSnap.exists()) {
+          await updateDoc(oldPRef, { contra: Math.max(0, (oldPSnap.data().contra || 0) - 1) });
+        }
       }
 
       // 2. Apply new stats
@@ -623,13 +667,36 @@ export function usePelada() {
             await updateDoc(newARef, { assistencias: (newASnap.data().assistencias || 0) + 1 });
           }
         }
+      } else if (updatedEvent.type === 'OWN_GOAL') {
+        const newPRef = doc(db, 'players', updatedEvent.playerId);
+        const newPSnap = await getDoc(newPRef);
+        if (newPSnap.exists()) {
+          await updateDoc(newPRef, { contra: (newPSnap.data().contra || 0) + 1 });
+        }
       }
 
       // 3. Update event in array
       const newEvents = [...data.events];
       newEvents[eventIdx] = updatedEvent;
       
-      await updateDoc(gameRef, { events: newEvents });
+      // Recalculate whole score from the live events so they are always in sync!
+      let newScoreA = 0;
+      let newScoreB = 0;
+      newEvents.forEach(ev => {
+        if (ev.type === 'GOAL') {
+          if (ev.teamSide === 'A') newScoreA++;
+          else newScoreB++;
+        } else if (ev.type === 'OWN_GOAL') {
+          if (ev.teamSide === 'A') newScoreB++;
+          else newScoreA++;
+        }
+      });
+      
+      await updateDoc(gameRef, { 
+        events: newEvents,
+        scoreA: newScoreA,
+        scoreB: newScoreB
+      });
     } catch (error) {
       console.error("Erro ao atualizar evento:", error);
     }
@@ -659,13 +726,24 @@ export function usePelada() {
             await updateDoc(oldARef, { assistencias: Math.max(0, (oldASnap.data().assistencias || 0) - 1) });
           }
         }
+      } else if (oldEvent.type === 'OWN_GOAL') {
+        const oldPRef = doc(db, 'players', oldEvent.playerId);
+        const oldPSnap = await getDoc(oldPRef);
+        if (oldPSnap.exists()) {
+          await updateDoc(oldPRef, { contra: Math.max(0, (oldPSnap.data().contra || 0) - 1) });
+        }
       }
 
       // 2. Adjust score
       let newScoreA = data.scoreA;
       let newScoreB = data.scoreB;
-      if (oldEvent.teamSide === 'A') newScoreA = Math.max(0, newScoreA - 1);
-      else newScoreB = Math.max(0, newScoreB - 1);
+      if (oldEvent.type === 'GOAL') {
+        if (oldEvent.teamSide === 'A') newScoreA = Math.max(0, newScoreA - 1);
+        else newScoreB = Math.max(0, newScoreB - 1);
+      } else if (oldEvent.type === 'OWN_GOAL') {
+        if (oldEvent.teamSide === 'A') newScoreB = Math.max(0, newScoreB - 1);
+        else newScoreA = Math.max(0, newScoreA - 1);
+      }
 
       // 3. Update Firestore
       const newEvents = data.events.filter((_, i) => i !== eventIdx);
@@ -758,7 +836,8 @@ export function usePelada() {
           assistencias: 0,
           vitorias: 0,
           derrotas: 0,
-          empates: 0
+          empates: 0,
+          contra: 0
         });
         opCount++;
         if (opCount >= 450) {
@@ -772,9 +851,9 @@ export function usePelada() {
       }
 
       // 2. Map to accumulate new stats
-      const statsMap: Record<string, { gols: number, assistencias: number, vitorias: number, derrotas: number, empates: number }> = {};
+      const statsMap: Record<string, { gols: number, assistencias: number, vitorias: number, derrotas: number, empates: number, contra: number }> = {};
       const ensurePlayer = (id: string) => {
-        if (!statsMap[id]) statsMap[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0 };
+        if (!statsMap[id]) statsMap[id] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
       };
 
       // 3. Get all matches
@@ -807,6 +886,12 @@ export function usePelada() {
                   if (aId && typeof aId === 'string') {
                     ensurePlayer(aId);
                     statsMap[aId].assistencias++;
+                  }
+                } else if (ev.type === 'OWN_GOAL') {
+                  const pId = ev.playerId;
+                  if (pId && typeof pId === 'string') {
+                    ensurePlayer(pId);
+                    statsMap[pId].contra++;
                   }
                 }
               });
@@ -895,6 +980,9 @@ export function usePelada() {
                 const aRef = doc(db, 'players', event.assistId);
                 batch.update(aRef, { assistencias: increment(-1) });
               }
+            } else if (event.type === 'OWN_GOAL') {
+              const pRef = doc(db, 'players', event.playerId);
+              batch.update(pRef, { contra: increment(-1) });
             }
           }
         }

@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               isApproved = true;
             } else {
               assignedRole = 'USER';
-              isApproved = false;
+              isApproved = firstUserCheck.data()?.autoApprove === true;
             }
             
             await setDoc(roleRef, { 
@@ -120,8 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const playerRef = doc(db, 'players', u.uid);
           const playerDoc = await getDoc(playerRef);
           
-          if (!playerDoc.exists() && isApproved) {
-            // Only create player doc if approved
+          if (!playerDoc.exists()) {
             // Se não existir pelo UID, tenta buscar por email (caso um admin tenha criado manualmente)
             const { getDocs, query, collection, where, deleteDoc } = await import('firebase/firestore');
             const emailQuery = query(collection(db, 'players'), where('email', '==', u.email));
@@ -264,13 +263,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await updateProfile(userCredential.user, { displayName: n });
       setName(n); // For onAuthStateChanged
     } catch (error: any) {
-      console.error("Register Error:", error);
       if (error.code === 'auth/email-already-in-use') {
-        setAuthError("Este e-mail já está sendo usado.");
-      } else if (error.code === 'auth/weak-password') {
-        setAuthError("A senha deve ter pelo menos 6 caracteres.");
+        try {
+          // Se o e-mail já está em uso, tenta realizar o login automático.
+          // Isso é comum se o teste rodar novamente com os mesmos dados.
+          await signInWithEmailAndPassword(auth, e, p);
+          console.log("[AuthProvider] Automatic login for already-in-use email succeeded.");
+          return;
+        } catch (loginError: any) {
+          console.error("Register Error (Email in use):", error);
+          setAuthError("Este e-mail já está sendo usado.");
+        }
       } else {
-        setAuthError("Erro ao criar conta. Tente novamente mais tarde.");
+        console.error("Register Error:", error);
+        if (error.code === 'auth/weak-password') {
+          setAuthError("A senha deve ter pelo menos 6 caracteres.");
+        } else {
+          setAuthError("Erro ao criar conta. Tente novamente mais tarde.");
+        }
       }
     } finally {
       setAuthLoading(false);

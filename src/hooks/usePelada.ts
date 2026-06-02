@@ -41,6 +41,7 @@ export interface Player {
   derrotas: number;
   empates: number;
   number?: number;
+  email?: string;
 }
 
 export interface GameEvent {
@@ -96,6 +97,7 @@ export interface GroupSettings {
   dailyFee: number;
   maxPlayers: number;
   maxSquadSize: number;
+  autoApprove?: boolean;
 }
 
 import { useAuth } from '../components/AuthProvider';
@@ -113,7 +115,8 @@ export function usePelada() {
     monthlyFeeDueDay: 10,
     dailyFee: 15,
     maxPlayers: 20,
-    maxSquadSize: 30
+    maxSquadSize: 30,
+    autoApprove: false
   });
   const [loading, setLoading] = useState(true);
 
@@ -457,7 +460,7 @@ export function usePelada() {
   };
 
   const addPlayer = async (data: Omit<Player, 'id' | 'gols' | 'assistencias' | 'vitorias' | 'derrotas' | 'empates' | 'active' | 'balance'>) => {
-    await addDoc(collection(db, 'players'), {
+    const docRef = await addDoc(collection(db, 'players'), {
       gols: 0,
       assistencias: 0,
       vitorias: 0,
@@ -467,6 +470,21 @@ export function usePelada() {
       active: true,
       balance: 0
     });
+
+    try {
+      await setDoc(doc(db, 'user_roles', docRef.id), {
+        role: 'USER',
+        approved: true,
+        email: data.email || '',
+        name: data.displayName || data.name || 'Jogador',
+        displayName: data.displayName || data.name || 'Jogador',
+        fullName: data.fullName || data.name || 'Jogador',
+        createdAt: new Date().toISOString()
+      });
+      console.log(`[usePelada] Auto-created user_roles for manual player: ${docRef.id}`);
+    } catch (err: any) {
+      console.error("[usePelada] Custom user_roles creation error during addPlayer:", err);
+    }
   };
 
   const updatePlayer = async (playerId: string, data: Partial<Player>) => {
@@ -515,7 +533,43 @@ export function usePelada() {
   };
 
   const deletePlayer = async (playerId: string) => {
-    await deleteDoc(doc(db, 'players', playerId));
+    try {
+      console.log(`[usePelada] Iniciando exclusão do jogador: ${playerId}`);
+      
+      // 1. Obter informações do jogador antes de deletar para pegar o e-mail
+      const playerRef = doc(db, 'players', playerId);
+      const playerSnap = await getDoc(playerRef);
+      let playerEmail: string | undefined = undefined;
+      if (playerSnap.exists()) {
+        playerEmail = playerSnap.data()?.email;
+      }
+
+      // 2. Deletar o jogador da coleção 'players'
+      await deleteDoc(playerRef);
+      console.log(`[usePelada] Jogador ${playerId} removido de 'players'`);
+
+      // 3. Deletar documento correspondente em 'user_roles' por ID (se houver)
+      const userRolesRef = doc(db, 'user_roles', playerId);
+      const userRolesSnap = await getDoc(userRolesRef);
+      if (userRolesSnap.exists()) {
+        await deleteDoc(userRolesRef);
+        console.log(`[usePelada] Documento da lista de acessos correspondente ao ID ${playerId} removido.`);
+      }
+
+      // 4. Deletar quaisquer outros documentos correspondentes em 'user_roles' pelo e-mail do jogador (tratando maiúsculo/minúsculo)
+      if (playerEmail) {
+        const { getDocs, query, collection, where } = await import('firebase/firestore');
+        const q = query(collection(db, 'user_roles'), where('email', '==', playerEmail.trim().toLowerCase()));
+        const qSnap = await getDocs(q);
+        for (const docSingle of qSnap.docs) {
+          await deleteDoc(docSingle.ref);
+          console.log(`[usePelada] Documento da lista de acessos correspondente ao e-mail ${playerEmail} removido.`);
+        }
+      }
+    } catch (error: any) {
+      console.error("[usePelada] Erro ao excluir jogador e seu acesso associado:", error);
+      throw error;
+    }
   };
 
   const setMatchTeams = async (matchId: string, teamsIds: string[][], extraData?: { playersPerTeam?: number; gameRules?: string }) => {

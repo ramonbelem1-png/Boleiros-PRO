@@ -9,7 +9,7 @@ import {
   TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, updateDoc, onSnapshot, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import ManagementModals from './ManagementModals';
 import { compressImageToBase64 } from '../lib/imageUtils';
@@ -37,6 +37,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [selectedCropImage, setSelectedCropImage] = useState<string | null>(null);
   const [currentCroppingPlayerId, setCurrentCroppingPlayerId] = useState<string | null>(null);
   const [playerToDelete, setPlayerToDelete] = useState<string | null>(null);
+  const [userRoleToDelete, setUserRoleToDelete] = useState<any | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'level' | 'name' | 'position'>('name');
   const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
@@ -607,39 +608,95 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
 
           <div className="space-y-3">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-gray-500 uppercase px-2">Lista de Acessos</h3>
-            {userRoles.map(ur => (
-              <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
-                    {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{ur.displayName || ur.name || 'Usuário'}</h4>
-                    <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
-                  </div>
+            
+            {/* Automatic Approval Toggle */}
+            <div className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${settings.autoApprove ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                  {settings.autoApprove ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button 
-                    onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
-                    disabled={ur.id === user?.uid}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
-                      ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
-                    } disabled:opacity-50`}
-                  >
-                    {ur.approved ? 'OK' : 'PEND'}
-                  </button>
-                  <select 
-                    value={ur.role || 'USER'}
-                    onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
-                    disabled={ur.id === user?.uid}
-                    className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
-                  >
-                    <option value="ADMIN">ADM</option>
-                    <option value="USER">USER</option>
-                  </select>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-sm text-gray-200 leading-tight">Aprovação Automática</h4>
+                  <p className="text-[10px] text-gray-500 truncate">
+                    {settings.autoApprove 
+                      ? 'Novos cadastros são aprovados automaticamente' 
+                      : 'Novos cadastros necessitam de aprovação manual'
+                    }
+                  </p>
                 </div>
               </div>
-            ))}
+              <button
+                onClick={async () => {
+                  try {
+                    const newAutoApprove = !settings.autoApprove;
+                    await updateDoc(doc(db, 'groups', 'main'), { autoApprove: newAutoApprove });
+                    // Inform the user
+                    showFeedback('success', `Aprovação automática ${newAutoApprove ? 'ativada' : 'desativada'}!`);
+                  } catch (e) {
+                    console.error(e);
+                    showFeedback('error', 'Erro ao alterar configuração.');
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  settings.autoApprove ? 'bg-primary' : 'bg-gray-700'
+                }`}
+                role="switch"
+                aria-checked={settings.autoApprove}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                    settings.autoApprove ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {userRoles.map(ur => {
+              const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
+              const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
+              return (
+                <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                      {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{displayNameForMatches}</h4>
+                      <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button 
+                      onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
+                      disabled={ur.id === user?.uid}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
+                        ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
+                      } disabled:opacity-50`}
+                    >
+                      {ur.approved ? 'OK' : 'PEND'}
+                    </button>
+                    <select 
+                      value={ur.role || 'USER'}
+                      onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
+                      disabled={ur.id === user?.uid}
+                      className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
+                    >
+                      <option value="ADMIN">ADM</option>
+                      <option value="USER">USER</option>
+                    </select>
+                    <button
+                      onClick={() => setUserRoleToDelete(ur)}
+                      disabled={ur.id === user?.uid}
+                      className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
+                      title="Excluir Acesso e Jogador"
+                    >
+                      <Trash2 size={12} fill="currentColor" className="fill-transparent" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -805,6 +862,68 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           </div>
         </div>
       )}
+
+      {/* Delete User Role & Player Confirmation Modal */}
+      {userRoleToDelete && (() => {
+        const matchedPlayer = players.find(p => p.id === userRoleToDelete.id) || (userRoleToDelete.email ? players.find(p => p.email?.trim().toLowerCase() === userRoleToDelete.email.trim().toLowerCase()) : null);
+        const nameToShow = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (userRoleToDelete.displayName || userRoleToDelete.name || userRoleToDelete.email || 'Usuário');
+        
+        return (
+          <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[150] flex items-center justify-center p-6">
+            <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl">
+              <div className="w-16 h-16 rounded-full bg-danger/10 text-danger flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-black text-center mb-2 text-white">Excluir Acesso?</h3>
+              <p className="text-gray-500 text-center text-sm mb-6">
+                Deseja excluir permanentemente o cadastro de acesso de <strong>{nameToShow}</strong>?
+              </p>
+              <p className="text-xs text-danger/80 text-center font-semibold mb-8">
+                Isso também excluirá o jogador correspondente do elenco de forma definitiva. Esta ação não poderá ser desfeita.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setUserRoleToDelete(null)}
+                  className="flex-1 py-4 bg-white/5 border border-border text-gray-400 font-bold uppercase tracking-widest text-[10px] rounded-2xl"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={async () => {
+                    try {
+                      const ur = userRoleToDelete;
+                      setUserRoleToDelete(null); // Close immediately first
+
+                      // 1. Excluir da coleção user_roles
+                      await deleteDoc(doc(db, 'user_roles', ur.id));
+
+                      // 2. Excluir o jogador do elenco correspondente (por ID ou por email se os IDs diferirem)
+                      const playerById = players.find(p => p.id === ur.id);
+                      if (playerById) {
+                        await deletePlayer(playerById.id);
+                      } else if (ur.email) {
+                        const trimmedEmail = ur.email.trim().toLowerCase();
+                        const playerByEmail = players.find(p => p.email?.trim().toLowerCase() === trimmedEmail);
+                        if (playerByEmail) {
+                          await deletePlayer(playerByEmail.id);
+                        }
+                      }
+
+                      showFeedback('success', `Acesso e jogador correspondente de "${nameToShow}" excluídos com sucesso!`);
+                    } catch (err: any) {
+                      console.error(err);
+                      showFeedback('error', 'Erro ao excluir acesso do usuário.');
+                    }
+                  }}
+                  className="flex-1 py-4 bg-danger text-white font-black uppercase tracking-widest text-[10px] rounded-2xl shadow-lg shadow-danger/20"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

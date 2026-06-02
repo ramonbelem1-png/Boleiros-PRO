@@ -465,7 +465,8 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       email: email.trim().toLowerCase(),
       position: pos,
       secondaryPosition: secondaryPos || "NENHUMA",
-      photoUrl: photoUrl || ""
+      photoUrl: photoUrl || "",
+      number: number !== '' ? Number(number) : null
     };
 
     // Todos os campos para administradores
@@ -478,8 +479,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       vitorias: Number(vitorias) || 0,
       derrotas: Number(derrotas) || 0,
       empates: Number(empates) || 0,
-      contra: Number(contra) || 0,
-      number: number !== '' ? Number(number) : null
+      contra: Number(contra) || 0
     };
 
     try {
@@ -573,7 +573,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             </p>
           </div>
         )}
-        {isAdmin && (
+        {(isAdmin || (initialData && initialData.id === user?.uid)) && (
           <div className="pt-2 w-full max-w-[120px] relative">
              <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa</label>
              <input 

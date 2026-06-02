@@ -63,7 +63,7 @@ service cloud.firestore {
       allow create: if isApproved() && isValidPlayer(incoming());
       allow update: if isAdmin() || (
         isOwner(playerId) && isApproved() && isValidPlayer(incoming()) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active', 'number'])
       );
       allow delete: if isAdmin();
     }

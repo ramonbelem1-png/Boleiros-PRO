@@ -626,7 +626,7 @@ function PresenceSection({
                       <div className="flex items-center gap-1 text-[10px] text-primary/90 font-bold tracking-wider mt-1 sm:mt-0">
                         <span className="hidden sm:inline text-gray-600 font-normal">•</span>
                         <Clock size={11} className="text-primary/70 shrink-0" />
-                        <span>Confirmado em {formatConfirmDate(confirmations[player.id])}</span>
+                        <span>{formatConfirmDate(confirmations[player.id])}</span>
                       </div>
                     )}
                   </div>

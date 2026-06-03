@@ -335,45 +335,51 @@ export default function MatchList() {
                   </AnimatePresence>
                 </div>
 
-                <div className="pt-8 pb-4">
-                  <label className="text-gray-500 text-[10px] font-bold uppercase tracking-wider px-2 block mb-3 text-center">Minha Presença</label>
-                  <div className="flex gap-4">
-                    {(() => {
-                      const isConfirmed = user && nextMatch.confirmedIds.includes(user.uid);
-                      const isWaiting = user && nextMatch.waitingIds.includes(user.uid);
-                      const isAbsent = user && nextMatch.absentIds.some(a => a.userId === user.uid);
+                {/* Spacer para os botões flutuantes */}
+                <div className="h-28"></div>
 
-                      return (
-                        <>
-                          <button 
-                            onClick={() => handleConfirm(nextMatch.id)}
-                            disabled={submitting}
-                            className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
-                              isConfirmed || isWaiting 
-                                ? 'bg-primary text-bg' 
-                                : 'bg-white/5 border border-border text-gray-400 hover:border-primary/50'
-                            }`}
-                          >
-                            {submitting ? <Loader2 className="animate-spin" size={24} /> : <Check size={24} strokeWidth={4} />}
-                            <span className="tracking-widest">
-                              {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : 'DENTRO'}
-                            </span>
-                          </button>
-                          <button 
-                            onClick={() => setShowReasonModal(nextMatch.id)}
-                            disabled={submitting}
-                            className={`flex-1 h-16 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
-                              isAbsent 
-                                ? 'bg-danger text-white' 
-                                : 'bg-card border border-border text-gray-500 hover:border-danger/50'
-                            }`}
-                          >
-                            <X size={24} strokeWidth={4} />
-                            <span className="tracking-widest">FORA</span>
-                          </button>
-                        </>
-                      );
-                    })()}
+                {/* Botões de Ação Flutuantes */}
+                <div className="fixed bottom-[96px] left-0 right-0 px-4 z-40 pointer-events-none">
+                  <div className="flex flex-col max-w-[400px] mx-auto pointer-events-auto bg-bg/95 backdrop-blur-md p-3 pb-4 border border-white/5 rounded-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                    <label className="text-gray-500 text-[10px] font-bold uppercase tracking-wider px-2 block mb-2 text-center">Minha Presença</label>
+                    <div className="flex gap-4">
+                      {(() => {
+                        const isConfirmed = user && nextMatch.confirmedIds.includes(user.uid);
+                        const isWaiting = user && nextMatch.waitingIds.includes(user.uid);
+                        const isAbsent = user && nextMatch.absentIds.some(a => a.userId === user.uid);
+
+                        return (
+                          <>
+                            <button 
+                              onClick={() => handleConfirm(nextMatch.id)}
+                              disabled={submitting}
+                              className={`flex-1 h-14 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
+                                isConfirmed || isWaiting 
+                                  ? 'bg-primary text-bg shadow-[0_0_20px_rgba(0,194,113,0.3)]' 
+                                  : 'bg-white/5 border border-white/5 text-gray-400 hover:border-primary/50'
+                              }`}
+                            >
+                              {submitting ? <Loader2 className="animate-spin" size={24} /> : <Check size={24} strokeWidth={4} />}
+                              <span className="tracking-widest text-sm">
+                                {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : 'DENTRO'}
+                              </span>
+                            </button>
+                            <button 
+                              onClick={() => setShowReasonModal(nextMatch.id)}
+                              disabled={submitting}
+                              className={`flex-1 h-14 font-black rounded-3xl flex items-center justify-center space-x-2 active:scale-95 transition-all ${
+                                isAbsent 
+                                  ? 'bg-danger text-white shadow-[0_0_20px_rgba(239,68,68,0.3)]' 
+                                  : 'bg-white/5 border border-white/5 text-gray-500 hover:border-danger/50'
+                              }`}
+                            >
+                              <X size={24} strokeWidth={4} />
+                              <span className="tracking-widest text-sm">FORA</span>
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
 

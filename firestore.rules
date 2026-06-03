@@ -74,7 +74,7 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update: if isAdmin() || (
         isApproved() && 
-        incoming().diff(existing()).affectedKeys().hasOnly(['confirmedIds', 'absentIds', 'waitingIds'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['confirmedIds', 'absentIds', 'waitingIds', 'confirmations'])
       );
       allow delete: if isAdmin();
       

@@ -78,6 +78,7 @@ export interface Match {
   teams?: Record<string, string[]>; // Map of team index to player UIDs
   playersPerTeam?: number;
   gameRules?: string;
+  confirmations?: Record<string, string>; // playerId -> ISO timestamp
 }
 
 export interface Transaction {
@@ -320,10 +321,17 @@ export function usePelada() {
       newWaiting.push(playerId);
     }
 
+    const currentConfirmations = match.confirmations || {};
+    const newConfirmations = {
+      ...currentConfirmations,
+      [playerId]: new Date().toISOString()
+    };
+
     try {
       await updateDoc(doc(db, 'matches', matchId), {
         confirmedIds: newConfirmed,
         waitingIds: newWaiting,
+        confirmations: newConfirmations,
         absentIds: match.absentIds.filter(a => a.userId !== playerId)
       });
     } catch (error) {
@@ -340,17 +348,31 @@ export function usePelada() {
     let newWaiting = match.waitingIds.filter(id => id !== playerId);
     const newAbsent = [...match.absentIds, { userId: playerId, reason }];
 
-    // Se alguém sair dos confirmados e houver fila, o primeiro da fila entra
+    const currentConfirmations = match.confirmations || {};
+    const newConfirmations = { ...currentConfirmations };
+    delete newConfirmations[playerId];
+
+    // Se alguém sair dos confirmados e houver fila, o primeiro da fila (por ordem de confirmação) entra
     if (match.confirmedIds.includes(playerId) && newWaiting.length > 0) {
+      // Ordenar fila pelo menor tempo de confirmação (quem confirmou primeiro)
+      newWaiting.sort((a, b) => {
+        const timeA = newConfirmations[a] ? new Date(newConfirmations[a]).getTime() : Infinity;
+        const timeB = newConfirmations[b] ? new Date(newConfirmations[b]).getTime() : Infinity;
+        return timeA - timeB;
+      });
+
       const nextInLine = newWaiting.shift();
-      if (nextInLine) newConfirmed.push(nextInLine);
+      if (nextInLine) {
+        newConfirmed.push(nextInLine);
+      }
     }
 
     try {
       await updateDoc(doc(db, 'matches', matchId), {
         absentIds: newAbsent,
         confirmedIds: newConfirmed,
-        waitingIds: newWaiting
+        waitingIds: newWaiting,
+        confirmations: newConfirmations
       });
     } catch (error) {
       handleFirestoreError(error, 'update', `matches/${matchId}`);
@@ -363,7 +385,8 @@ export function usePelada() {
       status: 'OPEN',
       confirmedIds: [],
       absentIds: [],
-      waitingIds: []
+      waitingIds: [],
+      confirmations: {}
     });
   };
 

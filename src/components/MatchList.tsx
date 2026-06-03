@@ -95,9 +95,19 @@ export default function MatchList() {
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando lista...</div>;
 
   const filterPlayersByName = (pIds: string[]) => {
-    return players
-      .filter(p => pIds.includes(p.id))
+    const list = pIds
+      .map(id => players.find(p => p.id === id))
+      .filter((p): p is Player => !!p)
       .filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase()));
+    
+    if (nextMatch && nextMatch.confirmations) {
+      list.sort((a, b) => {
+        const timeA = nextMatch.confirmations?.[a.id] ? new Date(nextMatch.confirmations[a.id]).getTime() : Infinity;
+        const timeB = nextMatch.confirmations?.[b.id] ? new Date(nextMatch.confirmations[b.id]).getTime() : Infinity;
+        return timeA - timeB;
+      });
+    }
+    return list;
   };
 
   return (
@@ -210,6 +220,7 @@ export default function MatchList() {
                           color="text-primary" 
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
+                          confirmations={nextMatch.confirmations}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -247,6 +258,7 @@ export default function MatchList() {
                           color="text-yellow-400" 
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
+                          confirmations={nextMatch.confirmations}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista de espera?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -543,7 +555,37 @@ export default function MatchList() {
   );
 }
 
-function PresenceSection({ title, players, color, emptyMsg, isAdmin, onRemove }: { title?: string, players: Player[], color: string, emptyMsg: string, isAdmin?: boolean, onRemove?: (id: string) => void }) {
+function formatConfirmDate(isoString?: string) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month} às ${hours}:${minutes}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function PresenceSection({ 
+  title, 
+  players, 
+  color, 
+  emptyMsg, 
+  isAdmin, 
+  onRemove,
+  confirmations 
+}: { 
+  title?: string, 
+  players: Player[], 
+  color: string, 
+  emptyMsg: string, 
+  isAdmin?: boolean, 
+  onRemove?: (id: string) => void,
+  confirmations?: Record<string, string>
+}) {
   return (
     <div className="space-y-3">
       {title && (
@@ -578,7 +620,14 @@ function PresenceSection({ title, players, color, emptyMsg, isAdmin, onRemove }:
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</span>
+                    {confirmations && confirmations[player.id] && (
+                      <span className="text-[9px] text-primary/80 font-semibold tracking-widest truncate">
+                        <span className="hidden sm:inline">•</span> {formatConfirmDate(confirmations[player.id])}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center space-x-3 shrink-0">

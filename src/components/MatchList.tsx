@@ -620,12 +620,14 @@ function PresenceSection({
                 </div>
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:gap-2 mt-0.5">
+                    <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">{player.position}</span>
                     {confirmations && confirmations[player.id] && (
-                      <span className="text-[9px] text-primary/80 font-semibold tracking-widest truncate">
-                        <span className="hidden sm:inline">•</span> {formatConfirmDate(confirmations[player.id])}
-                      </span>
+                      <div className="flex items-center gap-1 text-[10px] text-primary/90 font-bold tracking-wider mt-1 sm:mt-0">
+                        <span className="hidden sm:inline text-gray-600 font-normal">•</span>
+                        <Clock size={11} className="text-primary/70 shrink-0" />
+                        <span>Confirmado em {formatConfirmDate(confirmations[player.id])}</span>
+                      </div>
                     )}
                   </div>
                 </div>

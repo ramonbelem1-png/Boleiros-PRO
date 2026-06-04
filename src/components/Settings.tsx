@@ -6,7 +6,7 @@ import {
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
   History, Calendar, Users, Camera, Upload, Loader2, Trash2, Edit, 
   CheckCircle2, AlertCircle, ArrowUpDown, Filter, Star, Type, Target,
-  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight
+  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight, Hash
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
 import { collection, addDoc, updateDoc, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
@@ -43,7 +43,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [playerToDelete, setPlayerToDelete] = useState<string | null>(null);
   const [userRoleToDelete, setUserRoleToDelete] = useState<any | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'level' | 'name' | 'position'>('name');
+  const [searchAccess, setSearchAccess] = useState('');
+  const [sortBy, setSortBy] = useState<'number' | 'level' | 'name' | 'position'>('number');
   const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'loading', msg: string } | null>(null);
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
@@ -53,6 +54,12 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   );
 
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {
+    if (sortBy === 'number') {
+      const numA = a.number !== undefined && a.number !== null ? a.number : Infinity;
+      const numB = b.number !== undefined && b.number !== null ? b.number : Infinity;
+      if (numA !== numB) return numA - numB;
+      return (a.displayName || a.name).localeCompare(b.displayName || b.name);
+    }
     if (sortBy === 'level') return (b.level || 0) - (a.level || 0);
     if (sortBy === 'position') return (a.position || '').localeCompare(b.position || '');
     return (a.displayName || a.name).localeCompare(b.displayName || b.name);
@@ -412,7 +419,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               <ArrowUpDown size={12} />
               <span className="text-[9px] font-bold uppercase tracking-widest">Ordem:</span>
             </div>
-            {(['name', 'level', 'position'] as const).map((s) => (
+            {(['number', 'name', 'level', 'position'] as const).map((s) => (
               <button 
                 key={s}
                 onClick={() => setSortBy(s)}
@@ -420,8 +427,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   sortBy === s ? 'bg-primary border-primary text-bg' : 'bg-card border-border text-gray-500'
                 }`}
               >
-                {s === 'name' ? <Type size={12} /> : s === 'level' ? <Star size={12} /> : <Target size={12} />}
-                <span>{s === 'name' ? 'Nome' : s === 'level' ? 'Nível' : 'Posição'}</span>
+                {s === 'number' ? <Hash size={12} /> : s === 'name' ? <Type size={12} /> : s === 'level' ? <Star size={12} /> : <Target size={12} />}
+                <span>{s === 'number' ? 'Camisa' : s === 'name' ? 'Nome' : s === 'level' ? 'Nível' : 'Posição'}</span>
               </button>
             ))}
           </div>
@@ -613,6 +620,17 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           <div className="space-y-3">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-gray-500 uppercase px-2">Lista de Acessos</h3>
             
+            {/* Campo de Busca na Lista de Acessos */}
+            <div className="relative px-2">
+              <input 
+                value={searchAccess}
+                onChange={(e) => setSearchAccess(e.target.value)}
+                className="w-full bg-card border border-border/50 rounded-2xl py-3 px-4 pl-10 text-xs focus:border-primary outline-none text-white transition-all placeholder:text-gray-500 font-semibold shadow-inner"
+                placeholder="Buscar acesso por nome ou e-mail..."
+              />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+            </div>
+
             {/* Automatic Approval Toggle */}
             <div className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
@@ -656,51 +674,73 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               </button>
             </div>
 
-            {userRoles.map(ur => {
-              const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
-              const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
-              return (
-                <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
-                      {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
+            {(() => {
+              const filteredUserRoles = userRoles.filter(ur => {
+                const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
+                const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
+                
+                const searchNormalized = removeAccents(searchAccess).toLowerCase();
+                
+                const nameMatches = removeAccents(displayNameForMatches).toLowerCase().includes(searchNormalized);
+                const emailMatches = ur.email ? removeAccents(ur.email).toLowerCase().includes(searchNormalized) : false;
+                
+                return nameMatches || emailMatches;
+              });
+
+              if (filteredUserRoles.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-500 text-xs font-semibold uppercase tracking-widest animate-pulse">
+                    Nenhum acesso correspondente
+                  </div>
+                );
+              }
+
+              return filteredUserRoles.map(ur => {
+                const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
+                const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
+                return (
+                  <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                        {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{displayNameForMatches}</h4>
+                        <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{displayNameForMatches}</h4>
-                      <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button 
+                        onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
+                        disabled={ur.id === user?.uid}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
+                          ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
+                        } disabled:opacity-50`}
+                      >
+                        {ur.approved ? 'OK' : 'PEND'}
+                      </button>
+                      <select 
+                        value={ur.role || 'USER'}
+                        onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
+                        disabled={ur.id === user?.uid}
+                        className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
+                      >
+                        <option value="ADMIN">ADM</option>
+                        <option value="USER">USER</option>
+                      </select>
+                      <button
+                        onClick={() => setUserRoleToDelete(ur)}
+                        disabled={ur.id === user?.uid}
+                        className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
+                        title="Excluir Acesso e Jogador"
+                      >
+                        <Trash2 size={12} fill="currentColor" className="fill-transparent" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button 
-                      onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
-                      disabled={ur.id === user?.uid}
-                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
-                        ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
-                      } disabled:opacity-50`}
-                    >
-                      {ur.approved ? 'OK' : 'PEND'}
-                    </button>
-                    <select 
-                      value={ur.role || 'USER'}
-                      onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
-                      disabled={ur.id === user?.uid}
-                      className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
-                    >
-                      <option value="ADMIN">ADM</option>
-                      <option value="USER">USER</option>
-                    </select>
-                    <button
-                      onClick={() => setUserRoleToDelete(ur)}
-                      disabled={ur.id === user?.uid}
-                      className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
-                      title="Excluir Acesso e Jogador"
-                    >
-                      <Trash2 size={12} fill="currentColor" className="fill-transparent" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
       )}

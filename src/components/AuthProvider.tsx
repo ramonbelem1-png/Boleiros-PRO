@@ -173,7 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 assistencias: 0,
                 vitorias: 0,
                 derrotas: 0,
-                empates: 0
+                empates: 0,
+                profileCompleted: false
               });
             }
           }

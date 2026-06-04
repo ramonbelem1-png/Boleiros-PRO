@@ -42,6 +42,7 @@ export interface Player {
   empates: number;
   number?: number;
   email?: string;
+  profileCompleted?: boolean;
 }
 
 export interface GameEvent {

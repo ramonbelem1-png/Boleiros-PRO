@@ -707,7 +707,9 @@ function PresenceSection({
                           } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
                           title={player.type === 'MENSALISTA' ? 'Mensalista' : isPaid ? 'Pago' : 'Marcar como Pago'}
                         >
-                          <Check size={14} strokeWidth={4} className={isPaid ? 'opacity-100' : 'opacity-0'} />
+                          <span className={`font-mono text-[9px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
+                            PG
+                          </span>
                         </button>
                       );
                     })()}

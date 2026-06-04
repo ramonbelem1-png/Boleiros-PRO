@@ -33,6 +33,7 @@
         "type": { "type": "string", "enum": ["MENSALISTA", "DIARISTA"] },
         "balance": { "type": "number", "description": "Saldo financeiro do jogador" },
         "active": { "type": "boolean" },
+        "profileCompleted": { "type": "boolean", "description": "Indica se o jogador preencheu o perfil ao primeiro acesso" },
         "stats": { 
           "type": "object",
           "properties": {

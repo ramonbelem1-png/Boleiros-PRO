@@ -12,7 +12,8 @@ import {
   Settings as SettingsIcon,
   Plus,
   Activity,
-  LogOut
+  LogOut,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from './lib/firebase';
@@ -29,11 +30,12 @@ import ManagementModals from './components/ManagementModals';
 import { usePelada, Player, Transaction } from './hooks/usePelada';
 import Logo from './components/Logo';
 import { useAuth } from './components/AuthProvider';
+import OnboardingProfile from './components/OnboardingProfile';
 
 type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 
 export default function App() {
-  const { players, updatePlayer, settings, updateSettings } = usePelada();
+  const { players, updatePlayer, settings, updateSettings, loading } = usePelada();
   const { role, user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);
@@ -41,6 +43,9 @@ export default function App() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+
+  const currentUserPlayer = user ? players.find(p => p.id === user.uid) : null;
+  const isProfileIncomplete = user && currentUserPlayer && currentUserPlayer.profileCompleted === false;
 
   useEffect(() => {
     // Test connection to Firestore
@@ -57,8 +62,32 @@ export default function App() {
         }
       }
     };
-    if (user) testConnection();
-  }, [user]);
+    if (user && !isProfileIncomplete) testConnection();
+  }, [user, isProfileIncomplete]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="animate-spin text-primary" size={32} />
+          <span className="text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando dados...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isProfileIncomplete) {
+    return (
+      <OnboardingProfile 
+        user={user} 
+        players={players} 
+        onSave={async (data) => {
+          await updatePlayer(user.uid, data);
+        }} 
+        onLogout={logout} 
+      />
+    );
+  }
 
   const handlePlusClick = () => {
     if (!isAdmin) return;

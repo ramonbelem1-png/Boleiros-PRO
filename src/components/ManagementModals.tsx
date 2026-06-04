@@ -440,8 +440,13 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
   };
 
   const handleSave = async () => {
-    if(!fullName || !displayName) {
+    if(!fullName.trim() || !displayName.trim()) {
       showFeedback('error', "Por favor, preencha os campos de nome.");
+      return;
+    }
+
+    if (number === '' || number === null || number === undefined) {
+      showFeedback('error', "O número da camisa é obrigatório.");
       return;
     }
 
@@ -466,7 +471,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
       position: pos,
       secondaryPosition: secondaryPos || "NENHUMA",
       photoUrl: photoUrl || "",
-      number: number !== '' ? Number(number) : null
+      number: Number(number)
     };
 
     // Todos os campos para administradores
@@ -575,7 +580,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         )}
         {(isAdmin || (initialData && initialData.id === user?.uid)) && (
           <div className="pt-2 w-full max-w-[120px] relative">
-             <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa</label>
+             <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa <span className="text-primary">*</span></label>
              <input 
               type="number"
               className={`w-full bg-bg border ${numberIsTaken ? 'border-danger' : 'border-border'} rounded-xl p-2.5 text-center text-primary font-black outline-none focus:border-primary text-sm`}
@@ -597,7 +602,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
 
       <div className="grid grid-cols-1 gap-4">
         <div className="space-y-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nome Completo</label>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nome Completo <span className="text-primary">*</span></label>
           <input 
             className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 focus:border-primary outline-none text-sm"
             placeholder="Ex: João Silva de Souza"
@@ -608,7 +613,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
 
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Nome de Exibição (Partidas)</label>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Nome de Exibição (Partidas) <span className="text-primary">*</span></label>
             <span className={`text-[10px] font-bold ${displayName.length >= 20 ? 'text-danger' : 'text-gray-600'}`}>
               {displayName.length}/20
             </span>

@@ -60,10 +60,10 @@ service cloud.firestore {
 
     match /players/{playerId} {
       allow read: if isApproved() || isOwner(playerId);
-      allow create: if isApproved() && isValidPlayer(incoming());
+      allow create: if (isApproved() || isOwner(playerId)) && isValidPlayer(incoming());
       allow update: if isAdmin() || (
-        isOwner(playerId) && isApproved() && isValidPlayer(incoming()) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active', 'number'])
+        isOwner(playerId) && isValidPlayer(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active', 'number', 'profileCompleted'])
       );
       allow delete: if isAdmin();
     }

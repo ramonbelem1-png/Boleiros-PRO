@@ -135,6 +135,10 @@ export default function MatchList() {
     return list;
   };
 
+  const confirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds.includes(p.id)) : [];
+  const confirmedCount = confirmedPlayers.length;
+  const paidConfirmedCount = nextMatch ? confirmedPlayers.filter(p => p.type === 'MENSALISTA' || (nextMatch.paidIds && nextMatch.paidIds.includes(p.id))).length : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex bg-card p-1 rounded-2xl border border-border/50 max-w-[240px] mb-2 mx-auto">
@@ -242,7 +246,7 @@ export default function MatchList() {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Confirmados</span>
-                    <div className="text-2xl font-bold text-primary">{players.filter(p => nextMatch.confirmedIds.includes(p.id)).length} / {settings.maxPlayers}</div>
+                    <div className="text-2xl font-bold text-primary">{confirmedCount} / {settings.maxPlayers}</div>
                   </div>
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Ausentes</span>
@@ -271,7 +275,7 @@ export default function MatchList() {
                   >
                     <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase flex items-center">
                       DENTRO 
-                      <span className="ml-2 text-gray-500">{players.filter(p => nextMatch.confirmedIds.includes(p.id)).length}</span>
+                      <span className="ml-2 text-gray-500">{confirmedCount} ({paidConfirmedCount} PG)</span>
                     </h3>
                     <div className="text-gray-600 group-hover:text-primary transition-colors">
                       {collapsedSections.confirmed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}

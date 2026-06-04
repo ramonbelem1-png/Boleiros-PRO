@@ -79,6 +79,7 @@ export interface Match {
   playersPerTeam?: number;
   gameRules?: string;
   confirmations?: Record<string, string>; // playerId -> ISO timestamp
+  paidIds?: string[];
 }
 
 export interface Transaction {
@@ -134,7 +135,28 @@ export function usePelada() {
     });
 
     const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('date', 'desc'), limit(50)), (snap) => {
-      setMatches(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match)));
+      const fetchedMatches = snap.docs.map(doc => {
+        const data = doc.data() as Omit<Match, 'id'>;
+        let cleanAbsentIds = data.absentIds || [];
+        if (cleanAbsentIds.length > 1) {
+          const seen = new Set<string>();
+          const uniqueAbsents: { userId: string; reason: string }[] = [];
+          for (let i = cleanAbsentIds.length - 1; i >= 0; i--) {
+            const current = cleanAbsentIds[i];
+            if (current && current.userId && !seen.has(current.userId)) {
+              seen.add(current.userId);
+              uniqueAbsents.unshift(current);
+            }
+          }
+          cleanAbsentIds = uniqueAbsents;
+        }
+        return {
+          id: doc.id,
+          ...data,
+          absentIds: cleanAbsentIds
+        } as Match;
+      });
+      setMatches(fetchedMatches);
     }, (error) => {
       handleFirestoreError(error, 'get', 'matches');
     });
@@ -386,7 +408,7 @@ export function usePelada() {
 
     let newConfirmed = match.confirmedIds.filter(id => id !== playerId);
     let newWaiting = match.waitingIds.filter(id => id !== playerId);
-    const newAbsent = [...match.absentIds, { userId: playerId, reason }];
+    const newAbsent = [...match.absentIds.filter(a => a.userId !== playerId), { userId: playerId, reason }];
 
     const currentConfirmations = match.confirmations || {};
     const newConfirmations = { ...currentConfirmations };

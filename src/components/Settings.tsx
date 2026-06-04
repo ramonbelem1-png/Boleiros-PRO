@@ -15,6 +15,10 @@ import ManagementModals from './ManagementModals';
 import { compressImageToBase64 } from '../lib/imageUtils';
 import ImageCropper from './ImageCropper';
 
+const removeAccents = (str: string): string => {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
 interface SettingsProps {
   onAddPlayer: () => void;
   onEditPlayer: (player: Player) => void;
@@ -45,7 +49,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
 
   const filteredPlayers = players.filter(p => 
-    (p.displayName || p.name).toLowerCase().includes(searchTerm.toLowerCase())
+    removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchTerm).toLowerCase())
   );
 
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {

@@ -5,9 +5,13 @@ import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, Ch
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
 
+const removeAccents = (str: string): string => {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
 export default function MatchList() {
   const { user, role } = useAuth();
-  const { players, matches, settings, confirmPresence, markAbsent, loading } = usePelada();
+  const { players, matches, settings, confirmPresence, markAbsent, loading, updateMatch } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   
   const now = new Date();
@@ -92,13 +96,34 @@ export default function MatchList() {
     }
   };
 
+  const handleTogglePaid = async (matchId: string, playerId: string) => {
+    if (!nextMatch) return;
+    const currentPaidIds = nextMatch.paidIds || [];
+    let newPaidIds: string[];
+    if (currentPaidIds.includes(playerId)) {
+      newPaidIds = currentPaidIds.filter(id => id !== playerId);
+    } else {
+      newPaidIds = [...currentPaidIds, playerId];
+    }
+    setSubmitting(true);
+    try {
+      await updateMatch(matchId, { paidIds: newPaidIds });
+      showFeedback('success', 'Status de pagamento atualizado!');
+    } catch (e) {
+      showFeedback('error', 'Erro ao atualizar pagamento.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando lista...</div>;
 
   const filterPlayersByName = (pIds: string[]) => {
+    const searchLower = removeAccents(searchPlayer).toLowerCase();
     const list = pIds
       .map(id => players.find(p => p.id === id))
       .filter((p): p is Player => !!p)
-      .filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase()));
+      .filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(searchLower));
     
     if (nextMatch && nextMatch.confirmations) {
       list.sort((a, b) => {
@@ -266,6 +291,9 @@ export default function MatchList() {
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
                           confirmations={nextMatch.confirmations}
+                          showPaidToggle={true}
+                          paidIds={nextMatch.paidIds}
+                          onTogglePaid={(pid) => handleTogglePaid(nextMatch.id, pid)}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -343,7 +371,8 @@ export default function MatchList() {
                             nextMatch.absentIds
                               .filter(a => {
                                 const p = players.find(player => player.id === a.userId);
-                                return (p?.displayName || p?.name || '').toLowerCase().includes(searchPlayer.toLowerCase());
+                                const name = p?.displayName || p?.name || '';
+                                return removeAccents(name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase());
                               })
                               .map((a, idx) => {
                                 const p = players.find(player => player.id === a.userId);
@@ -358,7 +387,14 @@ export default function MatchList() {
                                         )}
                                       </div>
                                       <div className="min-w-0">
-                                        <h4 className="font-semibold text-sm truncate">{p?.displayName || p?.name}</h4>
+                                        <h4 className="font-semibold text-sm flex items-center gap-1.5 truncate">
+                                          {p?.number !== undefined && p?.number !== null && (
+                                            <span className="font-mono text-[9px] font-black text-primary bg-primary/10 border border-primary/20 px-1 py-0.5 rounded leading-none shrink-0">
+                                              Nº {p.number}
+                                            </span>
+                                          )}
+                                          <span className="truncate">{p?.displayName || p?.name}</span>
+                                        </h4>
                                         <p className="text-[10px] text-danger italic truncate">"{a.reason}"</p>
                                       </div>
                                     </div>
@@ -384,13 +420,13 @@ export default function MatchList() {
                   <div className="flex items-center justify-between px-2">
                     <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase">Elenco do Grupo</h3>
                     <span className="text-[10px] font-bold text-gray-500">
-                      {players.filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase())).length} ATLETAS
+                      {players.filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase())).length} ATLETAS
                     </span>
                   </div>
                   
                   <div className="space-y-2">
                     {players
-                      .filter(p => (p.displayName || p.name).toLowerCase().includes(searchPlayer.toLowerCase()))
+                      .filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase()))
                       .sort((a,b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
                       .map(player => (
                       <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between shadow-sm">
@@ -403,7 +439,14 @@ export default function MatchList() {
                             )}
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
+                            <h4 className="font-bold text-white text-base leading-tight tracking-tight flex items-center gap-1.5 truncate">
+                              {player.number !== undefined && player.number !== null && (
+                                <span className="font-mono text-[10px] font-black text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded leading-none shrink-0">
+                                  Nº {player.number}
+                                </span>
+                              )}
+                              <span className="truncate">{player.displayName || player.name}</span>
+                            </h4>
                             <div className="flex items-center gap-2">
                               <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</span>
                               {isAdmin && (
@@ -579,7 +622,10 @@ function PresenceSection({
   emptyMsg, 
   isAdmin, 
   onRemove,
-  confirmations 
+  confirmations,
+  showPaidToggle = false,
+  paidIds = [],
+  onTogglePaid
 }: { 
   title?: string, 
   players: Player[], 
@@ -587,7 +633,10 @@ function PresenceSection({
   emptyMsg: string, 
   isAdmin?: boolean, 
   onRemove?: (id: string) => void,
-  confirmations?: Record<string, string>
+  confirmations?: Record<string, string>,
+  showPaidToggle?: boolean,
+  paidIds?: string[],
+  onTogglePaid?: (playerId: string) => void
 }) {
   return (
     <div className="space-y-3">
@@ -622,7 +671,14 @@ function PresenceSection({
                   </div>
                 </div>
                 <div className="min-w-0">
-                  <h4 className="font-bold text-white text-base leading-tight tracking-tight truncate">{player.displayName || player.name}</h4>
+                  <h4 className="font-bold text-white text-base leading-tight tracking-tight flex items-center gap-1.5 truncate">
+                    {player.number !== undefined && player.number !== null && (
+                      <span className="font-mono text-[10px] font-black text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded leading-none shrink-0">
+                        Nº {player.number}
+                      </span>
+                    )}
+                    <span className="truncate">{player.displayName || player.name}</span>
+                  </h4>
                   <div className="flex flex-col sm:flex-row sm:items-start sm:gap-2 mt-0.5">
                     <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">{player.position}</span>
                     {confirmations && confirmations[player.id] && (
@@ -636,12 +692,34 @@ function PresenceSection({
                 </div>
               </div>
               <div className="flex items-center space-x-3 shrink-0">
-                {isAdmin && (
-                  <div className="flex space-x-1">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
-                    ))}
+                {showPaidToggle ? (
+                  <div className="flex items-center">
+                    {(() => {
+                      const isPaid = player.type === 'MENSALISTA' || (paidIds && paidIds.includes(player.id));
+                      return (
+                        <button
+                          disabled={!isAdmin || player.type === 'MENSALISTA'}
+                          onClick={() => onTogglePaid && onTogglePaid(player.id)}
+                          className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${
+                            isPaid
+                              ? 'bg-primary border-primary text-bg shadow-[0_0_8px_rgba(234,179,8,0.25)]'
+                              : 'bg-white/5 border-white/10 text-transparent hover:border-primary/50'
+                          } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
+                          title={player.type === 'MENSALISTA' ? 'Mensalista' : isPaid ? 'Pago' : 'Marcar como Pago'}
+                        >
+                          <Check size={14} strokeWidth={4} className={isPaid ? 'opacity-100' : 'opacity-0'} />
+                        </button>
+                      );
+                    })()}
                   </div>
+                ) : (
+                  isAdmin && (
+                    <div className="hidden sm:flex space-x-1">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
+                      ))}
+                    </div>
+                  )
                 )}
                 {isAdmin && onRemove && (
                   <button 

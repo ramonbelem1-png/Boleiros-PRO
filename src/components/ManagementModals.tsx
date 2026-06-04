@@ -609,15 +609,15 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Nome de Exibição (Partidas)</label>
-            <span className={`text-[10px] font-bold ${displayName.length >= 15 ? 'text-danger' : 'text-gray-600'}`}>
-              {displayName.length}/15
+            <span className={`text-[10px] font-bold ${displayName.length >= 20 ? 'text-danger' : 'text-gray-600'}`}>
+              {displayName.length}/20
             </span>
           </div>
           <input 
             className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 focus:border-primary outline-none text-sm"
             placeholder="Ex: João Silva"
             value={displayName}
-            maxLength={15}
+            maxLength={20}
             onChange={(e) => setDisplayName(e.target.value)}
           />
         </div>

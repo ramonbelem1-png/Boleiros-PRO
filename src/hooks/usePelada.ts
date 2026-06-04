@@ -186,6 +186,46 @@ export function usePelada() {
     });
   }, [matches, isAdmin]);
 
+  // Auto-promote waiting players when spaces open up or maxPlayers limit changes
+  useEffect(() => {
+    if (!user || matches.length === 0 || !settings.maxPlayers) return;
+
+    matches.forEach(async (match) => {
+      if (match.status === 'OPEN' && match.waitingIds && match.waitingIds.length > 0) {
+        const availableSlots = settings.maxPlayers - match.confirmedIds.length;
+        if (availableSlots > 0) {
+          console.log(`[Auto-Promotion] Slots open: ${availableSlots}. Waiting list size: ${match.waitingIds.length}`);
+          
+          const newConfirmed = [...match.confirmedIds];
+          let newWaiting = [...match.waitingIds];
+
+          // Sort waiting list by confirmation date
+          const confirmations = match.confirmations || {};
+          newWaiting.sort((a, b) => {
+            const timeA = confirmations[a] ? new Date(confirmations[a]).getTime() : Infinity;
+            const timeB = confirmations[b] ? new Date(confirmations[b]).getTime() : Infinity;
+            return timeA - timeB;
+          });
+
+          // Promote up to availableSlots
+          const toPromote = newWaiting.slice(0, availableSlots);
+          newWaiting = newWaiting.slice(availableSlots);
+          newConfirmed.push(...toPromote);
+
+          try {
+            await updateDoc(doc(db, 'matches', match.id), {
+              confirmedIds: newConfirmed,
+              waitingIds: newWaiting
+            });
+            console.log(`[Auto-Promotion] Successfully promoted players to match ${match.id}:`, toPromote);
+          } catch (error) {
+            console.error("Error during auto-promotion:", error);
+          }
+        }
+      }
+    });
+  }, [matches, settings.maxPlayers, user]);
+
   // Effect specifically for handling the live game listener
   useEffect(() => {
     if (!user) return;

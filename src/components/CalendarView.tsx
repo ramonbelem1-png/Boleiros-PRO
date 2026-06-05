@@ -14,7 +14,7 @@ import {
   isToday
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, X, Clock, Users, Trophy, UserX, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Users, Trophy, UserX, Trash2, Circle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
 
@@ -313,6 +313,107 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
   const [matchGames, setMatchGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
 
+  const getGameTeamNames = (game: any, currentMatch: any, defaultLabels: { A: string; B: string }): { teamA: string; teamB: string } => {
+    if (!game) return { teamA: defaultLabels.A, teamB: defaultLabels.B };
+    
+    // 1. If explicit names are saved on the game, use them!
+    if (game.teamA_name && game.teamB_name) {
+      return { teamA: game.teamA_name, teamB: game.teamB_name };
+    }
+    
+    const teamAIds = game.teamA_ids || [];
+    const teamBIds = game.teamB_ids || [];
+    
+    const defaultA = game.teamA_name || defaultLabels.A;
+    const defaultB = game.teamB_name || defaultLabels.B;
+
+    if (!currentMatch || !currentMatch.teams) {
+      return { teamA: defaultA, teamB: defaultB };
+    }
+
+    const teamEntries = Object.entries(currentMatch.teams);
+    if (teamEntries.length === 0) {
+      return { teamA: defaultA, teamB: defaultB };
+    }
+
+    // 2. Try finding the absolute best distinct pair (A belongs to team i, B belongs to team j)
+    let bestA = -1;
+    let bestB = -1;
+    let maxTotalOverlap = -1;
+
+    for (let i = 0; i < teamEntries.length; i++) {
+      for (let j = 0; j < teamEntries.length; j++) {
+        if (i === j) continue; // Must be distinct teams!
+
+        const [keyA, idsA] = teamEntries[i];
+        const [keyB, idsB] = teamEntries[j];
+
+        const arrA = (idsA || []) as string[];
+        const arrB = (idsB || []) as string[];
+
+        const overlapA = teamAIds.filter((id: string) => arrA.includes(id)).length;
+        const overlapB = teamBIds.filter((id: string) => arrB.includes(id)).length;
+
+        const totalOverlap = overlapA + overlapB;
+        if (totalOverlap > maxTotalOverlap) {
+          maxTotalOverlap = totalOverlap;
+          bestA = Number(keyA);
+          bestB = Number(keyB);
+        }
+      }
+    }
+
+    if (maxTotalOverlap > 0 && bestA !== -1 && bestB !== -1) {
+      return {
+        teamA: `Time ${bestA + 1}`,
+        teamB: `Time ${bestB + 1}`
+      };
+    }
+
+    // Fallback: individual checks
+    let singleBestA = -1;
+    let maxOverlapA = 0;
+    teamEntries.forEach(([key, ids]) => {
+      const arr = (ids || []) as string[];
+      const overlap = teamAIds.filter((id: string) => arr.includes(id)).length;
+      if (overlap > maxOverlapA) {
+        maxOverlapA = overlap;
+        singleBestA = Number(key);
+      }
+    });
+
+    let singleBestB = -1;
+    let maxOverlapB = 0;
+    teamEntries.forEach(([key, ids]) => {
+      const arr = (ids || []) as string[];
+      const overlap = teamBIds.filter((id: string) => arr.includes(id)).length;
+      if (overlap > maxOverlapB) {
+        maxOverlapB = overlap;
+        singleBestB = Number(key);
+      }
+    });
+
+    let finalAName = defaultA;
+    let finalBName = defaultB;
+
+    if (singleBestA !== -1 && maxOverlapA > 0) {
+      finalAName = `Time ${singleBestA + 1}`;
+    }
+    if (singleBestB !== -1 && maxOverlapB > 0) {
+      finalBName = `Time ${singleBestB + 1}`;
+    }
+
+    if (finalAName === finalBName && finalAName.startsWith('Time ')) {
+      if (maxOverlapA >= maxOverlapB) {
+        finalBName = defaultB;
+      } else {
+        finalAName = defaultA;
+      }
+    }
+
+    return { teamA: finalAName, teamB: finalBName };
+  };
+
   useEffect(() => {
     const fetchGames = async () => {
       setLoadingGames(true);
@@ -406,42 +507,78 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
             <div className="p-4 text-center text-[10px] font-bold text-gray-600 uppercase italic">Nenhum jogo individual registrado</div>
           ) : (
             <div className="space-y-3">
-              {matchGames.map((game, gIdx) => (
-                <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden relative group/game">
-                  <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">
-                    <div className="flex items-center space-x-2">
-                       <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
-                       {isAdmin && (
-                         <button 
-                          onClick={() => {
-                            onDeleteGame(match.id, game.id);
-                          }}
-                          className="p-1 text-danger/50 hover:text-danger"
-                         >
-                          <Trash2 size={10} />
-                         </button>
-                       )}
+              {matchGames.map((game, gIdx) => {
+                const resolvedTeams = getGameTeamNames(game, match, { A: 'Time A', B: 'Time B' });
+                return (
+                  <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden relative group/game">
+                    <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                         <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
+                         {isAdmin && (
+                           <button 
+                            onClick={() => {
+                              onDeleteGame(match.id, game.id);
+                            }}
+                            className="p-1 text-danger/50 hover:text-danger"
+                           >
+                             <Trash2 size={10} />
+                           </button>
+                         )}
+                      </div>
                     </div>
-                    <span className="text-[8px] font-bold text-primary">
-                      {game.scoreA} X {game.scoreB}
-                    </span>
-                  </div>
-                  <div className="p-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {game.events?.map((ev: any, evIdx: number) => {
-                        const scorer = players.find(p => p.id === ev.playerId);
-                        const scorerName = scorer?.displayName || scorer?.name || '';
-                        return (
-                          <div key={evIdx} className="flex items-center space-x-1 bg-bg/60 border border-border/20 px-2 py-0.5 rounded-md">
-                            <div className="w-1 h-1 rounded-full bg-primary" />
-                            <span className="text-[8px] font-bold text-white uppercase">{scorerName.split(' ')[0]}</span>
-                          </div>
-                        );
-                      })}
+                    
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex-1 flex flex-col items-center text-center">
+                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                          {resolvedTeams.teamA}
+                        </span>
+                        <div className="text-2xl font-black italic text-white">{game.scoreA}</div>
+                        <div className="mt-1 space-y-0.5 text-center">
+                          {game.events?.filter((e: any) => e.teamSide === 'A').map((e: any, evIdx: number) => {
+                            const p = players.find(p => p.id === e.playerId);
+                            const pName = p?.displayName || p?.name || '';
+                            return (
+                              <div key={evIdx} className="flex items-center space-x-1 justify-center">
+                                <Circle size={6} className="fill-primary/50 text-primary/50" />
+                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
+                                  {pName.split(' ')[0]}
+                                  {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-center px-4 space-y-2">
+                        <div className="text-xs font-black text-border/45 italic select-none">VS</div>
+                      </div>
+                      
+                      <div className="flex-1 flex flex-col items-center text-center">
+                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                          {resolvedTeams.teamB}
+                        </span>
+                        <div className="text-2xl font-black italic text-white">{game.scoreB}</div>
+                        <div className="mt-1 space-y-0.5 text-center">
+                          {game.events?.filter((e: any) => e.teamSide === 'B').map((e: any, evIdx: number) => {
+                            const p = players.find(p => p.id === e.playerId);
+                            const pName = p?.displayName || p?.name || '';
+                            return (
+                              <div key={evIdx} className="flex items-center space-x-1 justify-center">
+                                <Circle size={6} className="fill-primary/50 text-primary/50" />
+                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
+                                  {pName.split(' ')[0]}
+                                  {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

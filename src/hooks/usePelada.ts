@@ -57,6 +57,8 @@ export interface Game {
   id: string;
   teamA_ids: string[];
   teamB_ids: string[];
+  teamA_name?: string;
+  teamB_name?: string;
   scoreA: number;
   scoreB: number;
   startTime: any;
@@ -311,10 +313,12 @@ export function usePelada() {
     await updateDoc(gameRef, { teamA_ids, teamB_ids });
   };
 
-  const createScheduledGame = async (matchId: string, teamA_ids: string[], teamB_ids: string[]) => {
+  const createScheduledGame = async (matchId: string, teamA_ids: string[], teamB_ids: string[], teamA_name?: string, teamB_name?: string) => {
     const gameData = {
       teamA_ids,
       teamB_ids,
+      teamA_name: teamA_name || null,
+      teamB_name: teamB_name || null,
       scoreA: 0,
       scoreB: 0,
       startTime: serverTimestamp(),
@@ -678,10 +682,12 @@ export function usePelada() {
     await updateDoc(doc(db, 'matches', matchId), { status: 'FINISHED' });
   };
 
-  const startLiveGame = async (matchId: string, teamAIds: string[], teamBIds: string[]) => {
+  const startLiveGame = async (matchId: string, teamAIds: string[], teamBIds: string[], teamA_name?: string, teamB_name?: string) => {
     const gameData = {
       teamA_ids: teamAIds,
       teamB_ids: teamBIds,
+      teamA_name: teamA_name || null,
+      teamB_name: teamB_name || null,
       scoreA: 0,
       scoreB: 0,
       startTime: serverTimestamp(),

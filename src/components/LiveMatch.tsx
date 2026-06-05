@@ -244,8 +244,8 @@ export default function LiveMatch() {
         }
       }
     } else {
-      // No games played yet -> Time 1 and Time 2 start
-      currentOnField = [0, 1];
+      // No games played yet -> initially empty, suggesting Time 1 and Time 2 from waiting list
+      currentOnField = [];
     }
 
     // Find the index of the most recent finished game where each team played (newest to oldest index)

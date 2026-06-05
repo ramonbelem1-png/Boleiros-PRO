@@ -17,13 +17,13 @@ export default function TeamDraw() {
   const now = new Date();
   const nextMatch = matches.find(m => {
     if (m.status !== 'OPEN') return false;
-    const matchDate = m.date.toDate();
+    const matchDate = m.date?.toDate?.() || new Date();
     const dayAfterMatch = new Date(matchDate);
     dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
     dayAfterMatch.setHours(0, 0, 0, 0);
     return now < dayAfterMatch;
   });
-  const confirmedPlayers = players.filter(p => nextMatch?.confirmedIds.includes(p.id));
+  const confirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds?.includes(p.id)) : [];
 
   // Detectar duplicatas de número nos jogadores confirmados
   const duplicatedNumbers = confirmedPlayers.reduce((acc, p) => {

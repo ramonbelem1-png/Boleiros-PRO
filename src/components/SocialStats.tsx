@@ -95,9 +95,11 @@ export default function SocialStats() {
 
           // Determining wins/losses per game
           const isDraw = game.scoreA === game.scoreB;
-          const winners = game.scoreA > game.scoreB ? game.teamA_ids : game.teamB_ids;
-          const losers = game.scoreA > game.scoreB ? game.teamB_ids : game.teamA_ids;
-          const allPlayers = [...game.teamA_ids, ...game.teamB_ids];
+          const teamA_ids = game.teamA_ids || [];
+          const teamB_ids = game.teamB_ids || [];
+          const winners = game.scoreA > game.scoreB ? teamA_ids : teamB_ids;
+          const losers = game.scoreA > game.scoreB ? teamB_ids : teamA_ids;
+          const allPlayers = [...teamA_ids, ...teamB_ids];
 
           if (isDraw) {
             allPlayers.forEach(id => {

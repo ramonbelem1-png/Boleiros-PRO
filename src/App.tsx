@@ -215,7 +215,7 @@ export default function App() {
               active={activeTab === 'finance'} 
               onClick={() => setActiveTab('finance')}
               icon={<Coins size={20} />}
-              label="Finance"
+              label="Finanças"
             />
           )}
           
@@ -273,7 +273,7 @@ function NavButton({ active, onClick, icon, label }: { active: boolean, onClick:
       <div className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-primary/10' : ''}`}>
         {icon}
       </div>
-      <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest">{label}</span>
     </button>
   );
 }

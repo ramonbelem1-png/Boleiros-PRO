@@ -1053,6 +1053,71 @@ export default function LiveMatch() {
                 </div>
               </div>
 
+              {/* REAL-TIME MATCH EVENTS DISPLAY */}
+              {liveGame.events && liveGame.events.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-2 gap-4 text-xs font-semibold relative z-10">
+                  {/* Team A Goals */}
+                  <div className="space-y-2 border-r border-white/5 pr-4 text-left">
+                    {liveGame.events.filter(e => e.teamSide === 'A').map((e, idx) => (
+                      <div key={idx} className="flex items-start space-x-2 text-gray-300">
+                        <Circle size={8} className="fill-primary text-primary mt-1 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-extrabold uppercase text-[10px] tracking-tight truncate">
+                            {(() => {
+                              const p = players.find(p => p.id === e.playerId);
+                              const name = p ? (p.displayName || p.name) : 'Atleta';
+                              const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                              return `${name}${numStr}`;
+                            })()}
+                            {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
+                          </p>
+                          {e.assistId && (
+                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
+                              Assist: {(() => {
+                                const p = players.find(p => p.id === e.assistId);
+                                const name = p ? (p.displayName || p.name) : 'Atleta';
+                                const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                return `${name}${numStr}`;
+                              })()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Team B Goals */}
+                  <div className="space-y-2 pl-4 text-right">
+                    {liveGame.events.filter(e => e.teamSide === 'B').map((e, idx) => (
+                      <div key={idx} className="flex items-start space-x-2 justify-end text-gray-300">
+                        <div className="min-w-0">
+                          <p className="font-extrabold uppercase text-[10px] tracking-tight truncate">
+                            {(() => {
+                              const p = players.find(p => p.id === e.playerId);
+                              const name = p ? (p.displayName || p.name) : 'Atleta';
+                              const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                              return `${name}${numStr}`;
+                            })()}
+                            {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
+                          </p>
+                          {e.assistId && (
+                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
+                              Assist: {(() => {
+                                const p = players.find(p => p.id === e.assistId);
+                                const name = p ? (p.displayName || p.name) : 'Atleta';
+                                const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                return `${name}${numStr}`;
+                              })()}
+                            </p>
+                          )}
+                        </div>
+                        <Circle size={8} className="fill-blue-500 text-blue-500 mt-1 shrink-0" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {finishStatus.text && finishStatus.type !== 'idle' && (
                 <div className={`mt-4 p-3 rounded-2xl text-center font-bold text-xs relative z-10 animate-in slide-in-from-top-2 ${
                   finishStatus.type === 'error' ? 'bg-danger/20 text-danger border border-danger/30' :
@@ -1114,7 +1179,14 @@ export default function LiveMatch() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerA.displayName || playerA.name}</p>
-                                <p className="text-[8px] font-bold text-primary/70 uppercase tracking-widest mt-0.5">{playerA.position}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[8px] font-bold text-primary/70 uppercase tracking-widest">{playerA.position}</span>
+                                  {playerA.number !== undefined && playerA.number !== null && (
+                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-primary/20 text-primary border border-primary/10 rounded leading-none">
+                                      Nº {playerA.number}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                            </button>
                          ) : (
@@ -1139,7 +1211,14 @@ export default function LiveMatch() {
                            >
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerB.displayName || playerB.name}</p>
-                                <p className="text-[8px] font-bold text-blue-400/70 uppercase tracking-widest mt-0.5">{playerB.position}</p>
+                                <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                                  {playerB.number !== undefined && playerB.number !== null && (
+                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/10 rounded leading-none flex-shrink-0">
+                                      Nº {playerB.number}
+                                    </span>
+                                  )}
+                                  <span className="text-[8px] font-bold text-blue-400/70 uppercase tracking-widest">{playerB.position}</span>
+                                </div>
                               </div>
                               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden border border-white/10 group-active:scale-90 transition-transform">
                                 {playerB.photoUrl ? (
@@ -1159,6 +1238,12 @@ export default function LiveMatch() {
                 })()}
              </div>
           </div>
+        </div>
+      )}
+
+      {liveGame && (
+        <div className="px-2 mb-6">
+          {renderQueueSequence()}
         </div>
       )}
 
@@ -1246,7 +1331,12 @@ export default function LiveMatch() {
                           <span className={`w-8 text-[9px] text-center rounded px-1 group-hover:bg-primary/10 transition-colors ${isGK ? 'bg-primary text-bg' : 'text-gray-500'}`}>
                             {p?.position.substring(0, 3).toUpperCase() || 'POS'}
                           </span>
-                          <span className="text-white truncate max-w-[120px]">{p?.displayName || p?.name || 'Desconhecido'}</span>
+                          <span className="text-white truncate max-w-[120px]">
+                            {p?.displayName || p?.name || 'Desconhecido'}
+                            {p?.number !== undefined && p?.number !== null && (
+                              <span className="text-[8px] font-black text-primary/80 ml-1.5">(Nº {p.number})</span>
+                            )}
+                          </span>
                         </div>
                         <div className="flex items-center space-x-2">
                           {isGK && <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />}
@@ -1260,8 +1350,6 @@ export default function LiveMatch() {
           })}
         </div>
       </div>
-
-      {liveGame && renderQueueSequence()}
 
       {/* Partidas do Dia */}
       <div className="space-y-4">
@@ -1360,7 +1448,9 @@ export default function LiveMatch() {
                             <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
-                                return p?.displayName || p?.name;
+                                if (!p) return '';
+                                const name = p.displayName || p.name;
+                                return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                               })()}
                               {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
                             </span>
@@ -1381,7 +1471,9 @@ export default function LiveMatch() {
                             <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
-                                return p?.displayName || p?.name;
+                                if (!p) return '';
+                                const name = p.displayName || p.name;
+                                return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                               })()}
                               {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
                             </span>
@@ -1444,7 +1536,9 @@ export default function LiveMatch() {
                                <span className="text-sm font-bold truncate">
                                  {(() => {
                                    const p = players.find(p => p.id === id);
-                                   return p?.displayName || p?.name || 'Vazio';
+                                   if (!p) return 'Vazio';
+                                   const name = p.displayName || p.name;
+                                   return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                                  })()}
                                </span>
                                <Edit2 size={12} className="text-gray-500" />
@@ -1478,7 +1572,9 @@ export default function LiveMatch() {
                                <span className="text-sm font-bold truncate">
                                  {(() => {
                                    const p = players.find(p => p.id === id);
-                                   return p?.displayName || p?.name || 'Vazio';
+                                   if (!p) return 'Vazio';
+                                   const name = p.displayName || p.name;
+                                   return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                                  })()}
                                </span>
                                <Edit2 size={12} className="text-gray-500" />
@@ -1514,7 +1610,9 @@ export default function LiveMatch() {
                         >
                           <span className="text-sm font-bold truncate">{(() => {
                             const p = players.find(player => player.id === id);
-                            return p?.displayName || p?.name || 'Vazio';
+                            if (!p) return 'Vazio';
+                            const name = p.displayName || p.name;
+                            return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                           })()}</span>
                           <Edit2 size={12} className="text-gray-500" />
                         </button>
@@ -1617,7 +1715,10 @@ export default function LiveMatch() {
                               >
                                 <div className="relative z-10 flex items-center justify-between">
                                   <div className="flex flex-col">
-                                    <span className="truncate text-white text-xs">{p.displayName || p.name}</span>
+                                    <span className="truncate text-white text-xs">
+                                      {p.displayName || p.name}
+                                      {p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : ''}
+                                    </span>
                                     <span className={`text-[8px] opacity-70 mt-0.5 ${textColor}`}>{tag} • {p.position}</span>
                                   </div>
                                   <Plus size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1740,9 +1841,14 @@ export default function LiveMatch() {
                       return <option disabled className="bg-bg italic">Nenhum jogador encontrado neste time</option>;
                     }
                     
-                    return availablePlayers.map(p => (
-                      <option key={p.id} value={p.id} className="bg-bg">{p.displayName || p.name}</option>
-                    ));
+                    return availablePlayers.map(p => {
+                      const suffix = p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : '';
+                      return (
+                        <option key={p.id} value={p.id} className="bg-bg">
+                          {(p.displayName || p.name) + suffix}
+                        </option>
+                      );
+                    });
                   })()}
                 </select>
               </div>
@@ -1760,9 +1866,14 @@ export default function LiveMatch() {
                       const availableAssisters = (showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers)
                         .filter(p => p.id !== selectedScorer);
                       
-                      return availableAssisters.map(p => (
-                        <option key={p.id} value={p.id} className="bg-bg">{p.displayName || p.name}</option>
-                      ));
+                      return availableAssisters.map(p => {
+                        const suffix = p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : '';
+                        return (
+                          <option key={p.id} value={p.id} className="bg-bg">
+                            {(p.displayName || p.name) + suffix}
+                          </option>
+                        );
+                      });
                     })()}
                   </select>
                 </div>

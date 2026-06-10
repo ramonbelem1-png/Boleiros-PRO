@@ -1291,29 +1291,36 @@ export default function LiveMatch() {
               <span className="text-xs font-semibold text-gray-500 block italic py-1">Nenhum jogador na fila de espera.</span>
             ) : (
               <div className="flex flex-wrap items-center gap-1.5 py-1">
-                {playerQueue.slice(0, 10).map((id, index) => {
-                  const p = players.find(player => player.id === id);
-                  if (!p) return null;
-                  const name = p.displayName || p.name;
-                  const games = playerStats[id]?.gamesPlayedCount ?? 0;
+                {(() => {
+                  const maxQueueToShow = Math.max(1, (activeMatch.playersPerTeam || 6) - 1);
                   return (
-                    <React.Fragment key={id}>
-                      <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[9px] font-bold text-amber-500 inline-flex items-center">
-                        <span className="text-[7.5px] text-amber-500/60 font-black mr-1">#{index + 1}</span>
-                        <span className="truncate max-w-[75px] uppercase">{name}</span>
-                        <span className="text-[7px] text-gray-500 ml-0.5 font-normal">({games}j)</span>
-                      </span>
-                      {index < Math.min(playerQueue.length, 10) - 1 && (
-                        <ArrowRight size={10} className="text-gray-600 shrink-0 inline-block align-middle" />
+                    <>
+                      {playerQueue.slice(0, maxQueueToShow).map((id, index) => {
+                        const p = players.find(player => player.id === id);
+                        if (!p) return null;
+                        const name = p.displayName || p.name;
+                        const games = playerStats[id]?.gamesPlayedCount ?? 0;
+                        return (
+                          <React.Fragment key={id}>
+                            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[9px] font-bold text-amber-500 inline-flex items-center">
+                              <span className="text-[7.5px] text-amber-500/60 font-black mr-1">#{index + 1}</span>
+                              <span className="truncate max-w-[75px] uppercase">{name}</span>
+                              <span className="text-[7px] text-gray-500 ml-0.5 font-normal">({games}j)</span>
+                            </span>
+                            {index < Math.min(playerQueue.length, maxQueueToShow) - 1 && (
+                              <ArrowRight size={10} className="text-gray-600 shrink-0 inline-block align-middle" />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      {playerQueue.length > maxQueueToShow && (
+                        <span className="text-[8px] font-bold text-gray-500 whitespace-nowrap pl-1">
+                          +{playerQueue.length - maxQueueToShow} mais
+                        </span>
                       )}
-                    </React.Fragment>
+                    </>
                   );
-                })}
-                {playerQueue.length > 10 && (
-                  <span className="text-[8px] font-bold text-gray-500 whitespace-nowrap pl-1">
-                    +{playerQueue.length - 10} mais
-                  </span>
-                )}
+                })()}
               </div>
             )}
           </div>

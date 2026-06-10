@@ -85,89 +85,104 @@ export default function TeamDraw() {
       remainingToAssign -= size;
     }
 
+    // 2. Calculate average match level and ideal target sums per team
+    const totalLevelOfAll = confirmedPlayers.reduce((sum, p) => sum + getAdjustedLevel(p), 0);
+    const avgMatchLevel = totalPlayers > 0 ? totalLevelOfAll / totalPlayers : 3;
+    const targetSums = targetSizes.map(size => size * avgMatchLevel);
+
     const result: Player[][] = Array.from({ length: numTeams }, () => []);
 
-    // 2. Separate Goalkeepers and Field Players
-    const goalkeepers = confirmedPlayers.filter(p => p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO');
-    const fieldPlayers = confirmedPlayers.filter(p => !goalkeepers.find(gk => gk.id === p.id));
-
-    // 3. Shuffle first, then sort by level (descending)
-    // Shuffling first ensures that players with the SAME adjusted level will have random relative order
-    const shuffledGKs = shuffle<Player>(goalkeepers);
-    const sortedGKs = shuffledGKs.sort((a: Player, b: Player) => getAdjustedLevel(b) - getAdjustedLevel(a));
-    
-    // For field players, we'll use a slightly more "elastic" sort to allow close levels to swap for variety
-    const shuffledField = shuffle<Player>(fieldPlayers);
-    const sortedField = shuffledField.sort((a: Player, b: Player) => {
-      const scoreA = getAdjustedLevel(a);
-      const scoreB = getAdjustedLevel(b);
-      // If levels are very close (within 0.3), introduce 50% chance of swapping
-      if (Math.abs(scoreA - scoreB) < 0.3) {
-        return Math.random() - 0.5;
+    // 3. Group players by position
+    const playersByPosition: Record<string, Player[]> = {};
+    confirmedPlayers.forEach(p => {
+      let pos = p.position || 'ATACANTE';
+      if (p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO') {
+        pos = 'GOLEIRO';
       }
-      return scoreB - scoreA;
+      if (!playersByPosition[pos]) {
+        playersByPosition[pos] = [];
+      }
+      playersByPosition[pos].push(p);
     });
 
-    // 4. Distribute Goalkeepers (max 1 per team, fill sequentially)
-    let currentGKIdx = 0;
-    for (let i = 0; i < numTeams && currentGKIdx < sortedGKs.length; i++) {
-      if (result[i].length < targetSizes[i]) {
-        result[i].push(sortedGKs[currentGKIdx]);
-        currentGKIdx++;
-      }
-    }
-    // If there are more GKs than teams, distribute the rest greedily
-    while (currentGKIdx < sortedGKs.length) {
-      let targetIdx = -1;
-      for (let i = 0; i < numTeams; i++) {
-        if (result[i].length < targetSizes[i]) {
-          targetIdx = i;
-          break;
-        }
-      }
-      if (targetIdx !== -1) {
-        result[targetIdx].push(sortedGKs[currentGKIdx]);
-      }
-      currentGKIdx++;
-    }
+    // 4. Distribute GOLEIRO first, then other positions sorted by count ascending (rarest first) for better constraint satisfaction
+    const sortedPositions = Object.keys(playersByPosition).filter(pos => pos !== 'GOLEIRO');
+    sortedPositions.sort((a, b) => playersByPosition[a].length - playersByPosition[b].length);
+    const orderedPositions = playersByPosition['GOLEIRO'] ? ['GOLEIRO', ...sortedPositions] : sortedPositions;
 
-    // 5. Distribute Field Players (fill teams sequentially while balancing level)
-    // To ensure Team 1 and 2 are filled before Team 3, we fill by "available slots" in order
-    sortedField.forEach((player) => {
-      let targetTeamIdx = -1;
-      let minLevel = Infinity;
-
-      // Find teams that are not yet at their target size
-      const teamsWithSpace = [];
-      for (let i = 0; i < numTeams; i++) {
-        if (result[i].length < targetSizes[i]) {
-          teamsWithSpace.push(i);
-        }
-      }
-
-      // Among teams with space, we want to balance level, 
-      // but prioritize filling the "next" game teams (lower indexes)
-      const priorityTeams = teamsWithSpace.slice(0, 2); 
+    // 5. Place players position by position, balancing both position counts and technical levels
+    orderedPositions.forEach(pos => {
+      const posPlayers = playersByPosition[pos];
       
-      // If we have two options and their levels are identical or very close, pick randomly
-      if (priorityTeams.length === 2) {
-        const level0 = result[priorityTeams[0]].reduce((sum, p: Player) => sum + getAdjustedLevel(p), 0);
-        const level1 = result[priorityTeams[1]].reduce((sum, p: Player) => sum + getAdjustedLevel(p), 0);
-        
-        if (Math.abs(level0 - level1) < 0.1) {
-          targetTeamIdx = priorityTeams[Math.random() > 0.5 ? 0 : 1];
-        } else if (level0 < level1) {
-          targetTeamIdx = priorityTeams[0];
-        } else {
-          targetTeamIdx = priorityTeams[1];
-        }
-      } else if (priorityTeams.length === 1) {
-        targetTeamIdx = priorityTeams[0];
-      }
+      // Shuffle first to ensure same-level players of the same position rotate randomly
+      const shuffledPosPlayers = shuffle<Player>(posPlayers);
+      // Sort in descending order to place the most skilled players in each tier/position first
+      const sortedPosPlayers = shuffledPosPlayers.sort((a, b) => getAdjustedLevel(b) - getAdjustedLevel(a));
 
-      if (targetTeamIdx !== -1) {
-        result[targetTeamIdx].push(player);
-      }
+      // Capacity cap of this position per team (proportional to team target size)
+      const posCap = (teamIdx: number) => {
+        return Math.max(1, Math.ceil((posPlayers.length * targetSizes[teamIdx]) / totalPlayers));
+      };
+
+      sortedPosPlayers.forEach(player => {
+        // Find teams with space that have not reached position caps
+        let eligibleTeams: number[] = [];
+        for (let i = 0; i < numTeams; i++) {
+          if (result[i].length < targetSizes[i]) {
+            const currentPosCount = result[i].filter(p => {
+              const pPos = (p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO') ? 'GOLEIRO' : (p.position || 'ATACANTE');
+              return pPos === pos;
+            }).length;
+            if (currentPosCount < posCap(i)) {
+              eligibleTeams.push(i);
+            }
+          }
+        }
+
+        // Relax position restriction if no team meets the cap to prevent any possible deadlock
+        if (eligibleTeams.length === 0) {
+          for (let i = 0; i < numTeams; i++) {
+            if (result[i].length < targetSizes[i]) {
+              eligibleTeams.push(i);
+            }
+          }
+        }
+
+        // Sort eligible teams by lowest position count first (balance positions), 
+        // and then by highest level deficit (balance skills)
+        eligibleTeams.sort((idxA, idxB) => {
+          const countA = result[idxA].filter(p => {
+            const pPos = (p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO') ? 'GOLEIRO' : (p.position || 'ATACANTE');
+            return pPos === pos;
+          }).length;
+          const countB = result[idxB].filter(p => {
+            const pPos = (p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO') ? 'GOLEIRO' : (p.position || 'ATACANTE');
+            return pPos === pos;
+          }).length;
+
+          if (countA !== countB) {
+            return countA - countB; // Prioritize teams with fewer players of this position
+          }
+
+          const sumA = result[idxA].reduce((sum, p) => sum + getAdjustedLevel(p), 0);
+          const sumB = result[idxB].reduce((sum, p) => sum + getAdjustedLevel(p), 0);
+
+          const deficitA = targetSums[idxA] - sumA;
+          const deficitB = targetSums[idxB] - sumB;
+
+          // Introduce a 50% chance of random swap if deficits are very close (within 0.5) to keep it exciting and varied
+          if (Math.abs(deficitA - deficitB) < 0.5) {
+            return Math.random() - 0.5;
+          }
+
+          return deficitB - deficitA; // Prioritize team with larger skill deficit
+        });
+
+        const chosenTeamIdx = eligibleTeams[0];
+        if (chosenTeamIdx !== undefined) {
+          result[chosenTeamIdx].push(player);
+        }
+      });
     });
 
     const POSITION_ORDER: Record<string, number> = {
@@ -179,7 +194,7 @@ export default function TeamDraw() {
       'ATACANTE': 5
     };
 
-    // Sort each team by position
+    // Sort each final team by standard tactical order for display listing
     result.forEach(team => {
       team.sort((a, b) => {
         const posA = a.position || 'ATACANTE';

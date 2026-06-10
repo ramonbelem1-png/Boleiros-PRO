@@ -1075,10 +1075,12 @@ export function usePelada() {
 
       // 4. Update players with new totals
       console.log("[usePelada] Aplicando novos totais aos jogadores...");
+      const existingPlayerIds = new Set(playersSnap.docs.map(doc => doc.id));
       batch = writeBatch(db);
       opCount = 0;
       
       for (const [playerId, stats] of Object.entries(statsMap)) {
+        if (!existingPlayerIds.has(playerId)) continue;
         const pRef = doc(db, 'players', playerId);
         batch.update(pRef, stats);
         opCount++;
@@ -1115,21 +1117,26 @@ export function usePelada() {
       if (gameSnap.exists()) {
         const game = gameSnap.data() as Game;
         const batch = writeBatch(db);
+        const existingPlayerIds = new Set(players.map(p => p.id));
 
         // 1. Revert Score and Personal Stats (Goals/Assists)
         if (game.events && game.events.length > 0) {
           for (const event of game.events) {
             if (event.type === 'GOAL') {
-              const pRef = doc(db, 'players', event.playerId);
-              batch.update(pRef, { gols: increment(-1) });
+              if (existingPlayerIds.has(event.playerId)) {
+                const pRef = doc(db, 'players', event.playerId);
+                batch.update(pRef, { gols: increment(-1) });
+              }
 
-              if (event.assistId) {
+              if (event.assistId && existingPlayerIds.has(event.assistId)) {
                 const aRef = doc(db, 'players', event.assistId);
                 batch.update(aRef, { assistencias: increment(-1) });
               }
             } else if (event.type === 'OWN_GOAL') {
-              const pRef = doc(db, 'players', event.playerId);
-              batch.update(pRef, { contra: increment(-1) });
+              if (existingPlayerIds.has(event.playerId)) {
+                const pRef = doc(db, 'players', event.playerId);
+                batch.update(pRef, { contra: increment(-1) });
+              }
             }
           }
         }
@@ -1147,15 +1154,17 @@ export function usePelada() {
           const allPlayerIds = Array.from(new Set([...teamA, ...teamB])).filter(id => id && typeof id === 'string');
 
           allPlayerIds.forEach(id => {
-            const pRef = doc(db, 'players', id);
-            const isTeamA = teamA.includes(id);
+            if (existingPlayerIds.has(id)) {
+              const pRef = doc(db, 'players', id);
+              const isTeamA = teamA.includes(id);
 
-            if (isDraw) {
-              batch.update(pRef, { empates: increment(-1) });
-            } else if ((isTeamA && winA) || (!isTeamA && winB)) {
-              batch.update(pRef, { vitorias: increment(-1) });
-            } else {
-              batch.update(pRef, { derrotas: increment(-1) });
+              if (isDraw) {
+                batch.update(pRef, { empates: increment(-1) });
+              } else if ((isTeamA && winA) || (!isTeamA && winB)) {
+                batch.update(pRef, { vitorias: increment(-1) });
+              } else {
+                batch.update(pRef, { derrotas: increment(-1) });
+              }
             }
           });
         }
@@ -1193,6 +1202,7 @@ export function usePelada() {
       let currentBatch = writeBatch(db);
       let opCount = 0;
       const MAX_OPS = 450; // Guard channel for batch limit
+      const existingPlayerIds = new Set(players.map(p => p.id));
 
       const commitIfFull = async () => {
         if (opCount >= MAX_OPS) {
@@ -1211,12 +1221,14 @@ export function usePelada() {
         if (game.events && game.events.length > 0) {
           for (const event of game.events) {
             if (event.type === 'GOAL') {
-              const pRef = doc(db, 'players', event.playerId);
-              currentBatch.update(pRef, { gols: increment(-1) });
-              opCount++;
-              await commitIfFull();
+              if (existingPlayerIds.has(event.playerId)) {
+                const pRef = doc(db, 'players', event.playerId);
+                currentBatch.update(pRef, { gols: increment(-1) });
+                opCount++;
+                await commitIfFull();
+              }
 
-              if (event.assistId) {
+              if (event.assistId && existingPlayerIds.has(event.assistId)) {
                 const aRef = doc(db, 'players', event.assistId);
                 currentBatch.update(aRef, { assistencias: increment(-1) });
                 opCount++;
@@ -1237,17 +1249,19 @@ export function usePelada() {
           const allPlayerIds = Array.from(new Set([...(teamA || []), ...(teamB || [])])).filter(id => id && typeof id === 'string');
 
           for (const id of allPlayerIds) {
-            const pRef = doc(db, 'players', id);
-            const isTeamA = (teamA || []).includes(id);
-            if (isDraw) {
-              currentBatch.update(pRef, { empates: increment(-1) });
-            } else if ((isTeamA && winA) || (!isTeamA && winB)) {
-              currentBatch.update(pRef, { vitorias: increment(-1) });
-            } else {
-              currentBatch.update(pRef, { derrotas: increment(-1) });
+            if (existingPlayerIds.has(id)) {
+              const pRef = doc(db, 'players', id);
+              const isTeamA = (teamA || []).includes(id);
+              if (isDraw) {
+                currentBatch.update(pRef, { empates: increment(-1) });
+              } else if ((isTeamA && winA) || (!isTeamA && winB)) {
+                currentBatch.update(pRef, { vitorias: increment(-1) });
+              } else {
+                currentBatch.update(pRef, { derrotas: increment(-1) });
+              }
+              opCount++;
+              await commitIfFull();
             }
-            opCount++;
-            await commitIfFull();
           }
         }
         

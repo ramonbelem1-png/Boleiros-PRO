@@ -83,6 +83,7 @@ export interface Match {
   gameRules?: string;
   confirmations?: Record<string, string>; // playerId -> ISO timestamp
   paidIds?: string[];
+  drawOrder?: Record<string, number>; // playerId -> order number (1, 2, 3...)
 }
 
 export interface Transaction {
@@ -662,7 +663,7 @@ export function usePelada() {
     }
   };
 
-  const setMatchTeams = async (matchId: string, teamsIds: string[][], extraData?: { playersPerTeam?: number; gameRules?: string }) => {
+  const setMatchTeams = async (matchId: string, teamsIds: string[][], extraData?: { playersPerTeam?: number; gameRules?: string; drawOrder?: Record<string, number> }) => {
     // Firestore does not support nested arrays. Convert to object.
     const teamsObj: Record<string, string[]> = {};
     teamsIds.forEach((ids, idx) => {

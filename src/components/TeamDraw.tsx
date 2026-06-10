@@ -35,6 +35,7 @@ export default function TeamDraw() {
   }, new Set<number>());
 
   const [teams, setTeams] = useState<Player[][]>([]);
+  const [drawOrder, setDrawOrder] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [playersPerTeamSelected, setPlayersPerTeamSelected] = useState(6);
 
@@ -53,10 +54,12 @@ export default function TeamDraw() {
     try {
       const teamsIds = teams.map(team => team.map(p => p.id));
       await setMatchTeams(nextMatch.id, teamsIds, {
-        playersPerTeam: playersPerTeamSelected
+        playersPerTeam: playersPerTeamSelected,
+        drawOrder: drawOrder
       });
       alert("Times definidos com sucesso! Vá para a aba 'Ao Vivo' para gerenciar os jogos.");
       setTeams([]);
+      setDrawOrder({});
     } catch (error) {
       console.error("Erro ao salvar times:", error);
       alert("Erro ao salvar times.");
@@ -185,6 +188,16 @@ export default function TeamDraw() {
       });
     });
 
+    // Generate draw classification order based on final rosters
+    const newDrawOrder: Record<string, number> = {};
+    let orderNum = 1;
+    result.forEach(team => {
+      team.forEach(player => {
+        newDrawOrder[player.id] = orderNum++;
+      });
+    });
+    setDrawOrder(newDrawOrder);
+
     setTeams(result);
   };
 
@@ -284,6 +297,11 @@ export default function TeamDraw() {
                             <span className={`text-[9px] font-black px-1 rounded ${duplicatedNumbers.has(player.number) ? 'bg-danger text-white animate-pulse' : 'bg-primary/20 text-primary border border-primary/20'} flex items-center gap-0.5`}>
                               {duplicatedNumbers.has(player.number) && <AlertCircle size={7} />}
                               #{player.number}
+                            </span>
+                          )}
+                          {drawOrder[player.id] !== undefined && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-0.5 whitespace-nowrap">
+                              Seq. #{drawOrder[player.id]}
                             </span>
                           )}
                         </div>

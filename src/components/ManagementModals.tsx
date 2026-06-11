@@ -639,7 +639,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={isAdmin ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Vínculo</label>
             <div className="flex gap-1">
@@ -658,23 +658,25 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             </div>
           </div>
           
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nível (1-5)</label>
-            <div className="flex gap-1 justify-between">
-              {[1, 2, 3, 4, 5].map(l => (
-                <button 
-                  key={l}
-                  disabled={!isAdmin}
-                  onClick={() => setLevel(l)}
-                  className={`w-7 h-7 rounded-lg border text-[10px] font-black transition-all disabled:opacity-50 ${
-                    level === l ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
-                  }`}
-                >
-                  {l}
-                </button>
-              ))}
+          {isAdmin && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Nível (1-5)</label>
+              <div className="flex gap-1 justify-between">
+                {[1, 2, 3, 4, 5].map(l => (
+                  <button 
+                    key={l}
+                    disabled={!isAdmin}
+                    onClick={() => setLevel(l)}
+                    className={`w-7 h-7 rounded-lg border text-[10px] font-black transition-all disabled:opacity-50 ${
+                      level === l ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Stats Section */}

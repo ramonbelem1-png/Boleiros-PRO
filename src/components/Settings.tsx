@@ -419,7 +419,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               <ArrowUpDown size={12} />
               <span className="text-[9px] font-bold uppercase tracking-widest">Ordem:</span>
             </div>
-            {(['number', 'name', 'level', 'position'] as const).map((s) => (
+            {(['number', 'name', 'level', 'position'] as const).filter(s => s !== 'level' || isAdmin).map((s) => (
               <button 
                 key={s}
                 onClick={() => setSortBy(s)}
@@ -512,14 +512,16 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         R$ {(player.balance || 0).toFixed(2)}
                       </div>
                     )}
-                    <div className="flex gap-1 mt-1 justify-end">
-                      {[1, 2, 3, 4, 5].map(l => (
-                        <div 
-                          key={l}
-                          className={`w-2 h-2 rounded-full ${player.level >= l ? 'bg-primary' : 'bg-gray-800'}`}
-                        />
-                      ))}
-                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-1 mt-1 justify-end">
+                        {[1, 2, 3, 4, 5].map(l => (
+                          <div 
+                            key={l}
+                            className={`w-2 h-2 rounded-full ${player.level >= l ? 'bg-primary' : 'bg-gray-800'}`}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -160,7 +160,7 @@ export default function MatchList() {
     }
 
     const remainingSlots = Math.max(0, maxPlayers - confirmedList.length);
-    text += `\n🎟️ *VAGAS DISPONÍVEIS:* ${remainingSlots} vaga${remainingSlots === 1 ? '' : 's'}\n`;
+    text += `\n🎟️ *VAGAS RESTANTES:* ${remainingSlots} vaga${remainingSlots === 1 ? '' : 's'}\n`;
 
     const waitingList = [...nextMatch.waitingIds]
       .map(id => players.find(p => p.id === id))

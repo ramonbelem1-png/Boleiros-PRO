@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Image as ImageIcon, Loader2, PlayCircle, LogOut, ShieldAlert, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Player, PlayerPosition } from '../hooks/usePelada';
+import { Player, PlayerPosition, formatPosition } from '../hooks/usePelada';
 import ImageCropper from './ImageCropper';
 import Logo from './Logo';
 
@@ -217,7 +217,7 @@ export default function OnboardingProfile({ user, players, onSave, onLogout }: O
                       : 'bg-bg border-border/50 text-gray-400 hover:border-gray-600'
                   }`}
                 >
-                  {pos}
+                  {formatPosition(pos)}
                 </button>
               ))}
             </div>
@@ -236,7 +236,7 @@ export default function OnboardingProfile({ user, players, onSave, onLogout }: O
               >
                 <option value="NENHUMA" className="bg-bg text-white">NENHUMA</option>
                 {positions.filter(p => p !== position).map((pos) => (
-                  <option key={pos} value={pos} className="bg-bg text-white">{pos}</option>
+                  <option key={pos} value={pos} className="bg-bg text-white">{formatPosition(pos)}</option>
                 ))}
               </select>
             </div>
@@ -258,7 +258,7 @@ export default function OnboardingProfile({ user, players, onSave, onLogout }: O
                 {numberIsTaken && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-danger flex items-center space-x-1">
                     <AlertCircle size={14} />
-                    <span className="text-[8px] font-black tracking-widest uppercase">Ocupada</span>
+                    <span className="text-[10px] font-black tracking-widest uppercase">Ocupada</span>
                   </div>
                 )}
               </div>

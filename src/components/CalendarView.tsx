@@ -60,13 +60,13 @@ export default function CalendarView() {
         <div className="flex bg-card p-1 rounded-xl border border-border/50">
           <button 
             onClick={() => setViewMode('calendar')}
-            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${viewMode === 'calendar' ? 'bg-primary text-bg' : 'text-gray-500'}`}
+            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'calendar' ? 'bg-primary text-bg' : 'text-gray-500'}`}
           >
             Calendário
           </button>
           <button 
             onClick={() => setViewMode('list')}
-            className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${viewMode === 'list' ? 'bg-primary text-bg' : 'text-gray-500'}`}
+            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'list' ? 'bg-primary text-bg' : 'text-gray-500'}`}
           >
             Lista
           </button>
@@ -168,18 +168,18 @@ export default function CalendarView() {
                       <div className="text-left">
                         <div className="flex items-center space-x-2">
                           <h4 className="font-black text-sm text-white uppercase italic tracking-tight">Pelada Oficial</h4>
-                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter ${isFinished ? 'bg-gray-800 text-gray-500' : 'bg-primary/20 text-primary'}`}>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter ${isFinished ? 'bg-gray-800 text-gray-500' : 'bg-primary/20 text-primary'}`}>
                             {isFinished ? 'Finalizada' : 'Aberta'}
                           </span>
                         </div>
                         <div className="flex items-center space-x-3 mt-1 text-gray-500">
                           <div className="flex items-center space-x-1">
                             <Clock size={10} />
-                            <span className="text-[9px] font-bold uppercase">{format(date, 'HH:mm')}</span>
+                            <span className="text-[10px] font-bold uppercase">{format(date, 'HH:mm')}</span>
                           </div>
                           <div className="flex items-center space-x-1">
                             <Users size={10} />
-                            <span className="text-[9px] font-bold uppercase">{match.confirmedIds.length} Atletas</span>
+                            <span className="text-[10px] font-bold uppercase">{match.confirmedIds.length} Atletas</span>
                           </div>
                         </div>
                       </div>
@@ -189,7 +189,7 @@ export default function CalendarView() {
                       {isFinished && match.result && (
                         <div className="flex items-center space-x-2 bg-bg px-3 py-2 rounded-xl border border-border/50">
                           <span className="text-sm font-black text-white italic">{match.result.scoreA}</span>
-                          <span className="text-[8px] font-bold text-gray-600">X</span>
+                          <span className="text-[10px] font-bold text-gray-600">X</span>
                           <span className="text-sm font-black text-white italic">{match.result.scoreB}</span>
                         </div>
                       )}
@@ -229,7 +229,7 @@ export default function CalendarView() {
 
       <AnimatePresence>
         {confirmDeleteMatch && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -264,7 +264,7 @@ export default function CalendarView() {
 
       <AnimatePresence>
         {confirmDeleteGame && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -438,7 +438,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
   })).filter(entry => entry.player);
 
   return (
-    <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[100] flex items-end sm:items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
       <motion.div 
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -469,12 +469,12 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
             <div className="flex items-center justify-center space-x-8">
               <div className="text-center">
                 <div className="text-4xl font-black text-white italic">{match.result.scoreA}</div>
-                <div className="text-[9px] font-bold text-gray-500 uppercase">Time A</div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase">Time A</div>
               </div>
               <div className="text-2xl text-primary font-black">X</div>
               <div className="text-center">
                 <div className="text-4xl font-black text-white italic">{match.result.scoreB}</div>
-                <div className="text-[9px] font-bold text-gray-500 uppercase">Time B</div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase">Time B</div>
               </div>
             </div>
           </div>
@@ -493,7 +493,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                   onDeleteMatch(match.id);
                   onClose();
                 }}
-                className="flex items-center space-x-1 px-3 py-1 bg-danger/10 text-danger rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-danger hover:text-white transition-all"
+                className="flex items-center space-x-1 px-3 py-1 bg-danger/10 text-danger rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-danger hover:text-white transition-all"
                >
                  <Trash2 size={10} />
                  <span>Excluir Pelada</span>
@@ -513,7 +513,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                   <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden relative group/game">
                     <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">
                       <div className="flex items-center space-x-2">
-                         <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
+                         <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Jogo {gIdx + 1}</span>
                          {isAdmin && (
                            <button 
                             onClick={() => {
@@ -529,7 +529,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                     
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex-1 flex flex-col items-center text-center">
-                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight mb-1">
                           {resolvedTeams.teamA}
                         </span>
                         <div className="text-2xl font-black italic text-white">{game.scoreA}</div>
@@ -540,7 +540,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                             return (
                               <div key={evIdx} className="flex items-center space-x-1 justify-center">
                                 <Circle size={6} className="fill-primary/50 text-primary/50" />
-                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                                   {pName.split(' ')[0]}
                                   {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
                                 </span>
@@ -555,7 +555,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                       </div>
                       
                       <div className="flex-1 flex flex-col items-center text-center">
-                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight mb-1">
                           {resolvedTeams.teamB}
                         </span>
                         <div className="text-2xl font-black italic text-white">{game.scoreB}</div>
@@ -566,7 +566,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                             return (
                               <div key={evIdx} className="flex items-center space-x-1 justify-center">
                                 <Circle size={6} className="fill-primary/50 text-primary/50" />
-                                <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                                   {pName.split(' ')[0]}
                                   {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5">(GC)</span>}
                                 </span>
@@ -613,7 +613,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
                  {absentEntries.map((e, idx) => (
                    <div key={idx} className="flex items-center justify-between bg-bg/30 p-3 rounded-2xl border border-border/10">
                      <span className="text-xs font-bold text-gray-400">{e.player?.displayName || e.player?.name}</span>
-                     <span className="text-[9px] font-bold text-gray-600 italic">"{e.reason}"</span>
+                     <span className="text-[10px] font-bold text-gray-600 italic">"{e.reason}"</span>
                    </div>
                  ))}
                </div>

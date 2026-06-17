@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePelada, GroupSettings, Match, Player } from '../hooks/usePelada';
+import { usePelada, GroupSettings, Match, Player, formatPosition } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import Logo from './Logo';
 import { 
@@ -277,7 +277,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   {currentUserPlayer?.displayName || currentUserPlayer?.name || user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
                 </h2>
                 {role === 'ADMIN' && (
-                  <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
+                  <span className="bg-primary/20 text-primary text-[10px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
                     ADMIN
                   </span>
                 )}
@@ -288,7 +288,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   className="p-2 bg-white/5 rounded-xl text-gray-400 hover:text-primary transition-all flex items-center gap-2"
                 >
                   <Edit2 size={12} />
-                  <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Editar Perfil</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Editar Perfil</span>
                 </button>
               )}
             </div>
@@ -338,31 +338,31 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               <div>
                 <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">{currentUserPlayer?.displayName || currentUserPlayer?.name}</h3>
                 <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em] mt-1">
-                  {currentUserPlayer?.position} • {currentUserPlayer?.type}
+                  {formatPosition(currentUserPlayer?.position)} • {currentUserPlayer?.type}
                 </p>
               </div>
 
               <div className="grid grid-cols-5 gap-2 w-full pt-4 px-2">
                 <div className="text-center">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Jogos</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Jogos</p>
                   <p className="text-base font-black text-white">
                     {(currentUserPlayer?.vitorias || 0) + (currentUserPlayer?.derrotas || 0) + (currentUserPlayer?.empates || 0)}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Gols</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Gols</p>
                   <p className="text-base font-black text-primary">{currentUserPlayer?.gols || 0}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Assis</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Assis</p>
                   <p className="text-base font-black text-white">{currentUserPlayer?.assistencias || 0}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Vits</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Vits</p>
                   <p className="text-base font-black text-white">{currentUserPlayer?.vitorias || 0}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Derr</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Derr</p>
                   <p className="text-base font-black text-white">{currentUserPlayer?.derrotas || 0}</p>
                 </div>
               </div>
@@ -417,7 +417,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           <div className="flex items-center space-x-2 px-1 overflow-x-auto pb-2 scrollbar-none">
             <div className="flex items-center space-x-1 text-gray-600 mr-2">
               <ArrowUpDown size={12} />
-              <span className="text-[9px] font-bold uppercase tracking-widest">Ordem:</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest">Ordem:</span>
             </div>
             {(['number', 'name', 'level', 'position'] as const).filter(s => s !== 'level' || isAdmin).map((s) => (
               <button 
@@ -443,7 +443,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         {uploadingPlayerId === player.id ? (
                           <div className="flex flex-col items-center">
                             <Loader2 className="animate-spin text-primary" size={20} />
-                            <span className="text-[9px] font-black text-primary mt-1 leading-none">{uploadProgress}%</span>
+                            <span className="text-[10px] font-black text-primary mt-1 leading-none">{uploadProgress}%</span>
                           </div>
                         ) : player.photoUrl ? (
                           <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
@@ -451,7 +451,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                           (player.displayName || player.name).charAt(0)
                         )}
                         {player.number && (
-                          <div className={`absolute top-0 right-0 ${duplicatedNumbers.has(player.number) ? 'bg-danger animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-primary'} text-bg text-[8px] font-black px-1.5 py-0.5 rounded-bl-lg shadow-lg flex items-center gap-1`}>
+                          <div className={`absolute top-0 right-0 ${duplicatedNumbers.has(player.number) ? 'bg-danger animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-primary'} text-bg text-[10px] font-black px-1.5 py-0.5 rounded-bl-lg shadow-lg flex items-center gap-1`}>
                             {duplicatedNumbers.has(player.number) && <AlertCircle size={8} />}
                             #{player.number}
                           </div>
@@ -488,12 +488,12 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         )}
                       </div>
                       <div className="flex items-center space-x-2 mt-0.5 overflow-hidden">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
                             player.type === 'MENSALISTA' ? 'bg-primary/20 border-primary/30 text-primary' : 'bg-gray-800 border-border text-gray-400'
                           }`}>
                             {player.type}
                         </span>
-                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider truncate">{player.position}</span>
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">{formatPosition(player.position)}</span>
                       </div>
                     </div>
                   </div>
@@ -501,7 +501,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   <div className="flex flex-col items-end shrink-0">
                     <button 
                       onClick={() => handleActiveToggle(player.id, player.active)}
-                      className={`text-[8px] font-black px-1.5 py-0.5 rounded border mb-2 transition-all ${
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded border mb-2 transition-all ${
                         player.active ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
                       }`}
                     >
@@ -715,7 +715,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                       <button 
                         onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
                         disabled={ur.id === user?.uid}
-                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border ${
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
                           ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
                         } disabled:opacity-50`}
                       >
@@ -725,7 +725,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         value={ur.role || 'USER'}
                         onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
                         disabled={ur.id === user?.uid}
-                        className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[9px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
+                        className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
                       >
                         <option value="ADMIN">ADM</option>
                         <option value="USER">USER</option>
@@ -826,7 +826,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 <div className="flex flex-col">
                   <h3 className="text-[11px] font-bold tracking-[0.2em] text-danger uppercase">Ferramentas de Manutenção</h3>
                 </div>
-                <span className="text-[9px] font-black bg-danger/10 text-danger px-2 py-0.5 rounded-full uppercase tracking-tighter">Admin Access</span>
+                <span className="text-[10px] font-black bg-danger/10 text-danger px-2 py-0.5 rounded-full uppercase tracking-tighter">Admin Access</span>
               </div>
               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-relaxed">
                 Use esta ferramenta se as estatísticas do ranking estiverem incorretas ou se você excluiu partidas manualmente e os dados não foram sincronizados.
@@ -884,7 +884,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
 
       {/* Delete Confirmation Modal */}
       {playerToDelete && (
-        <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[150] flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
           <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl">
             <div className="w-16 h-16 rounded-full bg-danger/10 text-danger flex items-center justify-center mx-auto mb-6">
               <Trash2 size={32} />
@@ -915,7 +915,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         const nameToShow = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (userRoleToDelete.displayName || userRoleToDelete.name || userRoleToDelete.email || 'Usuário');
         
         return (
-          <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[150] flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
             <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl">
               <div className="w-16 h-16 rounded-full bg-danger/10 text-danger flex items-center justify-center mx-auto mb-6">
                 <Trash2 size={32} />
@@ -1080,12 +1080,12 @@ function StatBox({
 }) {
   return (
     <div className="bg-bg/40 p-2 rounded-xl border border-border/20 text-center flex flex-col items-center justify-center relative group">
-      <p className="text-[7px] font-black text-gray-500 uppercase tracking-tighter mb-0.5">{label}</p>
+      <p className="text-[10px] font-black text-gray-500 uppercase tracking-tighter mb-0.5">{label}</p>
       <div className="flex items-center gap-1">
         {editable && (
           <button 
             onClick={(e) => { e.stopPropagation(); onDecrement?.(); }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 rounded h-4 w-4 flex items-center justify-center -ml-1 text-[8px]"
+            className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 rounded h-4 w-4 flex items-center justify-center -ml-1 text-[10px]"
           >
             -
           </button>
@@ -1094,7 +1094,7 @@ function StatBox({
         {editable && (
           <button 
             onClick={(e) => { e.stopPropagation(); onIncrement?.(); }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 rounded h-4 w-4 flex items-center justify-center -mr-1 text-[8px]"
+            className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 rounded h-4 w-4 flex items-center justify-center -mr-1 text-[10px]"
           >
             +
           </button>

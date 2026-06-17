@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePelada, Player } from '../hooks/usePelada';
+import { usePelada, Player, formatPosition } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -114,6 +114,86 @@ export default function MatchList() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const generateWhatsAppText = () => {
+    if (!nextMatch) return '';
+    const d = nextMatch.date?.toDate();
+    if (!d) return '';
+
+    const weekdays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+    const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+
+    const day = String(d.getDate()).padStart(2, '0');
+    const weekday = weekdays[d.getDay()];
+    const month = months[d.getMonth()];
+
+    const dateStr = `${weekday}, ${day} DE ${month}.`;
+    const timeStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    let text = `⚽ *CONFIRMADOS NA PELADA - ${dateStr} às ${timeStr}* ⚽\n\n`;
+
+    const confirmedList = [...nextMatch.confirmedIds]
+      .map(id => players.find(p => p.id === id))
+      .filter((p): p is Player => !!p);
+
+    if (nextMatch.confirmations) {
+      confirmedList.sort((a, b) => {
+        const timeA = nextMatch.confirmations?.[a.id] ? new Date(nextMatch.confirmations[a.id]).getTime() : Infinity;
+        const timeB = nextMatch.confirmations?.[b.id] ? new Date(nextMatch.confirmations[b.id]).getTime() : Infinity;
+        return timeA - timeB;
+      });
+    }
+
+    const maxPlayers = settings.maxPlayers || 14;
+    text += `*DENTRO (${confirmedList.length}/${maxPlayers}):*\n`;
+
+    if (confirmedList.length === 0) {
+      text += `_Nenhum jogador confirmado ainda._\n`;
+    } else {
+      confirmedList.forEach((player, idx) => {
+        const isPaid = (nextMatch.paidIds && nextMatch.paidIds.includes(player.id));
+        const isMensalista = player.type === 'MENSALISTA';
+        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? ' (Mensalista)' : '';
+        text += `${idx + 1}. ${player.displayName || player.name} ✅${paymentLabel}\n`;
+      });
+    }
+
+    const remainingSlots = Math.max(0, maxPlayers - confirmedList.length);
+    text += `\n🎟️ *VAGAS DISPONÍVEIS:* ${remainingSlots} vaga${remainingSlots === 1 ? '' : 's'}\n`;
+
+    const waitingList = [...nextMatch.waitingIds]
+      .map(id => players.find(p => p.id === id))
+      .filter((p): p is Player => !!p);
+
+    if (nextMatch.confirmations) {
+      waitingList.sort((a, b) => {
+        const timeA = nextMatch.confirmations?.[a.id] ? new Date(nextMatch.confirmations[a.id]).getTime() : Infinity;
+        const timeB = nextMatch.confirmations?.[b.id] ? new Date(nextMatch.confirmations[b.id]).getTime() : Infinity;
+        return timeA - timeB;
+      });
+    }
+
+    if (waitingList.length > 0) {
+      text += `\n⏳ *FILA DE ESPERA:*\n`;
+      waitingList.forEach((player, idx) => {
+        text += `${idx + 1}. ${player.displayName || player.name}\n`;
+      });
+    }
+
+    return text;
+  };
+
+  const handleCopyToClipboard = () => {
+    const text = generateWhatsAppText();
+    if (!text) return;
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        showFeedback('success', 'Lista copiada para a área de transferência!');
+      })
+      .catch(() => {
+        showFeedback('error', 'Erro ao copiar lista.');
+      });
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando lista...</div>;
@@ -251,6 +331,40 @@ export default function MatchList() {
                   <div className="bg-card p-4 rounded-3xl border border-border/50">
                     <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Ausentes</span>
                     <div className="text-2xl font-bold text-danger">{nextMatch.absentIds.length}</div>
+                  </div>
+                </div>
+
+                {/* Compartilhar Lista no WhatsApp */}
+                <div className="px-1 mb-4">
+                  <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/10 border border-[#25D366]/20 rounded-3xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center space-x-3 w-full sm:w-auto">
+                      <div className="w-10 h-10 rounded-full bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" className="text-[#25D366]" viewBox="0 0 16 16">
+                          <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.948h.003c4.368 0 7.927-3.558 7.929-7.93a7.88 7.88 0 0 0-2.325-5.614M10.59 10.62c-.455.082-.593-.182-.743-.455-.179-.327-.513-.918-.636-1.161-.123-.243-.164-.365-.082-.487.082-.122.365-.426.548-.68.182-.254.218-.396.122-.593-.082-.182-.513-1.235-.742-1.744-.216-.481-.433-.42-.636-.433l-.403-.008c-.201 0-.527.078-.718.29-.191.212-.73.713-.73 1.74 0 1.026.742 2.019.845 2.162.102.143 1.461 2.23 3.542 3.125.495.213.882.34 1.183.437.498.158.951.135 1.31.083.399-.057 1.22-.5 1.392-1.012.172-.513.172-.951.121-1.042-.05-.092-.192-.135-.403-.243Z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="text-white text-xs font-black uppercase tracking-wider">Compartilhar Pelada</h4>
+                        <p className="text-[10px] text-gray-400 font-medium">Envie a lista de confirmados, vagas e fila no WhatsApp.</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                      <button
+                        onClick={handleCopyToClipboard}
+                        className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 text-gray-300 text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        Copiar
+                      </button>
+                      <a
+                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generateWhatsAppText())}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-bg text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-lg shadow-[#25D366]/20"
+                      >
+                        WhatsApp
+                      </a>
+                    </div>
                   </div>
                 </div>
 
@@ -393,7 +507,7 @@ export default function MatchList() {
                                       <div className="min-w-0">
                                         <h4 className="font-semibold text-sm flex items-center gap-1.5 truncate">
                                           {p?.number !== undefined && p?.number !== null && (
-                                            <span className="font-mono text-[9px] font-black text-primary bg-primary/10 border border-primary/20 px-1 py-0.5 rounded leading-none shrink-0">
+                                            <span className="font-mono text-[10px] font-black text-primary bg-primary/10 border border-primary/20 px-1 py-0.5 rounded leading-none shrink-0">
                                               Nº {p.number}
                                             </span>
                                           )}
@@ -452,9 +566,9 @@ export default function MatchList() {
                               <span className="truncate">{player.displayName || player.name}</span>
                             </h4>
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{player.position}</span>
+                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{formatPosition(player.position)}</span>
                               {isAdmin && (
-                                <span className={`text-[9px] font-black shrink-0 ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                <span className={`text-[10px] font-black shrink-0 ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
                                   • R$ {(player.balance || 0).toFixed(2)}
                                 </span>
                               )}
@@ -543,7 +657,7 @@ export default function MatchList() {
       </AnimatePresence>
 
       {showReasonModal && (
-        <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -578,7 +692,7 @@ export default function MatchList() {
 
       {/* Modal de Confirmação */}
       {confirmState && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -668,7 +782,7 @@ function PresenceSection({
                       <span className="text-gray-500 font-bold">{(player.displayName || player.name).charAt(0)}</span>
                     )}
                   </div>
-                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold ${
+                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[10px] font-bold ${
                     player.type === 'MENSALISTA' ? 'bg-primary text-bg' : 'bg-gray-700 text-gray-400'
                   }`}>
                     {player.type === 'MENSALISTA' ? 'M' : 'D'}
@@ -684,7 +798,7 @@ function PresenceSection({
                     <span className="truncate">{player.displayName || player.name}</span>
                   </h4>
                   <div className="flex flex-col sm:flex-row sm:items-start sm:gap-2 mt-0.5">
-                    <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">{player.position}</span>
+                    <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-widest">{formatPosition(player.position)}</span>
                     {confirmations && confirmations[player.id] && (
                       <div className="flex items-center gap-1 text-[10px] text-primary/90 font-bold tracking-wider mt-1 sm:mt-0">
                         <span className="hidden sm:inline text-gray-600 font-normal">•</span>
@@ -711,7 +825,7 @@ function PresenceSection({
                           } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
                           title={player.type === 'MENSALISTA' ? 'Mensalista' : isPaid ? 'Pago' : 'Marcar como Pago'}
                         >
-                          <span className={`font-mono text-[9px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
+                          <span className={`font-mono text-[10px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
                             PG
                           </span>
                         </button>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { usePelada, Player, Game } from '../hooks/usePelada';
+import { createPortal } from 'react-dom';
+import { usePelada, Player, Game, formatPosition } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -22,6 +23,7 @@ export default function LiveMatch() {
     updateMatch,
     finishMatch,
     confirmPresence,
+    markAbsent,
     deleteGame,
     pauseGame,
     resumeGame,
@@ -180,6 +182,94 @@ export default function LiveMatch() {
     }
 
     return { teamA: finalAName, teamB: finalBName };
+  };
+
+  const resolveTeamIndex = (teamIds: string[] | undefined, teamName: string | undefined): number => {
+    if (teamName && teamName.startsWith('Time ')) {
+      const teamNum = parseInt(teamName.replace('Time ', ''), 10);
+      if (!isNaN(teamNum)) {
+        const teamIdx = teamNum - 1;
+        if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
+          return teamIdx;
+        }
+      }
+    }
+
+    if (!teamIds || teamIds.length === 0 || !activeMatch?.teams) return -1;
+    let bestKey = -1;
+    let maxOverlap = 0;
+    Object.entries(activeMatch.teams).forEach(([key, ids]) => {
+      const idsArray = (ids || []) as string[];
+      const overlap = teamIds.filter(id => idsArray.includes(id)).length;
+      if (overlap > maxOverlap) {
+        maxOverlap = overlap;
+        bestKey = Number(key);
+      }
+    });
+    return bestKey;
+  };
+
+  const getBandeirasFromTeam = (teamIdx: number) => {
+    if (!activeMatch?.teams) return { teamIdx: -1, players: [] as Player[] };
+    const teamPlayerIds = activeMatch.teams[String(teamIdx)] || [];
+    if (teamPlayerIds.length === 0) return { teamIdx, players: [] as Player[] };
+
+    // Conta quantas vezes cada jogador do time já atuou como Bandeira nesta pelada
+    const counts: Record<string, number> = {};
+    teamPlayerIds.forEach(id => {
+      counts[id] = 0;
+    });
+
+    // Calcula de acordo com as partidas salvas de hoje (activeGames)
+    activeGames.forEach(game => {
+      if (game.bandeiras_ids) {
+        game.bandeiras_ids.forEach(id => {
+          if (counts[id] !== undefined) {
+            counts[id]++;
+          }
+        });
+      }
+    });
+
+    // Mapeia para os objetos correspondentes de jogador e remove nulos/indefinidos
+    const teamPlayers = teamPlayerIds
+      .map(id => players.find(p => p.id === id))
+      .filter((p): p is Player => p !== undefined);
+
+    // Ordena pelo menor número de aparições como Bandeira
+    teamPlayers.sort((a, b) => {
+      const countA = counts[a.id] || 0;
+      const countB = counts[b.id] || 0;
+      if (countA !== countB) {
+        return countA - countB;
+      }
+      return a.id.localeCompare(b.id);
+    });
+
+    // Retorna os 2 com menos atuações
+    return {
+      teamIdx,
+      players: teamPlayers.slice(0, 2)
+    };
+  };
+
+  const getBandeirasForMatch = (teamAIdx: number, teamBIdx: number) => {
+    if (!activeMatch?.teams || !queueState?.queue) return { teamIdx: -1, players: [] as Player[] };
+    
+    // Encontra o primeiro time da fila de espera que não seja o Time A nem o Time B
+    const waitingTeamIdx = queueState.queue.find(idx => idx !== teamAIdx && idx !== teamBIdx);
+    
+    if (waitingTeamIdx === undefined) {
+      // Se não houver, pega o primeiro time fora o A e B
+      const allTeamIndices = Object.keys(activeMatch.teams).map(Number);
+      const fallbackIdx = allTeamIndices.find(idx => idx !== teamAIdx && idx !== teamBIdx);
+      if (fallbackIdx === undefined) {
+        return { teamIdx: -1, players: [] as Player[] };
+      }
+      return getBandeirasFromTeam(fallbackIdx);
+    }
+    
+    return getBandeirasFromTeam(waitingTeamIdx);
   };
   
   // New state for scheduling and editing
@@ -903,7 +993,7 @@ export default function LiveMatch() {
   const handleRemovePlayerFromTeam = async (playerId: string) => {
     if ((!editingGame && editingTeamIndex === null) || !activeMatch) return;
 
-    confirmAction('Remover jogador do time e reorganizar os times sequencialmente?', async () => {
+    confirmAction('Deseja remover este jogador do time e da pelada? Ele irá para a lista "Fora da Pelada", mas você poderá incluí-lo de volta manualmente.', async () => {
       const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
         if (teamName && teamName.startsWith('Time ')) {
           const teamNum = parseInt(teamName.replace('Time ', ''), 10);
@@ -932,39 +1022,12 @@ export default function LiveMatch() {
       const currentTeams = { ...activeMatch.teams };
       const sortedKeys = Object.keys(currentTeams).map(Number).sort((a, b) => a - b);
       
-      // Step 1: Collect original sizes and linear sequence of player registrations
-      const teamSizes: Record<string, number> = {};
-      const allTeamPlayers: string[] = [];
+      // Step 1: Remove the selected player from whichever team they belong to, without auto-filling or shifting roles downstream
+      const newTeams: Record<string, string[]> = {};
       for (const k of sortedKeys) {
         const keyStr = String(k);
         const playersInTeam = currentTeams[keyStr] || [];
-        teamSizes[keyStr] = playersInTeam.length;
-        allTeamPlayers.push(...playersInTeam);
-      }
-
-      // Step 2: Extract the designated player
-      const remainingPlayers = allTeamPlayers.filter(id => id !== playerId);
-
-      // Automatically fill the vacancy with the next player from the wait pool/sequence to prevent empty (Vazio) spots
-      const confirmedIds = activeMatch.confirmedIds || [];
-      const playersInTeamsSet = new Set(remainingPlayers);
-      const eligibleSpares = confirmedIds.filter(id => id !== playerId && !playersInTeamsSet.has(id));
-      
-      eligibleSpares.sort(comparePlayersByWaitTime);
-
-      if (eligibleSpares.length > 0) {
-        remainingPlayers.push(eligibleSpares[0]);
-      }
-
-      // Step 3: Redistribute according to original sizes
-      const newTeams: Record<string, string[]> = {};
-      let playerPointer = 0;
-      for (const k of sortedKeys) {
-        const keyStr = String(k);
-        const originalSize = teamSizes[keyStr] || 0;
-        const teamPlayers = remainingPlayers.slice(playerPointer, playerPointer + originalSize);
-        newTeams[keyStr] = teamPlayers;
-        playerPointer += originalSize;
+        newTeams[keyStr] = playersInTeam.filter(id => id !== playerId);
       }
 
       // Step 4: Detect active game team indexes based on maximum overlap before shifting
@@ -987,9 +1050,16 @@ export default function LiveMatch() {
         if (idxB !== -1) editingGameTeamBKey = String(idxB);
       }
 
+      const newConfirmedIds = (activeMatch.confirmedIds || []).filter(id => id !== playerId);
+      const newWaitingIds = (activeMatch.waitingIds || []).filter(id => id !== playerId);
+
       try {
-        // Redraw static matches on DB
-        await updateMatch(activeMatch.id, { teams: newTeams });
+        // Redraw static matches on DB and remove from confirmed / waiting to place in "Fora da Pelada"
+        await updateMatch(activeMatch.id, { 
+          teams: newTeams,
+          confirmedIds: newConfirmedIds,
+          waitingIds: newWaitingIds
+        });
 
         // Update liveGame if active
         if (liveGame && (liveGameTeamAKey !== null || liveGameTeamBKey !== null)) {
@@ -1049,6 +1119,72 @@ export default function LiveMatch() {
         console.error("Erro ao excluir equipe:", error);
       }
     });
+  };
+
+  const topWaitingPlayer = useMemo(() => {
+    if (!activeMatch) return null;
+    const confirmedIds = activeMatch.confirmedIds || [];
+    const activePlayers = players.filter(p => p.active);
+    const confirmed = activePlayers.filter(p => confirmedIds.includes(p.id));
+
+    const onBench = confirmed.filter(p => {
+      let found = false;
+      const teams = activeMatch.teams || {};
+      Object.values(teams).forEach((teamIds: any) => {
+        if (Array.isArray(teamIds) && teamIds.includes(p.id)) found = true;
+      });
+      return !found;
+    });
+
+    if (onBench.length === 0) return null;
+
+    return onBench.sort((a, b) => comparePlayersByWaitTime(a.id, b.id))[0];
+  }, [activeMatch?.confirmedIds, activeMatch?.teams, players, comparePlayersByWaitTime]);
+
+  const handleQuickAddNext = async (playerId: string, teamSide?: 'A' | 'B') => {
+    if (!activeMatch) return;
+    try {
+      await confirmPresence(activeMatch.id, playerId);
+    } catch (error) {
+      console.error("Erro ao confirmar presença automática:", error);
+    }
+
+    if (editingGame && teamSide) {
+      let newTeamA = (editingGame.teamA_ids || []).filter(id => id !== playerId);
+      let newTeamB = (editingGame.teamB_ids || []).filter(id => id !== playerId);
+      if (teamSide === 'A') newTeamA.push(playerId);
+      else newTeamB.push(playerId);
+
+      try {
+        const gameRef = doc(db, 'matches', activeMatch.id, 'games', editingGame.id);
+        await updateDoc(gameRef, { 
+          teamA_ids: newTeamA,
+          teamB_ids: newTeamB 
+        });
+        setEditingGame({ ...editingGame, teamA_ids: newTeamA, teamB_ids: newTeamB });
+      } catch (error) {
+        console.error("Erro ao atualizar jogador no jogo:", error);
+      }
+    } else if (editingTeamIndex !== null) {
+      const currentTeams = { ...activeMatch.teams };
+      const teamKey = String(editingTeamIndex);
+      
+      Object.keys(currentTeams).forEach(k => {
+        if (currentTeams[k]) {
+          currentTeams[k] = currentTeams[k].filter(id => id !== playerId);
+        }
+      });
+
+      let newTeamIds = [...(currentTeams[teamKey] || [])];
+      newTeamIds.push(playerId);
+      currentTeams[teamKey] = newTeamIds;
+
+      try {
+        await updateMatch(activeMatch.id, { teams: currentTeams });
+      } catch (error) {
+        console.error("Erro ao atualizar time:", error);
+      }
+    }
   };
 
   const handleSelectPlayerForTeam = async (playerId: string) => {
@@ -1224,7 +1360,7 @@ export default function LiveMatch() {
     if (!activeMatch?.teams || teamsCount < 2) return null;
 
     return (
-      <div className="bg-card/40 border border-border/80 rounded-[2rem] p-5 space-y-4 shadow-xl">
+      <div className="bg-card border border-border rounded-[2rem] p-5 space-y-4 shadow-xl">
         <div className="flex items-center space-x-2 text-primary">
           <History size={16} />
           <h3 className="text-xs font-black uppercase tracking-widest italic">Sequência de Entrada</h3>
@@ -1232,8 +1368,8 @@ export default function LiveMatch() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Próximo Jogo */}
-          <div className="bg-bg/40 p-3.5 rounded-2xl border border-border/40 space-y-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Sugerido Próximo Confronto</span>
+          <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">Sugerido Próximo Confronto</span>
             {liveGame ? (
               <div className="space-y-1.5 py-0.5">
                 <div className="flex items-center space-x-2 text-sm font-black text-white">
@@ -1242,7 +1378,7 @@ export default function LiveMatch() {
                   <span className="text-blue-400">Time {queueState.queue[0] !== undefined ? queueState.queue[0] + 1 : '?'}</span>
                 </div>
                 {queueState.queue.length >= 2 && (
-                  <div className="flex items-center space-x-1.5 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
+                  <div className="flex items-center space-x-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                     <span>* Se empatar entram:</span>
                     <span className="text-gray-300">Time {queueState.queue[0] + 1}</span>
                     <span>VS</span>
@@ -1257,22 +1393,74 @@ export default function LiveMatch() {
                 <span className="text-blue-400 truncate">Time {queueState.suggested[1] !== undefined ? queueState.suggested[1] + 1 : '?'}</span>
               </div>
             )}
-            <span className="text-[8px] text-gray-500 block font-semibold leading-tight pt-1">
+            <span className="text-[10px] text-gray-500 block font-semibold leading-tight pt-1 pb-1.5 border-b border-white/5">
               * Regra: vencedor continua contra o próximo da fila. Nos empates, entram os dois seguintes.
             </span>
+            {(() => {
+              if (liveGame) {
+                const nextWaitingTeamIdx = queueState.queue[1];
+                if (nextWaitingTeamIdx !== undefined) {
+                  const bInfo = getBandeirasFromTeam(nextWaitingTeamIdx);
+                  if (bInfo.players.length > 0) {
+                    return (
+                      <div className="pt-2 space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 block">🚩 Bandeiras Próximo Jogo:</span>
+                        <div className="flex gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none items-center py-0.5 max-w-full">
+                          {bInfo.players.map(p => {
+                            const name = p.displayName || p.name;
+                            const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
+                            return (
+                              <span key={p.id} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
+                                {truncated}
+                              </span>
+                            );
+                          })}
+                          <span className="text-[10px] text-gray-500 italic whitespace-nowrap">(Equipe {bInfo.teamIdx + 1})</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+              } else {
+                const bInfo = getBandeirasForMatch(
+                  queueState.suggested[0] !== undefined ? queueState.suggested[0] : 0,
+                  queueState.suggested[1] !== undefined ? queueState.suggested[1] : 1
+                );
+                if (bInfo.teamIdx !== -1 && bInfo.players.length > 0) {
+                   return (
+                    <div className="pt-2 space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 block">🚩 Bandeiras do Jogo:</span>
+                      <div className="flex gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none items-center py-0.5 max-w-full">
+                        {bInfo.players.map(p => {
+                          const name = p.displayName || p.name;
+                          const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
+                          return (
+                            <span key={p.id} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
+                              {truncated}
+                            </span>
+                          );
+                        })}
+                        <span className="text-[10px] text-gray-500 italic whitespace-nowrap">(Equipe {bInfo.teamIdx + 1})</span>
+                      </div>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
           </div>
 
           {/* Fila de espera */}
-          <div className="bg-bg/40 p-3.5 rounded-2xl border border-border/40 space-y-2 font-black">
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Fila de Espera (Mais tempo sem jogar)</span>
+          <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2 font-black">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">Fila de Espera (Mais tempo sem jogar)</span>
             {queueState.queue.length === 0 ? (
               <span className="text-xs font-semibold text-gray-500 block italic py-1">Nenhum time na fila de espera.</span>
             ) : (
               <div className="flex flex-wrap items-center gap-1.5 py-1">
                 {queueState.queue.map((teamIdx, index) => (
                   <React.Fragment key={teamIdx}>
-                    <span className="px-2.5 py-1 bg-white/[0.04] border border-white/5 rounded-xl text-[10px] font-bold text-gray-300 inline-flex items-center">
-                      <span className="text-[8px] text-gray-500 font-bold mr-1">#{index + 1}</span>
+                    <span className="px-2.5 py-1 bg-white/5 border border-white/5 rounded-xl text-[10px] font-bold text-gray-300 inline-flex items-center">
+                      <span className="text-[10px] text-gray-500 font-bold mr-1">#{index + 1}</span>
                       <span>Time {teamIdx + 1}</span>
                     </span>
                     {index < queueState.queue.length - 1 && (
@@ -1285,8 +1473,8 @@ export default function LiveMatch() {
           </div>
 
           {/* Fila de Jogadores */}
-          <div className="bg-bg/40 p-3.5 rounded-2xl border border-border/40 space-y-2 font-black">
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500 block">Fila de Jogadores (Sequência)</span>
+          <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2 font-black">
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 block">Fila de Jogadores (Sequência)</span>
             {playerQueue.length === 0 ? (
               <span className="text-xs font-semibold text-gray-500 block italic py-1">Nenhum jogador na fila de espera.</span>
             ) : (
@@ -1302,10 +1490,29 @@ export default function LiveMatch() {
                         const games = playerStats[id]?.gamesPlayedCount ?? 0;
                         return (
                           <React.Fragment key={id}>
-                            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[9px] font-bold text-amber-500 inline-flex items-center">
-                              <span className="text-[7.5px] text-amber-500/60 font-black mr-1">#{index + 1}</span>
-                              <span className="truncate max-w-[75px] uppercase">{name}</span>
-                              <span className="text-[7px] text-gray-500 ml-0.5 font-normal">({games}j)</span>
+                            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[10px] font-bold text-amber-500 inline-flex items-center gap-1 group/item">
+                              <span className="text-[10px] text-amber-500/60 font-black mr-0.5">#{index + 1}</span>
+                              <span className="truncate max-w-[70px] uppercase">{name}</span>
+                              <span className="text-[10px] text-gray-500 font-normal">({games}j)</span>
+                              {isAdmin && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    confirmAction(`Marcar "${name}" como ausente (foi embora)? Ele será removido da pelada e da fila.`, async () => {
+                                      try {
+                                        await markAbsent(activeMatch.id, id, "Foi embora");
+                                      } catch (err) {
+                                        console.error("Erro ao marcar ausente:", err);
+                                      }
+                                    });
+                                  }}
+                                  className="ml-1 p-0.5 hover:bg-red-500/20 rounded text-red-400 hover:text-red-500 focus:outline-none transition-all cursor-pointer inline-flex items-center"
+                                  title="Marcar como Ausente (Foi Embora)"
+                                >
+                                  <Plus size={8} className="rotate-45 shrink-0" />
+                                </button>
+                              )}
                             </span>
                             {index < Math.min(playerQueue.length, maxQueueToShow) - 1 && (
                               <ArrowRight size={10} className="text-gray-600 shrink-0 inline-block align-middle" />
@@ -1314,7 +1521,7 @@ export default function LiveMatch() {
                         );
                       })}
                       {playerQueue.length > maxQueueToShow && (
-                        <span className="text-[8px] font-bold text-gray-500 whitespace-nowrap pl-1">
+                        <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap pl-1">
                           +{playerQueue.length - maxQueueToShow} mais
                         </span>
                       )}
@@ -1330,7 +1537,7 @@ export default function LiveMatch() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20 w-full max-w-lg mx-auto transform-gpu">
       {!liveGame ? (
         <section className="space-y-6">
           {!activeMatch.teams || Object.keys(activeMatch.teams).length < 2 ? (
@@ -1372,12 +1579,12 @@ export default function LiveMatch() {
                           <div key={id} className="flex items-center justify-between">
                             <div className="flex items-center space-x-2 min-w-0">
                               <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-primary'}`} />
-                              <span className={`text-[8px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
+                              <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
                                 {p?.displayName || p?.name || 'Vazio'}
                               </span>
                             </div>
                             {isCompleting && (
-                              <span className="text-[7px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
+                              <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
                                 Seq. #{effectiveDrawOrder[id]}
                               </span>
                             )}
@@ -1407,12 +1614,12 @@ export default function LiveMatch() {
                           <div key={id} className="flex items-center justify-between">
                             <div className="flex items-center space-x-2 min-w-0">
                               <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-white/30'}`} />
-                              <span className={`text-[8px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
+                              <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
                                 {p?.displayName || p?.name || 'Vazio'}
                               </span>
                             </div>
                             {isCompleting && (
-                              <span className="text-[7px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
+                              <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
                                 Seq. #{effectiveDrawOrder[id]}
                               </span>
                             )}
@@ -1428,12 +1635,15 @@ export default function LiveMatch() {
                     onClick={() => {
                       const nameA = `Time ${Number(scheduledTeamA) + 1}`;
                       const nameB = `Time ${Number(scheduledTeamB) + 1}`;
+                      const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
+                      const bandeiraIds = bInfo.players.map(p => p.id);
                       startLiveGame(
                         activeMatch.id, 
                         completedScheduledPlayers.teamA, 
                         completedScheduledPlayers.teamB, 
                         nameA, 
-                        nameB
+                        nameB,
+                        bandeiraIds
                       );
                     }}
                     className="flex-1 py-4 bg-primary text-bg rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-primary/20"
@@ -1445,12 +1655,15 @@ export default function LiveMatch() {
                     onClick={() => {
                       const nameA = `Time ${Number(scheduledTeamA) + 1}`;
                       const nameB = `Time ${Number(scheduledTeamB) + 1}`;
+                      const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
+                      const bandeiraIds = bInfo.players.map(p => p.id);
                       createScheduledGame(
                         activeMatch.id, 
                         completedScheduledPlayers.teamA, 
                         completedScheduledPlayers.teamB, 
                         nameA, 
-                        nameB
+                        nameB,
+                        bandeiraIds
                       );
                     }}
                     className="flex-1 py-4 bg-white/5 border border-border text-white rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 hover:bg-white/10"
@@ -1475,7 +1688,7 @@ export default function LiveMatch() {
           )}
         </section>
       ) : (
-        <div className="bg-bg min-h-screen -mt-6 -mx-4 pb-20 relative overflow-hidden">
+        <div className="bg-bg min-h-[100dvh] -mt-6 -mx-4 pb-20 relative overflow-hidden transform-gpu">
           {/* Header */}
           <div className="border-b border-white/5 p-6 mb-2">
             <div className="flex items-center justify-between">
@@ -1525,7 +1738,7 @@ export default function LiveMatch() {
                           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-bg shadow-lg shadow-primary/30 group-active:scale-95 transition-all">
                             <Play size={18} fill="currentColor" />
                           </div>
-                          <span className="text-[8px] font-black uppercase mt-1.5 text-primary tracking-widest">Retomar</span>
+                          <span className="text-[10px] font-black uppercase mt-1.5 text-primary tracking-widest">Retomar</span>
                         </button>
                       ) : (
                         <button 
@@ -1535,7 +1748,7 @@ export default function LiveMatch() {
                           <div className="w-10 h-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary group-active:scale-95 transition-all">
                             <Pause size={18} fill="currentColor" />
                           </div>
-                          <span className="text-[8px] font-black uppercase mt-1.5 text-primary tracking-widest">Pausar</span>
+                          <span className="text-[10px] font-black uppercase mt-1.5 text-primary tracking-widest">Pausar</span>
                         </button>
                       )}
 
@@ -1546,7 +1759,7 @@ export default function LiveMatch() {
                         <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-500 group-active:scale-95 transition-all">
                           <Square size={18} fill="currentColor" />
                         </div>
-                        <span className="text-[8px] font-black uppercase mt-1.5 text-red-500 tracking-widest">Finalizar</span>
+                        <span className="text-[10px] font-black uppercase mt-1.5 text-red-500 tracking-widest">Finalizar</span>
                       </button>
                     </div>
                   )}
@@ -1558,6 +1771,63 @@ export default function LiveMatch() {
                   <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreB}</div>
                 </div>
               </div>
+
+              {/* BANDEIRAS (Linesmen) */}
+              {(() => {
+                let bandeirasPlayers: Player[] = [];
+                let bTeamIdx = -1;
+                
+                if (liveGame.bandeiras_ids && liveGame.bandeiras_ids.length > 0) {
+                  bandeirasPlayers = liveGame.bandeiras_ids
+                    .map(id => players.find(p => p.id === id))
+                    .filter((p): p is Player => p !== undefined);
+                  
+                  if (bandeirasPlayers.length > 0) {
+                    const firstPlayerId = bandeirasPlayers[0].id;
+                    if (activeMatch.teams) {
+                      const foundEntry = Object.entries(activeMatch.teams).find(([_, ids]) => (ids as string[] || []).includes(firstPlayerId));
+                      if (foundEntry) {
+                        bTeamIdx = Number(foundEntry[0]);
+                      }
+                    }
+                  }
+                } else {
+                  const tAIdx = resolveTeamIndex(liveGame.teamA_ids, liveGame.teamA_name);
+                  const tBIdx = resolveTeamIndex(liveGame.teamB_ids, liveGame.teamB_name);
+                  const bInfo = getBandeirasForMatch(tAIdx, tBIdx);
+                  bandeirasPlayers = bInfo.players;
+                  bTeamIdx = bInfo.teamIdx;
+                }
+
+                if (bandeirasPlayers.length === 0) return null;
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-white/5 flex flex-col items-center justify-center relative z-10 w-full overflow-hidden">
+                    <div className="flex items-center space-x-1.5 text-[9px] font-black uppercase tracking-widest text-gray-500 mb-2">
+                      <span className="text-amber-500">🚩</span>
+                      <span>Bandeiras da Partida</span>
+                      {bTeamIdx !== -1 && (
+                        <span className="text-gray-400 font-extrabold italic">(Equipe {bTeamIdx + 1})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none max-w-full px-2 py-0.5">
+                      {bandeirasPlayers.map((p, idx) => {
+                        const name = p.displayName || p.name;
+                        const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
+                        return (
+                          <span key={p.id} className="text-[9px] font-bold text-white px-2 py-1 bg-white/5 border border-white/5 rounded-lg flex items-center space-x-1 shadow-sm whitespace-nowrap">
+                            <span className="text-gray-500 font-bold text-[9px]">#{idx + 1}</span>
+                            <span className="uppercase whitespace-nowrap">{truncated}</span>
+                            {p.number !== undefined && p.number !== null && (
+                              <span className="text-primary font-mono text-[9px] font-extrabold">Nº {p.number}</span>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* REAL-TIME MATCH EVENTS DISPLAY */}
               {liveGame.events && liveGame.events.length > 0 && (
@@ -1578,7 +1848,7 @@ export default function LiveMatch() {
                             {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
                           </p>
                           {e.assistId && (
-                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
                               Assist: {(() => {
                                 const p = players.find(p => p.id === e.assistId);
                                 const name = p ? (p.displayName || p.name) : 'Atleta';
@@ -1607,7 +1877,7 @@ export default function LiveMatch() {
                             {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
                           </p>
                           {e.assistId && (
-                            <p className="text-[8px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
                               Assist: {(() => {
                                 const p = players.find(p => p.id === e.assistId);
                                 const name = p ? (p.displayName || p.name) : 'Atleta';
@@ -1686,15 +1956,10 @@ export default function LiveMatch() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerA.displayName || playerA.name}</p>
                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span className="text-[8px] font-bold text-primary/70 uppercase tracking-widest">{playerA.position}</span>
+                                  <span className="text-[10px] font-bold text-primary/70 uppercase tracking-widest">{formatPosition(playerA.position)}</span>
                                   {playerA.number !== undefined && playerA.number !== null && (
-                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-primary/20 text-primary border border-primary/10 rounded leading-none">
+                                    <span className="text-[10px] font-black px-1 py-0.5 bg-primary/20 text-primary border border-primary/10 rounded leading-none">
                                       Nº {playerA.number}
-                                    </span>
-                                  )}
-                                  {effectiveDrawOrder[playerA.id] !== undefined && (
-                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/15 rounded leading-none whitespace-nowrap">
-                                      Seq. #{effectiveDrawOrder[playerA.id]}
                                     </span>
                                   )}
                                 </div>
@@ -1723,17 +1988,12 @@ export default function LiveMatch() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black text-white uppercase truncate tracking-tight">{playerB.displayName || playerB.name}</p>
                                 <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                                  {effectiveDrawOrder[playerB.id] !== undefined && (
-                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/15 rounded leading-none whitespace-nowrap">
-                                      Seq. #{effectiveDrawOrder[playerB.id]}
-                                    </span>
-                                  )}
                                   {playerB.number !== undefined && playerB.number !== null && (
-                                    <span className="text-[7.5px] font-black px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/10 rounded leading-none flex-shrink-0">
+                                    <span className="text-[10px] font-black px-1 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/10 rounded leading-none flex-shrink-0">
                                       Nº {playerB.number}
                                     </span>
                                   )}
-                                  <span className="text-[8px] font-bold text-blue-400/70 uppercase tracking-widest">{playerB.position}</span>
+                                  <span className="text-[10px] font-bold text-blue-400/70 uppercase tracking-widest">{formatPosition(playerB.position)}</span>
                                 </div>
                               </div>
                               <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center overflow-hidden border border-white/10 group-active:scale-90 transition-transform">
@@ -1764,7 +2024,7 @@ export default function LiveMatch() {
       )}
 
       {/* TODAS AS ESCALAÇÕES (Always visible at bottom) */}
-      <div className="space-y-4 pt-8">
+      <div className="space-y-4 pt-8 shrink-0">
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center space-x-2">
             <History size={18} className="text-gray-500" />
@@ -1842,21 +2102,23 @@ export default function LiveMatch() {
                     const p = players.find(p => p.id === id);
                     const isGK = p?.position === 'GOLEIRO' || p?.secondaryPosition === 'GOLEIRO';
                     return (
-                      <div key={`${id}-${pIdx}`} className="flex items-center justify-between text-[11px] font-bold py-1 border-b border-white/5 last:border-0 group">
-                        <div className="flex items-center space-x-2">
-                          <span className={`w-8 text-[9px] text-center rounded px-1 group-hover:bg-primary/10 transition-colors ${isGK ? 'bg-primary text-bg' : 'text-gray-500'}`}>
-                            {p?.position.substring(0, 3).toUpperCase() || 'POS'}
+                      <div key={`${id}-${pIdx}`} className="flex items-center justify-between text-[11px] font-bold py-1 border-b border-white/5 last:border-0 group min-w-0 gap-2">
+                        <div className="flex items-center space-x-2 min-w-0 flex-1">
+                          <span className={`w-8 text-[10px] text-center rounded px-1 shrink-0 group-hover:bg-primary/10 transition-colors ${isGK ? 'bg-primary text-bg' : 'text-gray-500'}`}>
+                            {formatPosition(p?.position) || 'POS'}
                           </span>
-                          <span className="text-white truncate max-w-[120px]">
+                          <span className="text-white truncate min-w-0 flex-1" title={p?.displayName || p?.name || 'Desconhecido'}>
                             {p?.displayName || p?.name || 'Desconhecido'}
-                            {p?.number !== undefined && p?.number !== null && (
-                              <span className="text-[8px] font-black text-primary/80 ml-1.5">(Nº {p.number})</span>
-                            )}
                           </span>
+                          {p?.number !== undefined && p?.number !== null && (
+                            <span className="text-[10px] font-black text-primary/80 shrink-0 ml-1.5 whitespace-nowrap">
+                              (Nº {p.number})
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
                           {p && effectiveDrawOrder[p.id] !== undefined && (
-                            <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/15 leading-none mr-1">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/15 leading-none mr-1">
                               Seq. #{effectiveDrawOrder[p.id]}
                             </span>
                           )}
@@ -1865,6 +2127,46 @@ export default function LiveMatch() {
                       </div>
                     );
                   })}
+                  {isAdmin && topWaitingPlayer && (
+                    <div className="pt-2 mt-2 border-t border-dashed border-white/10 flex items-center justify-between animate-in fade-in duration-300">
+                      <div className="flex flex-col min-w-0 flex-1 pr-2">
+                        <span className="text-[9px] text-amber-500 font-extrabold uppercase tracking-widest leading-none mb-1">
+                          Sugerido da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})
+                        </span>
+                        <span className="text-white text-xs font-bold truncate">
+                          {topWaitingPlayer.displayName || topWaitingPlayer.name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const currentTeams = { ...activeMatch.teams };
+                          const teamKey = String(key);
+                          
+                          // Remove player from other teams if exists to avoid duplicated instances
+                          Object.keys(currentTeams).forEach(k => {
+                            if (currentTeams[k]) {
+                              currentTeams[k] = currentTeams[k].filter(id => id !== topWaitingPlayer.id);
+                            }
+                          });
+
+                          let newTeamIds = [...(currentTeams[teamKey] || [])];
+                          newTeamIds.push(topWaitingPlayer.id);
+                          currentTeams[teamKey] = newTeamIds;
+
+                          try {
+                             await updateMatch(activeMatch.id, { teams: currentTeams });
+                          } catch (error) {
+                             console.error("Erro ao adicionar jogador sugerido:", error);
+                          }
+                        }}
+                        className="px-2 py-1.5 bg-primary/20 hover:bg-primary/35 text-primary border border-primary/30 hover:border-primary/50 rounded-xl text-[9px] uppercase font-black tracking-widest shrink-0 transition-all flex items-center space-x-1"
+                        title={`Adicionar ${topWaitingPlayer.displayName || topWaitingPlayer.name} a esta equipe`}
+                      >
+                        <Plus size={10} />
+                        <span>Incluir</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1873,7 +2175,7 @@ export default function LiveMatch() {
       </div>
 
       {/* Partidas do Dia */}
-      <div className="space-y-4">
+      <div className="space-y-4 shrink-0">
         <div className="flex items-center justify-between px-2">
           <h3 className="text-sm font-bold uppercase tracking-widest flex items-center space-x-2">
             <Trophy size={16} className="text-primary" />
@@ -1888,7 +2190,7 @@ export default function LiveMatch() {
                 title="Excluir Pelada Inteira"
               >
                 <Trash2 size={14} />
-                <span className="text-[9px] font-black uppercase tracking-widest">Excluir Pelada</span>
+                <span className="text-[10px] font-black uppercase tracking-widest">Excluir Pelada</span>
               </button>
             )}
           </div>
@@ -1909,33 +2211,42 @@ export default function LiveMatch() {
                       {game.status === 'RUNNING' ? (
                         <div className="flex items-center space-x-1.5">
                           <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                          <span className="text-[9px] font-black text-primary uppercase tracking-widest">Em Andamento</span>
+                          <span className="text-[10px] font-black text-primary uppercase tracking-widest">Em Andamento</span>
                         </div>
                       ) : game.status === 'SCHEDULED' ? (
                         <div className="flex items-center space-x-1.5 text-yellow-500">
                           <Timer size={10} />
-                          <span className="text-[9px] font-black uppercase tracking-widest">Agendada</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest">Agendada</span>
                         </div>
                       ) : (
-                        <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Finalizada</span>
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Finalizada</span>
                       )}
                     </div>
                     <div className="flex items-center space-x-3">
-                      <span className="text-[9px] font-bold text-gray-500">
+                      <span className="text-[10px] font-bold text-gray-500">
                         {game.startTime?.toDate?.().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {isAdmin && (game.status === 'RUNNING' || game.status === 'SCHEDULED') && (
                         <button 
                           onClick={() => setEditingGame(game)}
-                          className="p-1 px-2 bg-white/5 border border-border/50 rounded-lg text-[8px] font-black uppercase text-white hover:bg-white/10"
+                          className="p-1 px-2 bg-white/5 border border-border/50 rounded-lg text-[10px] font-black uppercase text-white hover:bg-white/10"
                         >
                           EDITAR
                         </button>
                       )}
                       {isAdmin && game.status === 'SCHEDULED' && (
                         <button 
-                          onClick={() => startGame(activeMatch.id, game.id)}
-                          className="p-1 px-2 bg-primary text-bg rounded-lg text-[8px] font-black uppercase shadow-lg shadow-primary/20"
+                          onClick={() => {
+                            let bIds = game.bandeiras_ids;
+                            if (!bIds || bIds.length === 0) {
+                              const tAIdx = resolveTeamIndex(game.teamA_ids, game.teamA_name);
+                              const tBIdx = resolveTeamIndex(game.teamB_ids, game.teamB_name);
+                              const bInfo = getBandeirasForMatch(tAIdx, tBIdx);
+                              bIds = bInfo.players.map(p => p.id);
+                            }
+                            startGame(activeMatch.id, game.id, bIds);
+                          }}
+                          className="p-1 px-2 bg-primary text-bg rounded-lg text-[10px] font-black uppercase shadow-lg shadow-primary/20"
                         >
                           INICIAR
                         </button>
@@ -1960,13 +2271,13 @@ export default function LiveMatch() {
 
                   <div className="p-4 flex items-center justify-between">
                     <div className="flex-1 flex flex-col items-center">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">{rTeams.teamA}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight mb-1">{rTeams.teamA}</span>
                       <div className="text-2xl font-black italic">{game.scoreA}</div>
                       <div className="mt-1 space-y-0.5 text-center">
                         {game.events.filter(e => e.teamSide === 'A').map((e, evIdx) => (
                           <div key={evIdx} className="flex items-center space-x-1.5 justify-center">
                             <Circle size={6} className="fill-primary/50 text-primary/50" />
-                            <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
                                 if (!p) return '';
@@ -1980,16 +2291,16 @@ export default function LiveMatch() {
                       </div>
                     </div>
                     <div className="flex flex-col items-center px-4 space-y-2">
-                      <div className="text-xs font-black text-border/40 italic">VS</div>
+                       <div className="text-xs font-black text-border/40 italic">VS</div>
                     </div>
                     <div className="flex-1 flex flex-col items-center">
-                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tight mb-1">{rTeams.teamB}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight mb-1">{rTeams.teamB}</span>
                       <div className="text-2xl font-black italic">{game.scoreB}</div>
                       <div className="mt-1 space-y-0.5 text-center">
                         {game.events.filter(e => e.teamSide === 'B').map((e, evIdx) => (
                           <div key={evIdx} className="flex items-center space-x-1.5 justify-center">
                             <Circle size={6} className="fill-primary/50 text-primary/50" />
-                            <span className="text-[7px] font-bold text-gray-400 uppercase tracking-tighter">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
                                 if (!p) return '';
@@ -2003,6 +2314,26 @@ export default function LiveMatch() {
                       </div>
                     </div>
                   </div>
+                  {game.bandeiras_ids && game.bandeiras_ids.length > 0 && (
+                    <div className="px-4 py-2 border-t border-white/5 bg-white/[0.01] flex items-center justify-center space-x-2">
+                      <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest flex items-center shrink-0">
+                        🚩 Bandeiras:
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none min-w-0 pr-1 py-0.5">
+                        {game.bandeiras_ids.map(id => {
+                          const p = players.find(p => p.id === id);
+                          if (!p) return null;
+                          const name = p.displayName || p.name;
+                          const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
+                          return (
+                            <span key={id} className="text-[10px] font-bold text-gray-400 bg-white/[0.03] px-1.5 py-0.5 rounded leading-none shrink-0 border border-white/5 uppercase whitespace-nowrap">
+                              {truncated}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -2013,8 +2344,10 @@ export default function LiveMatch() {
 
 
       {/* Modal de Substituição/Edição */}
-      {(editingGame || editingTeamIndex !== null) && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+      {typeof document !== 'undefined' && createPortal(
+        <>
+          {(editingGame || editingTeamIndex !== null) && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -2077,8 +2410,26 @@ export default function LiveMatch() {
                            className={`w-full p-4 border border-dashed rounded-2xl flex items-center justify-center space-x-2 text-gray-500 hover:text-white hover:border-white/50 transition-all ${swapTarget?.mode === 'ADD' && swapTarget?.teamSide === 'A' ? 'border-primary text-primary' : 'border-border'}`}
                          >
                            <Plus size={16} />
-                           <span className="text-xs font-bold uppercase tracking-widest">Adicionar Jogador</span>
+                           <span className="text-xs font-bold uppercase tracking-widest">Adicionar Man.</span>
                          </button>
+                         {topWaitingPlayer && (
+                            <button
+                              onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'A')}
+                              className="w-full p-4 bg-primary/10 border border-primary/30 rounded-2xl flex items-center justify-between text-left hover:bg-primary/20 hover:border-primary/50 transition-all group mt-2"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-xs text-primary font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
+                                  <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                                </span>
+                                <span className="text-sm font-bold text-white truncate">
+                                  {topWaitingPlayer.displayName || topWaitingPlayer.name}
+                                </span>
+                              </div>
+                              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                <Plus size={16} className="text-primary" />
+                              </div>
+                            </button>
+                          )}
                        </div>
                      </div>
                      <div className="space-y-4">
@@ -2113,8 +2464,26 @@ export default function LiveMatch() {
                            className={`w-full p-4 border border-dashed rounded-2xl flex items-center justify-center space-x-2 text-gray-500 hover:text-white hover:border-white/50 transition-all ${swapTarget?.mode === 'ADD' && swapTarget?.teamSide === 'B' ? 'border-white text-white' : 'border-border'}`}
                          >
                            <Plus size={16} />
-                           <span className="text-xs font-bold uppercase tracking-widest">Adicionar Jogador</span>
+                           <span className="text-xs font-bold uppercase tracking-widest">Adicionar Man.</span>
                          </button>
+                         {topWaitingPlayer && (
+                            <button
+                              onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'B')}
+                              className="w-full p-4 bg-white/5 border border-white/20 rounded-2xl flex items-center justify-between text-left hover:bg-white/10 hover:border-white/40 transition-all group mt-2"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
+                                  <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                                </span>
+                                <span className="text-sm font-bold text-white truncate">
+                                  {topWaitingPlayer.displayName || topWaitingPlayer.name}
+                                </span>
+                              </div>
+                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                                <Plus size={16} className="text-white" />
+                              </div>
+                            </button>
+                          )}
                        </div>
                      </div>
                    </>
@@ -2145,12 +2514,30 @@ export default function LiveMatch() {
                         </button>
                       </div>
                     ))}
+                    {topWaitingPlayer && (
+                      <button
+                        onClick={() => handleQuickAddNext(topWaitingPlayer.id)}
+                        className="w-full p-4 bg-primary/10 border border-primary/30 rounded-2xl flex items-center justify-between text-left hover:bg-primary/20 hover:border-primary/50 transition-all group"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-xs text-primary font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
+                            <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                          </span>
+                          <span className="text-sm font-bold text-white truncate">
+                            {topWaitingPlayer.displayName || topWaitingPlayer.name}
+                          </span>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                          <Plus size={16} className="text-primary" />
+                        </div>
+                      </button>
+                    )}
                     <button 
                       onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', mode: 'ADD' })}
                       className={`w-full p-4 border border-dashed rounded-2xl flex items-center justify-center space-x-2 text-gray-500 hover:text-white hover:border-white/50 transition-all ${swapTarget?.mode === 'ADD' ? 'border-primary text-primary' : 'border-border'}`}
                     >
                       <Plus size={16} />
-                      <span className="text-xs font-bold uppercase tracking-widest">Adicionar ao Time</span>
+                      <span className="text-xs font-bold uppercase tracking-widest">Adicionar Manualmente</span>
                     </button>
                   </div>
                 </div>
@@ -2165,7 +2552,7 @@ export default function LiveMatch() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-md"
+                  className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                 >
                   <motion.div 
                     initial={{ y: 20 }}
@@ -2226,7 +2613,7 @@ export default function LiveMatch() {
                           const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE') => {
                             const borderColor = type === 'LATE' ? 'border-warning/30' : 'border-primary/30';
                             const textColor = type === 'LATE' ? 'text-warning' : 'text-primary';
-                            const tag = type === 'OTHER' ? 'Equipe' : type === 'BENCH' ? 'Banco' : 'Atrasado';
+                            const tag = type === 'OTHER' ? 'Equipe' : type === 'BENCH' ? 'Banco' : 'Fora';
 
                             return (
                               <button 
@@ -2240,14 +2627,14 @@ export default function LiveMatch() {
                                       {p.displayName || p.name}
                                       {p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : ''}
                                     </span>
-                                    <span className={`text-[8px] opacity-70 mt-0.5 ${textColor}`}>
-                                      {tag} • {p.position}
+                                    <span className={`text-[10px] opacity-70 mt-0.5 ${textColor}`}>
+                                      {tag} • {formatPosition(p.position)}
                                       {effectiveDrawOrder[p.id] !== undefined && ` • Seq. #${effectiveDrawOrder[p.id]}`}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-2 flex-shrink-0">
                                     {effectiveDrawOrder[p.id] !== undefined && (
-                                      <span className="text-[8px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-black whitespace-nowrap">
+                                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-black whitespace-nowrap">
                                         #{effectiveDrawOrder[p.id]}
                                       </span>
                                     )}
@@ -2289,7 +2676,7 @@ export default function LiveMatch() {
 
                               {availableLate.length > 0 && (
                                 <div className="space-y-3">
-                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-warning/70 ml-1">Atletas que chegaram agora</h4>
+                                  <h4 className="text-[10px] font-black uppercase tracking-widest text-warning/70 ml-1">Fora da Pelada</h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {availableLate.sort((a, b) => comparePlayersByWaitTime(a.id, b.id)).map(p => renderPlayerButton(p, 'LATE'))}
                                   </div>
@@ -2312,7 +2699,7 @@ export default function LiveMatch() {
       </AnimatePresence>
 
       {showEventModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/90 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -2428,7 +2815,7 @@ export default function LiveMatch() {
 
       {/* Modal de Confirmação */}
       {confirmState && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg/95 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -2451,6 +2838,10 @@ export default function LiveMatch() {
           </motion.div>
         </div>
       )}
+        </>,
+        document.body
+      )}
+
       {/* FINALIZAR RODADA (End of page) */}
       {isAdmin && activeMatch && (
         <div className="pt-12 px-2">
@@ -2504,7 +2895,7 @@ export default function LiveMatch() {
                 </button>
               )}
             </div>
-            <p className="text-[9px] font-bold text-gray-600 uppercase tracking-tighter italic">
+            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter italic">
               * A rodada também será encerrada automaticamente às 23:59 de hoje.
             </p>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Player, Transaction, usePelada } from '../hooks/usePelada';
+import { Player, Transaction, usePelada, formatPosition } from '../hooks/usePelada';
 import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -20,7 +20,7 @@ export default function ManagementModals({ type, editingPlayer, editingTransacti
   if (!type) return null;
 
   return (
-    <div className="fixed inset-0 bg-bg/95 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
       <div className="bg-card w-full max-w-sm rounded-[44px] p-8 border border-border/50 shadow-2xl relative max-h-[90vh] overflow-hidden flex flex-col">
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors z-10"><X size={24}/></button>
 
@@ -216,7 +216,7 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
             <button 
               key={cat.id}
               onClick={() => setCategory(cat.id as any)}
-              className={`py-2 px-3 rounded-lg border text-[8px] font-black tracking-widest text-left flex items-center justify-between transition-all ${
+              className={`py-2 px-3 rounded-lg border text-[10px] font-black tracking-widest text-left flex items-center justify-between transition-all ${
                 category === cat.id ? 'bg-primary/20 border-primary text-primary' : 'border-border text-gray-500'
               }`}
             >
@@ -235,7 +235,7 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
               <button
                 key={m.id}
                 onClick={() => setRefMonth(`${refMonth.split('-')[0]}-${m.id}`)}
-                className={`py-1.5 rounded-lg text-[9px] font-bold border ${
+                className={`py-1.5 rounded-lg text-[10px] font-bold border ${
                   refMonth.split('-')[1] === m.id ? 'bg-primary text-bg border-primary' : 'border-border/30 text-gray-500'
                 }`}
               >
@@ -248,7 +248,7 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
               <button
                 key={y}
                 onClick={() => setRefMonth(`${y}-${refMonth.split('-')[1]}`)}
-                className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold border ${
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border ${
                   Number(refMonth.split('-')[0]) === y ? 'bg-white/10 text-white border-white/20' : 'border-border/30 text-gray-500'
                 }`}
               >
@@ -556,7 +556,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             ) : (
               <div className="text-gray-600 flex flex-col items-center">
                 {uploading ? <Loader2 className="animate-spin" size={20} /> : <Camera size={20} />}
-                <span className="text-[8px] font-black mt-1 uppercase">Foto</span>
+                <span className="text-[10px] font-black mt-1 uppercase">Foto</span>
               </div>
             )}
           </div>
@@ -580,7 +580,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         )}
         {(isAdmin || (initialData && initialData.id === user?.uid)) && (
           <div className="pt-2 w-full max-w-[120px] relative">
-             <label className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa <span className="text-primary">*</span></label>
+             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 block text-center mb-1">Nº Camisa <span className="text-primary">*</span></label>
              <input 
               type="number"
               className={`w-full bg-bg border ${numberIsTaken ? 'border-danger' : 'border-border'} rounded-xl p-2.5 text-center text-primary font-black outline-none focus:border-primary text-sm`}
@@ -590,7 +590,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             />
             {numberIsTaken && (
               <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-48 text-center animate-in fade-in slide-in-from-top-1">
-                <span className="text-[8px] font-black text-danger uppercase tracking-tighter bg-danger/10 px-2 py-1 rounded-md border border-danger/20 flex items-center justify-center gap-1">
+                <span className="text-[10px] font-black text-danger uppercase tracking-tighter bg-danger/10 px-2 py-1 rounded-md border border-danger/20 flex items-center justify-center gap-1">
                   <AlertCircle size={10} />
                   Já em uso por: {takenBy?.displayName || takenBy?.name}
                 </span>
@@ -648,7 +648,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                   key={t}
                   disabled={!isAdmin}
                   onClick={() => setType(t as any)}
-                  className={`flex-1 py-2 rounded-lg border text-[9px] font-bold tracking-wider disabled:opacity-50 ${
+                  className={`flex-1 py-2 rounded-lg border text-[10px] font-bold tracking-wider disabled:opacity-50 ${
                     type === t ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
                   }`}
                 >
@@ -686,7 +686,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
             
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Gols</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Gols</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -695,7 +695,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Assists.</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Assists.</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -704,7 +704,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Contra</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Contra</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -716,7 +716,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
 
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Vitórias</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Vitórias</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -725,7 +725,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Derrotas</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Derrotas</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -734,7 +734,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold uppercase text-gray-600 px-1">Empates</label>
+                <label className="text-[10px] font-bold uppercase text-gray-600 px-1">Empates</label>
                 <input 
                   type="number"
                   className="w-full bg-bg border border-border rounded-lg p-2 text-white text-xs outline-none focus:border-primary"
@@ -756,11 +756,11 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
                   setPos(p);
                   if (secondaryPos === p) setSecondaryPos('');
                 }}
-                className={`py-2 rounded-lg border text-[9px] font-black ${
+                className={`py-2 rounded-lg border text-[10px] font-black ${
                   pos === p ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
                 }`}
               >
-                {p.substring(0, 3)}
+                {formatPosition(p)}
               </button>
             ))}
           </div>
@@ -771,7 +771,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
           <div className="grid grid-cols-3 gap-1">
             <button 
               onClick={() => setSecondaryPos('')}
-              className={`py-2 rounded-lg border text-[9px] font-black ${
+              className={`py-2 rounded-lg border text-[10px] font-black ${
                 secondaryPos === '' ? 'bg-white/10 border-white/20 text-white' : 'border-border text-gray-500'
               }`}
             >
@@ -781,11 +781,11 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
               <button 
                 key={p}
                 onClick={() => setSecondaryPos(p)}
-                className={`py-2 rounded-lg border text-[9px] font-black ${
+                className={`py-2 rounded-lg border text-[10px] font-black ${
                   secondaryPos === p ? 'bg-primary border-primary text-bg' : 'border-border text-gray-500'
                 }`}
               >
-                {p.substring(0, 3)}
+                {formatPosition(p)}
               </button>
             ))}
           </div>

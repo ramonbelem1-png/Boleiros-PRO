@@ -114,7 +114,7 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
           {activeSubTab === 'resumo' ? 'Resumo' : activeSubTab === 'extrato' ? 'Lançamentos' : 'Mensalidades'}
         </h3>
         <div className="flex items-center gap-1.5 bg-card border border-border/50 rounded-lg px-2 py-1">
-          <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Mês:</span>
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Mês:</span>
           <input 
             type="month" 
             value={filterMonth}
@@ -157,21 +157,21 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
           <div className="bg-card p-5 rounded-3xl border border-border/50 space-y-4">
             <h4 className="text-[10px] font-bold tracking-[0.2em] text-primary uppercase flex items-center justify-between">
               <span>Lançamentos no Mês</span>
-              <span className="text-[9px] px-2 py-0.5 rounded bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors uppercase">
+              <span className="text-[10px] px-2 py-0.5 rounded bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors uppercase">
                 {filterMonth.split('-')[1]}/{filterMonth.split('-')[0]}
               </span>
             </h4>
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-bg/40 p-3 rounded-2xl border border-border/30 text-center">
-                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Entradas</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Entradas</span>
                 <span className="text-sm font-black text-primary">R$ {monthlyIncome.toFixed(2)}</span>
               </div>
               <div className="bg-bg/40 p-3 rounded-2xl border border-border/30 text-center">
-                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Saídas</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Saídas</span>
                 <span className="text-sm font-black text-danger">R$ {monthlyExpense.toFixed(2)}</span>
               </div>
               <div className="bg-bg/40 p-3 rounded-2xl border border-border/30 text-center">
-                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Saldo Mês</span>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Saldo Mês</span>
                 <span className={`text-sm font-black ${monthlyBalance >= 0 ? 'text-primary' : 'text-danger'}`}>
                   R$ {monthlyBalance.toFixed(2)}
                 </span>
@@ -192,11 +192,11 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
               
               <div className="border-t border-border/20 pt-4 mt-4 grid grid-cols-2 gap-4">
                 <div>
-                  <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block mb-0.5">Previsão Meta</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-0.5">Previsão Meta</span>
                   <span className="text-lg font-black text-white">R$ {expectedMonthlyFeeTotal.toFixed(2)}</span>
                 </div>
                 <div>
-                  <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block mb-0.5">Arrecadado Real</span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-0.5">Arrecadado Real</span>
                   <span className="text-lg font-black text-primary">R$ {paidMonthlyFeeTotal.toFixed(2)}</span>
                 </div>
               </div>
@@ -229,8 +229,8 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
                   <div>
                     <h4 className="font-bold text-sm tracking-tight text-white">{player.displayName || player.name}</h4>
                     <div className="flex items-center space-x-2 mt-0.5">
-                      <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">{player.type}</span>
-                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
+                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{player.type}</span>
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
                         status === 'EM DIA' ? 'bg-primary/20 text-primary' : status === 'PENDENTE' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-danger/20 text-danger'
                       }`}>
                         {status}
@@ -266,14 +266,14 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
                     <div className="min-w-0">
                       <h4 className="font-bold text-xs tracking-tight uppercase text-white truncate">{t.description}</h4>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
-                        <p className="text-[9px] text-gray-500 font-bold">{t.date?.toDate().toLocaleDateString('pt-BR')}</p>
+                        <p className="text-[10px] text-gray-500 font-bold">{t.date?.toDate().toLocaleDateString('pt-BR')}</p>
                         {t.referenceMonth && (
-                          <span className="text-[8px] bg-primary/10 text-primary px-1 rounded font-black italic">
+                          <span className="text-[10px] bg-primary/10 text-primary px-1 rounded font-black italic">
                             REF: {t.referenceMonth.split('-')[1]}/{t.referenceMonth.split('-')[0].substring(2)}
                           </span>
                         )}
                         {player && (
-                          <span className="text-[9px] text-primary font-black uppercase">● {player.displayName || player.name}</span>
+                          <span className="text-[10px] text-primary font-black uppercase">● {player.displayName || player.name}</span>
                         )}
                       </div>
                     </div>
@@ -283,7 +283,7 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
                       <div className={`font-black text-sm ${t.type === 'INCOME' ? 'text-primary' : 'text-danger'}`}>
                         {t.type === 'INCOME' ? '+' : '-'} R$ {t.amount.toFixed(2)}
                       </div>
-                      <span className="text-[8px] text-gray-600 font-bold uppercase">{t.category}</span>
+                      <span className="text-[10px] text-gray-600 font-bold uppercase">{t.category}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       {confirmDeleteId === t.id ? (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { usePelada } from '../hooks/usePelada';
+import { usePelada, formatPosition } from '../hooks/usePelada';
 import { Trophy, Star, Medal, Share2, Frown, ShieldAlert, TrendingUp } from 'lucide-react';
 
 export default function SocialStats() {
@@ -214,7 +214,7 @@ export default function SocialStats() {
             </h3>
             <div className="flex items-center space-x-1 text-gray-600 mt-1">
               <TrendingUp size={10} />
-              <span className="text-[9px] font-bold uppercase tracking-tight">
+              <span className="text-[10px] font-bold uppercase tracking-tight">
                 {period === 'geral' ? 'Todo o Histórico' : 
                  period === 'temporada' ? `Temporada ${new Date().getFullYear()}` :
                  period === 'mes' ? `Filtro Mensal` :
@@ -228,7 +228,7 @@ export default function SocialStats() {
               <button 
                 key={tab}
                 onClick={() => setRankingTab(tab)}
-                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${rankingTab === tab ? 'bg-primary text-bg shadow-sm' : 'text-gray-500 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${rankingTab === tab ? 'bg-primary text-bg shadow-sm' : 'text-gray-500 hover:text-white'}`}
               >
                 {label}
               </button>
@@ -274,7 +274,7 @@ export default function SocialStats() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider truncate">{player.position}</p>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">{formatPosition(player.position)}</p>
                     </div>
                   </div>
                 </div>
@@ -282,21 +282,21 @@ export default function SocialStats() {
                   {rankingTab === 'total' && (
                     <>
                       <div className="text-sm font-black text-white">{player.totalPts} pts</div>
-                      <div className="text-[8px] font-bold text-gray-600 uppercase">
+                      <div className="text-[10px] font-bold text-gray-600 uppercase">
                         {player.gols || 0}G • {player.assistencias || 0}A • {player.vitorias || 0}V • {player.empates || 0}E
                       </div>
                     </>
                   )}
                   {rankingTab === 'gols' && (
-                    <div className="text-sm font-black text-primary">{(player.gols || 0)} <span className="text-[9px] uppercase font-bold ml-0.5">Gols</span></div>
+                    <div className="text-sm font-black text-primary">{(player.gols || 0)} <span className="text-[10px] uppercase font-bold ml-0.5">Gols</span></div>
                   )}
                   {rankingTab === 'assists' && (
-                    <div className="text-sm font-black text-primary">{(player.assistencias || 0)} <span className="text-[9px] uppercase font-bold ml-0.5">Assists</span></div>
+                    <div className="text-sm font-black text-primary">{(player.assistencias || 0)} <span className="text-[10px] uppercase font-bold ml-0.5">Assists</span></div>
                   )}
                   {rankingTab === 'wins' && (
                     <>
-                      <div className="text-sm font-black text-primary">{(player.vitorias || 0)} <span className="text-[9px] uppercase font-bold ml-0.5">Vitórias</span></div>
-                      <div className="text-[8px] font-bold text-gray-600 uppercase">
+                      <div className="text-sm font-black text-primary">{(player.vitorias || 0)} <span className="text-[10px] uppercase font-bold ml-0.5">Vitórias</span></div>
+                      <div className="text-[10px] font-bold text-gray-600 uppercase">
                         {player.derrotas || 0}D • {player.empates || 0}E
                       </div>
                     </>
@@ -311,7 +311,7 @@ export default function SocialStats() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Nenhum dado registrado</p>
-                  <p className="text-[9px] text-gray-600">Não há partidas finalizadas neste período.</p>
+                  <p className="text-[10px] text-gray-600">Não há partidas finalizadas neste período.</p>
                 </div>
               </div>
             )}
@@ -364,7 +364,7 @@ function AwardItem({ label, name, icon, isBad = false }: { label: string, name: 
         <div className="flex-shrink-0 flex items-center justify-center">
           {icon}
         </div>
-        <span className="text-[9px] font-black uppercase tracking-widest leading-none">{label}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest leading-none">{label}</span>
       </div>
       <p className="text-sm font-bold text-white truncate">{name}</p>
     </div>
@@ -372,5 +372,5 @@ function AwardItem({ label, name, icon, isBad = false }: { label: string, name: 
 }
 
 function AlertCircleIcon() {
-  return <div className="w-3.5 h-3.5 rounded-full border border-current flex items-center justify-center text-[8px] font-bold">!</div>;
+  return <div className="w-3.5 h-3.5 rounded-full border border-current flex items-center justify-center text-[10px] font-bold">!</div>;
 }

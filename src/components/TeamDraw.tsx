@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePelada, Player } from '../hooks/usePelada';
+import { usePelada, Player, formatPosition } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -217,7 +217,7 @@ export default function TeamDraw() {
           
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Jogadores por Time (Incluindo Goleiro)</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Jogadores por Time</label>
               <select 
                 value={playersPerTeamSelected}
                 onChange={(e) => setPlayersPerTeamSelected(Number(e.target.value))}
@@ -291,18 +291,18 @@ export default function TeamDraw() {
                         <div className="flex items-center gap-2">
                           <h4 className="font-bold text-sm">{player.displayName || player.name}</h4>
                           {player.number && (
-                            <span className={`text-[9px] font-black px-1 rounded ${duplicatedNumbers.has(player.number) ? 'bg-danger text-white animate-pulse' : 'bg-primary/20 text-primary border border-primary/20'} flex items-center gap-0.5`}>
+                            <span className={`text-[10px] font-black px-1 rounded ${duplicatedNumbers.has(player.number) ? 'bg-danger text-white animate-pulse' : 'bg-primary/20 text-primary border border-primary/20'} flex items-center gap-0.5`}>
                               {duplicatedNumbers.has(player.number) && <AlertCircle size={7} />}
                               #{player.number}
                             </span>
                           )}
                           {drawOrder[player.id] !== undefined && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-0.5 whitespace-nowrap">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-0.5 whitespace-nowrap">
                               Seq. #{drawOrder[player.id]}
                             </span>
                           )}
                         </div>
-                        <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">{player.position}</span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{formatPosition(player.position)}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -317,7 +317,7 @@ export default function TeamDraw() {
                       )}
                       {isAdmin && (
                         <select 
-                          className="bg-bg border border-border rounded-lg text-[9px] font-bold uppercase p-1 text-gray-400 outline-none"
+                          className="bg-bg border border-border rounded-lg text-[10px] font-bold uppercase p-1 text-gray-400 outline-none"
                           value={idx}
                           onChange={(e) => {
                             const toIdx = Number(e.target.value);

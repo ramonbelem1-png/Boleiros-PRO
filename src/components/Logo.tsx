@@ -33,21 +33,8 @@ export default function Logo({
       <div className={`${iconSizes[size]} relative flex items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-amber-600 shadow-lg shadow-amber-500/20 overflow-hidden`}>
         <Trophy size={size === 'lg' ? 36 : iconSizeValue} className="text-bg relative z-10 drop-shadow-sm transition-transform group-hover:scale-110 duration-300" />
         
-        {/* Brilho Pulsante no Hover */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-          <div className="absolute inset-0 bg-white/30 animate-pulse" />
-          <motion.div 
-            animate={{ 
-              x: ['-100%', '200%'],
-            }}
-            transition={{ 
-              repeat: Infinity, 
-              duration: 1.2,
-              ease: "easeInOut"
-            }}
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent -skew-x-20" 
-          />
-        </div>
+        {/* Brilho no Hover */}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-white/10" />
 
         <div className="absolute -top-1 -right-1 z-20">
           <div className="w-3 h-3 bg-white rounded-full animate-ping opacity-75" />

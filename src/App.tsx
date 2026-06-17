@@ -140,7 +140,7 @@ export default function App() {
   return (
     <div className="flex flex-col min-h-screen bg-bg text-gray-100 pb-24">
       {/* ... header remains same ... */}
-      <header className="px-6 pt-8 pb-4 bg-bg/80 backdrop-blur-md z-10 transition-all duration-300">
+      <header className="px-6 pt-8 pb-4 bg-bg border-b border-white/5 z-10 transition-all duration-300">
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-start">
             <Logo />
@@ -177,7 +177,7 @@ export default function App() {
               {activeTab === 'settings' && 'Ajustes'}
             </h1>
             {isAdmin && (
-              <span className="bg-primary/20 text-primary text-[8px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter">
+              <span className="bg-primary/20 text-primary text-[10px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter">
                 ADMIN
               </span>
             )}
@@ -186,18 +186,10 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-4 overflow-x-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderContent()}
-          </motion.div>
-        </AnimatePresence>
+      <main className="flex-1 px-2 sm:px-4 w-full max-w-lg mx-auto">
+        <div key={activeTab} className="animate-in fade-in duration-150">
+          {renderContent()}
+        </div>
       </main>
 
       {/* Bottom Navigation */}
@@ -273,7 +265,7 @@ function NavButton({ active, onClick, icon, label }: { active: boolean, onClick:
       <div className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-primary/10' : ''}`}>
         {icon}
       </div>
-      <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
     </button>
   );
 }

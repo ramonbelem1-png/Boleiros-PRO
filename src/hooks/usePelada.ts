@@ -23,6 +23,20 @@ import { db, handleFirestoreError } from '../lib/firebase';
 
 export type PlayerPosition = 'GOLEIRO' | 'ZAGUEIRO' | 'LATERAL' | 'VOLANTE' | 'MEIA' | 'ATACANTE';
 
+export const formatPosition = (position: string | undefined | null): string => {
+  if (!position) return '';
+  const posUpper = position.toUpperCase();
+  switch (posUpper) {
+    case 'GOLEIRO': return 'GOL';
+    case 'ZAGUEIRO': return 'ZAG';
+    case 'LATERAL': return 'LAT';
+    case 'VOLANTE': return 'VOL';
+    case 'MEIA': return 'MEI';
+    case 'ATACANTE': return 'ATA';
+    default: return posUpper.substring(0, 3);
+  }
+};
+
 export interface Player {
   id: string;
   name: string; // Keep as fallback/internal
@@ -68,6 +82,7 @@ export interface Game {
   isPaused?: boolean;
   accumulatedTime?: number; // ms
   lastStartedAt?: any; // Timestamp
+  bandeiras_ids?: string[];
 }
 
 export interface Match {
@@ -314,7 +329,7 @@ export function usePelada() {
     await updateDoc(gameRef, { teamA_ids, teamB_ids });
   };
 
-  const createScheduledGame = async (matchId: string, teamA_ids: string[], teamB_ids: string[], teamA_name?: string, teamB_name?: string) => {
+  const createScheduledGame = async (matchId: string, teamA_ids: string[], teamB_ids: string[], teamA_name?: string, teamB_name?: string, bandeiras_ids?: string[]) => {
     const gameData = {
       teamA_ids,
       teamB_ids,
@@ -324,20 +339,25 @@ export function usePelada() {
       scoreB: 0,
       startTime: serverTimestamp(),
       status: 'SCHEDULED',
-      events: []
+      events: [],
+      bandeiras_ids: bandeiras_ids || []
     };
     await addDoc(collection(db, 'matches', matchId, 'games'), gameData);
   };
 
-  const startGame = async (matchId: string, gameId: string) => {
+  const startGame = async (matchId: string, gameId: string, bandeiras_ids?: string[]) => {
     const gameRef = doc(db, 'matches', matchId, 'games', gameId);
-    await updateDoc(gameRef, { 
+    const updateData: any = { 
       status: 'RUNNING',
       startTime: serverTimestamp(),
       lastStartedAt: serverTimestamp(),
       accumulatedTime: 0,
       isPaused: false
-    });
+    };
+    if (bandeiras_ids) {
+      updateData.bandeiras_ids = bandeiras_ids;
+    }
+    await updateDoc(gameRef, updateData);
   };
 
   const pauseGame = async (matchId: string, gameId: string) => {
@@ -683,7 +703,7 @@ export function usePelada() {
     await updateDoc(doc(db, 'matches', matchId), { status: 'FINISHED' });
   };
 
-  const startLiveGame = async (matchId: string, teamAIds: string[], teamBIds: string[], teamA_name?: string, teamB_name?: string) => {
+  const startLiveGame = async (matchId: string, teamAIds: string[], teamBIds: string[], teamA_name?: string, teamB_name?: string, bandeiras_ids?: string[]) => {
     const gameData = {
       teamA_ids: teamAIds,
       teamB_ids: teamBIds,
@@ -696,7 +716,8 @@ export function usePelada() {
       accumulatedTime: 0,
       isPaused: false,
       status: 'RUNNING',
-      events: []
+      events: [],
+      bandeiras_ids: bandeiras_ids || []
     };
     await addDoc(collection(db, 'matches', matchId, 'games'), gameData);
   };

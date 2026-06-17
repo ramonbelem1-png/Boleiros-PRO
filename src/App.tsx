@@ -31,6 +31,7 @@ import { usePelada, Player, Transaction } from './hooks/usePelada';
 import Logo from './components/Logo';
 import { useAuth } from './components/AuthProvider';
 import OnboardingProfile from './components/OnboardingProfile';
+import PullToRefresh from './components/PullToRefresh';
 
 type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 
@@ -188,7 +189,9 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 px-2 sm:px-4 w-full max-w-lg mx-auto">
         <div key={activeTab} className="animate-in fade-in duration-150">
-          {renderContent()}
+          <PullToRefresh>
+            {renderContent()}
+          </PullToRefresh>
         </div>
       </main>
 

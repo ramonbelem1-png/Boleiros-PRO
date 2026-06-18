@@ -462,19 +462,20 @@ export default function LiveMatch() {
     }
 
     // Find the index of the most recent finished game where each team played (newest to oldest index)
+    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
     const lastPlayedIndices: Record<number, number> = {};
     const gamesPlayedCount: Record<number, number> = {};
-    for (let i = 0; i < teamsCount; i++) {
-      lastPlayedIndices[i] = -1;
-      gamesPlayedCount[i] = 0;
-    }
+    validTeamKeys.forEach(key => {
+      lastPlayedIndices[key] = -1;
+      gamesPlayedCount[key] = 0;
+    });
 
     gameTeams.forEach((gg, gameIdx) => {
-      if (gg.teamA !== -1) {
+      if (gg.teamA !== -1 && lastPlayedIndices[gg.teamA] !== undefined) {
         lastPlayedIndices[gg.teamA] = gameIdx;
         gamesPlayedCount[gg.teamA]++;
       }
-      if (gg.teamB !== -1) {
+      if (gg.teamB !== -1 && lastPlayedIndices[gg.teamB] !== undefined) {
         lastPlayedIndices[gg.teamB] = gameIdx;
         gamesPlayedCount[gg.teamB]++;
       }
@@ -483,11 +484,11 @@ export default function LiveMatch() {
     // Build the wait list of all teams not currently on the field
     const waitingTeams: number[] = [];
     const onFieldIndices = new Set(currentOnField);
-    for (let i = 0; i < teamsCount; i++) {
-      if (!onFieldIndices.has(i)) {
-        waitingTeams.push(i);
+    validTeamKeys.forEach(key => {
+      if (!onFieldIndices.has(key)) {
+        waitingTeams.push(key);
       }
-    }
+    });
 
     // Sort waiting teams:
     // Primary: lastPlayedIndex ascending (smallest first, which means played longest ago, or -1 for never played)
@@ -525,7 +526,7 @@ export default function LiveMatch() {
       if (waitingTeams.length > 0) {
         suggested = [currentOnField[0] !== undefined ? currentOnField[0] : 0, waitingTeams[0]];
       } else {
-        suggested = [0, 1];
+        suggested = validTeamKeys.slice(0, 2);
       }
     }
 

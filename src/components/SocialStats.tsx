@@ -95,8 +95,8 @@ export default function SocialStats() {
 
           // Determining wins/losses per game
           const isDraw = game.scoreA === game.scoreB;
-          const teamA_ids = game.teamA_ids || [];
-          const teamB_ids = game.teamB_ids || [];
+          const teamA_ids = game.startingTeamA_ids || game.teamA_ids || [];
+          const teamB_ids = game.startingTeamB_ids || game.teamB_ids || [];
           const winners = game.scoreA > game.scoreB ? teamA_ids : teamB_ids;
           const losers = game.scoreA > game.scoreB ? teamB_ids : teamA_ids;
           const allPlayers = [...teamA_ids, ...teamB_ids];
@@ -129,10 +129,12 @@ export default function SocialStats() {
   const getSortedRanking = () => {
     let list = players.map(p => {
       const stats = period === 'geral' ? p : (periodStats[p.id] || { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 });
+      const gamesPlayed = (stats.vitorias || 0) + (stats.derrotas || 0) + (stats.empates || 0);
       return { 
         ...p, 
         ...stats,
-        totalPts: ((stats.gols || 0) * 2) + (stats.assistencias || 0) + ((stats.vitorias || 0) * 2) + (stats.empates || 0)
+        gamesPlayed,
+        totalPts: ((stats.gols || 0) * 2) + (stats.assistencias || 0) + ((stats.vitorias || 0) * 2) + (stats.empates || 0) + gamesPlayed
       };
     });
 
@@ -283,7 +285,7 @@ export default function SocialStats() {
                     <>
                       <div className="text-sm font-black text-white">{player.totalPts} pts</div>
                       <div className="text-[10px] font-bold text-gray-600 uppercase">
-                        {player.gols || 0}G • {player.assistencias || 0}A • {player.vitorias || 0}V • {player.empates || 0}E
+                        {player.gamesPlayed || 0}J • {player.gols || 0}G • {player.assistencias || 0}A • {player.vitorias || 0}V • {player.empates || 0}E
                       </div>
                     </>
                   )}

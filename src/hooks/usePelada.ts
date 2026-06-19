@@ -71,6 +71,8 @@ export interface Game {
   id: string;
   teamA_ids: string[];
   teamB_ids: string[];
+  startingTeamA_ids?: string[];
+  startingTeamB_ids?: string[];
   teamA_name?: string;
   teamB_name?: string;
   scoreA: number;
@@ -333,6 +335,8 @@ export function usePelada() {
     const gameData = {
       teamA_ids,
       teamB_ids,
+      startingTeamA_ids: teamA_ids,
+      startingTeamB_ids: teamB_ids,
       teamA_name: teamA_name || null,
       teamB_name: teamB_name || null,
       scoreA: 0,
@@ -347,6 +351,7 @@ export function usePelada() {
 
   const startGame = async (matchId: string, gameId: string, bandeiras_ids?: string[]) => {
     const gameRef = doc(db, 'matches', matchId, 'games', gameId);
+    const gameSnap = await getDoc(gameRef);
     const updateData: any = { 
       status: 'RUNNING',
       startTime: serverTimestamp(),
@@ -354,6 +359,15 @@ export function usePelada() {
       accumulatedTime: 0,
       isPaused: false
     };
+    if (gameSnap.exists()) {
+      const current = gameSnap.data();
+      if (!current.startingTeamA_ids) {
+        updateData.startingTeamA_ids = current.teamA_ids || [];
+      }
+      if (!current.startingTeamB_ids) {
+        updateData.startingTeamB_ids = current.teamB_ids || [];
+      }
+    }
     if (bandeiras_ids) {
       updateData.bandeiras_ids = bandeiras_ids;
     }
@@ -707,6 +721,8 @@ export function usePelada() {
     const gameData = {
       teamA_ids: teamAIds,
       teamB_ids: teamBIds,
+      startingTeamA_ids: teamAIds,
+      startingTeamB_ids: teamBIds,
       teamA_name: teamA_name || null,
       teamB_name: teamB_name || null,
       scoreA: 0,
@@ -936,6 +952,19 @@ export function usePelada() {
       const batch = writeBatch(db);
       const gameRef = doc(db, 'matches', matchId, 'games', gameId);
       
+      const gameSnap = await getDoc(gameRef);
+      let startingA = result.teamA || [];
+      let startingB = result.teamB || [];
+      if (gameSnap.exists()) {
+        const gameData = gameSnap.data();
+        if (gameData.startingTeamA_ids && Array.isArray(gameData.startingTeamA_ids)) {
+          startingA = gameData.startingTeamA_ids;
+        }
+        if (gameData.startingTeamB_ids && Array.isArray(gameData.startingTeamB_ids)) {
+          startingB = gameData.startingTeamB_ids;
+        }
+      }
+
       // 1. Marcar partida como finalizada
       const sA = Number(result.scoreA) || 0;
       const sB = Number(result.scoreB) || 0;
@@ -951,16 +980,14 @@ export function usePelada() {
       const winA = sA > sB;
       const winB = sB > sA;
       
-      // 2. Coletar IDs únicos de jogadores
-      const teamA = result.teamA || [];
-      const teamB = result.teamB || [];
-      const allPlayerIds = Array.from(new Set([...teamA, ...teamB])).filter(id => id && typeof id === 'string');
+      // 2. Coletar IDs únicos de jogadores que iniciaram a partida
+      const allPlayerIds = Array.from(new Set([...startingA, ...startingB])).filter(id => id && typeof id === 'string');
       
       console.log(`[usePelada] 2. Aplicando incrementos para ${allPlayerIds.length} jogadores.`);
 
       allPlayerIds.forEach(id => {
         const pRef = doc(db, 'players', id);
-        const isTeamA = teamA.includes(id);
+        const isTeamA = startingA.includes(id);
         
         if (isDraw) {
           batch.update(pRef, { empates: increment(1) });
@@ -1069,16 +1096,16 @@ export function usePelada() {
             if (game.status === 'FINISHED') {
               const sA = game.scoreA || 0;
               const sB = game.scoreB || 0;
-              const tA = game.teamA_ids || [];
-              const tB = game.teamB_ids || [];
+              const startA = game.startingTeamA_ids || game.teamA_ids || [];
+              const startB = game.startingTeamB_ids || game.teamB_ids || [];
               const isDraw = sA === sB;
               const winA = sA > sB;
               const winB = sB > sA;
               
-              const allInGame = Array.from(new Set([...(tA || []), ...(tB || [])])).filter(id => id && typeof id === 'string');
+              const allInGame = Array.from(new Set([...(startA || []), ...(startB || [])])).filter(id => id && typeof id === 'string');
               allInGame.forEach(id => {
                 ensurePlayer(id);
-                const isTeamA = (tA || []).includes(id);
+                const isTeamA = (startA || []).includes(id);
                 if (isDraw) {
                   statsMap[id].empates++;
                 } else if ((isTeamA && winA) || (!isTeamA && winB)) {
@@ -1170,8 +1197,8 @@ export function usePelada() {
           const winA = sA > sB;
           const winB = sB > sA;
 
-          const teamA = game.teamA_ids || [];
-          const teamB = game.teamB_ids || [];
+          const teamA = game.startingTeamA_ids || game.teamA_ids || [];
+          const teamB = game.startingTeamB_ids || game.teamB_ids || [];
           const allPlayerIds = Array.from(new Set([...teamA, ...teamB])).filter(id => id && typeof id === 'string');
 
           allPlayerIds.forEach(id => {
@@ -1265,8 +1292,8 @@ export function usePelada() {
           const isDraw = sA === sB;
           const winA = sA > sB;
           const winB = sB > sA;
-          const teamA = game.teamA_ids || [];
-          const teamB = game.teamB_ids || [];
+          const teamA = game.startingTeamA_ids || game.teamA_ids || [];
+          const teamB = game.startingTeamB_ids || game.teamB_ids || [];
           const allPlayerIds = Array.from(new Set([...(teamA || []), ...(teamB || [])])).filter(id => id && typeof id === 'string');
 
           for (const id of allPlayerIds) {

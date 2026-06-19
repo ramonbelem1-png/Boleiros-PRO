@@ -116,7 +116,7 @@ export default function App() {
       ) : <MatchList />;
       case 'play': return <TeamDraw />;
       case 'live': return <LiveMatch />;
-      case 'social': return <SocialStats />;
+      case 'social': return isAdmin ? <SocialStats /> : <MatchList />;
       case 'settings': return (
         <Settings 
           onAddPlayer={() => {
@@ -197,7 +197,7 @@ export default function App() {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bottom-nav-blur safe-area-bottom z-50">
-        <div className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'} items-center h-20 px-1 max-w-lg mx-auto`}>
+        <div className={`grid ${isAdmin ? 'grid-cols-6' : 'grid-cols-4'} items-center h-20 px-1 max-w-lg mx-auto`}>
           <NavButton 
             active={activeTab === 'list'} 
             onClick={() => setActiveTab('list')}
@@ -228,12 +228,14 @@ export default function App() {
             label="Ao Vivo"
           />
 
-          <NavButton 
-            active={activeTab === 'social'} 
-            onClick={() => setActiveTab('social')}
-            icon={<Trophy size={20} />}
-            label="Ranking"
-          />
+          {isAdmin && (
+            <NavButton 
+              active={activeTab === 'social'} 
+              onClick={() => setActiveTab('social')}
+              icon={<Trophy size={20} />}
+              label="Ranking"
+            />
+          )}
           <NavButton 
             active={activeTab === 'settings'} 
             onClick={() => setActiveTab('settings')}

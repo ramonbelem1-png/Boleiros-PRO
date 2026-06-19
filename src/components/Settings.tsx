@@ -342,7 +342,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 </p>
               </div>
 
-              <div className="grid grid-cols-5 gap-2 w-full pt-4 px-2">
+              <div className="grid grid-cols-6 gap-1 w-full pt-4 px-2">
                 <div className="text-center">
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Jogos</p>
                   <p className="text-base font-black text-white">
@@ -364,6 +364,10 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 <div className="text-center">
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Derr</p>
                   <p className="text-base font-black text-white">{currentUserPlayer?.derrotas || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Emp</p>
+                  <p className="text-base font-black text-white">{currentUserPlayer?.empates || 0}</p>
                 </div>
               </div>
 
@@ -525,7 +529,13 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   </div>
                 </div>
 
-                <div className="grid grid-cols-5 gap-1 pt-3 border-t border-border/20">
+                <div className="grid grid-cols-6 gap-1 pt-3 border-t border-border/20">
+                  <StatBox 
+                    label="Jogos" 
+                    value={(player.vitorias || 0) + (player.derrotas || 0) + (player.empates || 0)} 
+                    color="text-white" 
+                    editable={false} 
+                  />
                   <StatBox 
                     label="Gols" 
                     value={player.gols || 0} 

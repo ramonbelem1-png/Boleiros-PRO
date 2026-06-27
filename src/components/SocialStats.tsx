@@ -22,13 +22,14 @@ export default function SocialStats() {
       return b.totalPts - a.totalPts;
     })[0];
     
-    const topWinnerShare = [...list].sort((a, b) => {
-      if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
-      return b.totalPts - a.totalPts;
+    const topPointsShare = [...list].sort((a, b) => {
+      if (b.totalPts !== a.totalPts) return b.totalPts - a.totalPts;
+      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+      return (b.assistencias || 0) - (a.assistencias || 0);
     })[0];
     
     const periodLabel = period === 'geral' ? 'Geral' : period === 'temporada' ? 'Temporada' : period === 'mes' ? 'Mês' : 'Rodada';
-    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${topScorerShare?.displayName || topScorerShare?.name || '-'}\n🎯 Garçom: ${topAssisterShare?.displayName || topAssisterShare?.name || '-'}\n🔥 Vencedor: ${topWinnerShare?.displayName || topWinnerShare?.name || '-'}\n\n#Futebol #Pelada #BoleirosPRO`;
+    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${topScorerShare?.displayName || topScorerShare?.name || '-'}\n🎯 Garçom: ${topAssisterShare?.displayName || topAssisterShare?.name || '-'}\n🔥 Maior Pontuação: ${topPointsShare?.displayName || topPointsShare?.name || '-'}\n\n#Futebol #Pelada #BoleirosPRO`;
     try {
       if (navigator.share) {
         await navigator.share({

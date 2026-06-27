@@ -469,12 +469,12 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
             <div className="flex items-center justify-center space-x-8">
               <div className="text-center">
                 <div className="text-4xl font-black text-white italic">{match.result.scoreA}</div>
-                <div className="text-[10px] font-bold text-gray-500 uppercase">Time A</div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase">Time Preto</div>
               </div>
               <div className="text-2xl text-primary font-black">X</div>
               <div className="text-center">
                 <div className="text-4xl font-black text-white italic">{match.result.scoreB}</div>
-                <div className="text-[10px] font-bold text-gray-500 uppercase">Time B</div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase">Time Branco</div>
               </div>
             </div>
           </div>
@@ -508,7 +508,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
           ) : (
             <div className="space-y-3">
               {matchGames.map((game, gIdx) => {
-                const resolvedTeams = getGameTeamNames(game, match, { A: 'Time A', B: 'Time B' });
+                const resolvedTeams = getGameTeamNames(game, match, { A: 'Time Preto', B: 'Time Branco' });
                 return (
                   <div key={game.id} className="bg-bg/40 border border-border/20 rounded-2xl overflow-hidden relative group/game">
                     <div className="px-4 py-1.5 bg-white/5 flex justify-between items-center">

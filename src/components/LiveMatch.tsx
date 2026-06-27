@@ -275,6 +275,7 @@ export default function LiveMatch() {
   // New state for scheduling and editing
   const [scheduledTeamA, setScheduledTeamA] = useState<string>('0');
   const [scheduledTeamB, setScheduledTeamB] = useState<string>('1');
+  const [customBandeiras, setCustomBandeiras] = useState<string[] | null>(null);
 
   // 1. Get finished games of the match, ordered chronologically (oldest to newest)
   const finishedGames = useMemo(() => {
@@ -537,6 +538,16 @@ export default function LiveMatch() {
     };
   }, [finishedGames, activeMatch?.teams, teamsCount, liveGame]);
 
+  // Sync customBandeiras when scheduled teams or queue changes
+  useEffect(() => {
+    if (activeMatch?.teams) {
+      const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
+      setCustomBandeiras(bInfo.players.map(p => p.id));
+    } else {
+      setCustomBandeiras([]);
+    }
+  }, [scheduledTeamA, scheduledTeamB, activeMatch?.teams, queueState?.queue, activeGames]);
+
   // Helper comparator to sort players by wait time / "tempo de jogo"
   const comparePlayersByWaitTime = useCallback((idA: string, idB: string): number => {
     const lastA = playerStats[idA]?.lastGamePlayedIndex ?? -1;
@@ -562,23 +573,38 @@ export default function LiveMatch() {
 
   // 4. Auto-update scheduledTeamA and scheduledTeamB to match suggestions by default
   useEffect(() => {
-    if (queueState.suggested.length >= 2) {
-      setScheduledTeamA(String(queueState.suggested[0]));
-      setScheduledTeamB(String(queueState.suggested[1]));
-    } else if (queueState.suggested.length === 1) {
-      setScheduledTeamA(String(queueState.suggested[0]));
-      if (queueState.queue.length > 0) {
-        const other = queueState.queue.find(q => q !== queueState.suggested[0]);
-        if (other !== undefined) {
-          setScheduledTeamB(String(other));
+    if (liveGame) {
+      // When a game is active, auto-suggest the first two waiting teams in the queue
+      if (queueState.queue.length >= 2) {
+        setScheduledTeamA(String(queueState.queue[0]));
+        setScheduledTeamB(String(queueState.queue[1]));
+      } else if (queueState.queue.length === 1) {
+        setScheduledTeamA(String(queueState.queue[0]));
+        const otherKey = Object.keys(activeMatch?.teams || {}).find(k => k !== String(queueState.queue[0]));
+        if (otherKey !== undefined) {
+          setScheduledTeamB(otherKey);
+        }
+      }
+    } else {
+      // Standard lobby behavior
+      if (queueState.suggested.length >= 2) {
+        setScheduledTeamA(String(queueState.suggested[0]));
+        setScheduledTeamB(String(queueState.suggested[1]));
+      } else if (queueState.suggested.length === 1) {
+        setScheduledTeamA(String(queueState.suggested[0]));
+        if (queueState.queue.length > 0) {
+          const other = queueState.queue.find(q => q !== queueState.suggested[0]);
+          if (other !== undefined) {
+            setScheduledTeamB(String(other));
+          } else {
+            setScheduledTeamB('0');
+          }
         } else {
           setScheduledTeamB('0');
         }
-      } else {
-        setScheduledTeamB('0');
       }
     }
-  }, [queueState.suggested, queueState.queue]);
+  }, [queueState.suggested, queueState.queue, liveGame, activeMatch?.teams]);
 
   // Auto-healing to detect and remove duplicate player assignments across static teams in real-time
   useEffect(() => {
@@ -887,7 +913,7 @@ export default function LiveMatch() {
   const currentTeamB = liveGame?.teamB_ids ? players.filter(p => liveGame.teamB_ids.includes(p.id)) : [];
 
   const liveTeamNames = useMemo(() => {
-    return getGameTeamNames(liveGame, { A: 'Time A', B: 'Time B' });
+    return getGameTeamNames(liveGame, { A: 'Time Preto', B: 'Time Branco' });
   }, [liveGame, activeMatch?.teams]);
 
   const handleAddGoal = async () => {
@@ -1112,10 +1138,20 @@ export default function LiveMatch() {
     
     confirmAction(`Deseja excluir permanentemente a Equipe ${Number(teamKey) + 1}?\nIsso removerá todos os atletas vinculados a esta equipe.`, async () => {
       try {
-        await updateDoc(doc(db, 'matches', activeMatch.id), {
-          [`teams.${teamKey}`]: deleteField()
+        const currentTeams = { ...(activeMatch.teams || {}) };
+        
+        // Remove the team key
+        delete currentTeams[teamKey];
+        
+        // Reindex remaining keys sequentially to avoid gaps
+        const remainingKeys = Object.keys(currentTeams).map(Number).sort((a, b) => a - b);
+        const reindexedTeams: Record<string, string[]> = {};
+        remainingKeys.forEach((k, idx) => {
+          reindexedTeams[String(idx)] = currentTeams[String(k)] || [];
         });
-        console.log("[LiveMatch] Equipe excluída com sucesso");
+        
+        await updateMatch(activeMatch.id, { teams: reindexedTeams });
+        console.log("[LiveMatch] Equipe excluída com sucesso e reordenada");
       } catch (error: any) {
         console.error("Erro ao excluir equipe:", error);
       }
@@ -1298,7 +1334,8 @@ export default function LiveMatch() {
   const handleAddNewTeam = async () => {
     if (!activeMatch) return;
     const currentTeams = { ...(activeMatch.teams || {}) };
-    const nextKeyNum = Object.keys(currentTeams).length;
+    const keys = Object.keys(currentTeams).map(Number);
+    const nextKeyNum = keys.length > 0 ? Math.max(...keys) + 1 : 0;
     const nextKey = String(nextKeyNum);
     currentTeams[nextKey] = [];
     
@@ -1481,7 +1518,7 @@ export default function LiveMatch() {
             ) : (
               <div className="flex flex-wrap items-center gap-1.5 py-1">
                 {(() => {
-                  const maxQueueToShow = Math.max(1, (activeMatch.playersPerTeam || 6) - 1);
+                  const maxQueueToShow = 8;
                   return (
                     <>
                       {playerQueue.slice(0, maxQueueToShow).map((id, index) => {
@@ -1537,6 +1574,196 @@ export default function LiveMatch() {
     );
   };
 
+  const renderPrepareNextMatch = () => {
+    if (!activeMatch?.teams || Object.keys(activeMatch.teams).length < 2) return null;
+
+    const availableBandeiras = players.filter(p => 
+      (activeMatch.confirmedIds || []).includes(p.id) &&
+      !completedScheduledPlayers.teamA.includes(p.id) &&
+      !completedScheduledPlayers.teamB.includes(p.id)
+    );
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2 px-2 mt-4">
+          <Play size={18} className="text-primary" />
+          <h2 className="text-xl font-black uppercase italic tracking-tighter">Preparar Próxima Partida</h2>
+        </div>
+        
+        <div className="bg-card/50 border border-border p-6 rounded-[2.5rem] space-y-6 shadow-xl">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Time A */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Time Preto</label>
+                <select 
+                  value={scheduledTeamA}
+                  onChange={(e) => setScheduledTeamA(e.target.value)}
+                  className="w-full bg-bg border border-border p-4 rounded-2xl text-sm font-bold appearance-none text-primary"
+                >
+                  {Object.keys(activeMatch.teams!).map(key => (
+                    <option key={key} value={key}>Time {Number(key) + 1}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
+                {completedScheduledPlayers.teamA.map(id => {
+                  const p = players.find(p => p.id === id);
+                  const isCompleting = !activeMatch.teams![scheduledTeamA]?.includes(id);
+                  return (
+                    <div key={id} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-primary'}`} />
+                        <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
+                          {p?.displayName || p?.name || 'Vazio'}
+                        </span>
+                      </div>
+                      {isCompleting && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
+                          Seq. #{effectiveDrawOrder[id]}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Time B */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Time Branco</label>
+                <select 
+                  value={scheduledTeamB}
+                  onChange={(e) => setScheduledTeamB(e.target.value)}
+                  className="w-full bg-bg border border-border p-4 rounded-2xl text-sm font-bold appearance-none text-white"
+                >
+                 {Object.keys(activeMatch.teams!).map(key => (
+                    <option key={key} value={key}>Time {Number(key) + 1}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
+                {completedScheduledPlayers.teamB.map(id => {
+                  const p = players.find(p => p.id === id);
+                  const isCompleting = !activeMatch.teams![scheduledTeamB]?.includes(id);
+                  return (
+                    <div key={id} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-white/30'}`} />
+                        <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
+                          {p?.displayName || p?.name || 'Vazio'}
+                        </span>
+                      </div>
+                      {isCompleting && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
+                          Seq. #{effectiveDrawOrder[id]}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Bandeiras Substitution/Configuration */}
+          <div className="space-y-2 pt-4 border-t border-white/5">
+            <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 ml-2 flex items-center gap-1">
+              <span>🚩</span>
+              <span>Bandeiras da Próxima Partida</span>
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter block ml-1">Bandeira 1</span>
+                <select
+                  value={customBandeiras?.[0] || ''}
+                  onChange={(e) => {
+                    const newB = [...(customBandeiras || [])];
+                    newB[0] = e.target.value;
+                    setCustomBandeiras(newB);
+                  }}
+                  className="w-full bg-bg border border-border p-3 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-primary cursor-pointer font-sans"
+                >
+                  <option value="">Selecione...</option>
+                  {availableBandeiras.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {(p.displayName || p.name).toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter block ml-1">Bandeira 2</span>
+                <select
+                  value={customBandeiras?.[1] || ''}
+                  onChange={(e) => {
+                    const newB = [...(customBandeiras || [])];
+                    newB[1] = e.target.value;
+                    setCustomBandeiras(newB);
+                  }}
+                  className="w-full bg-bg border border-border p-3 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-primary cursor-pointer font-sans"
+                >
+                  <option value="">Selecione...</option>
+                  {availableBandeiras.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {(p.displayName || p.name).toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex space-x-3">
+            {!liveGame && (
+              <button 
+                onClick={() => {
+                  const nameA = `Time ${Number(scheduledTeamA) + 1}`;
+                  const nameB = `Time ${Number(scheduledTeamB) + 1}`;
+                  const bandeiraIds = (customBandeiras || [])
+                    .filter(id => id && typeof id === 'string' && id !== '');
+                  startLiveGame(
+                    activeMatch.id, 
+                    completedScheduledPlayers.teamA, 
+                    completedScheduledPlayers.teamB, 
+                    nameA, 
+                    nameB,
+                    bandeiraIds
+                  );
+                }}
+                className="flex-1 py-4 bg-primary text-bg rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-primary/20 cursor-pointer"
+              >
+                <Play size={14} fill="currentColor" />
+                <span>Iniciar Agora</span>
+              </button>
+            )}
+            <button 
+              onClick={() => {
+                const nameA = `Time ${Number(scheduledTeamA) + 1}`;
+                const nameB = `Time ${Number(scheduledTeamB) + 1}`;
+                const bandeiraIds = (customBandeiras || [])
+                  .filter(id => id && typeof id === 'string' && id !== '');
+                createScheduledGame(
+                  activeMatch.id, 
+                  completedScheduledPlayers.teamA, 
+                  completedScheduledPlayers.teamB, 
+                  nameA, 
+                  nameB,
+                  bandeiraIds
+                );
+              }}
+              className="flex-1 py-4 bg-white/5 border border-border text-white rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 hover:bg-white/10 cursor-pointer"
+            >
+              <Plus size={14} />
+              <span>Agendar Partida</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20 w-full max-w-lg mx-auto transform-gpu">
       {!liveGame ? (
@@ -1549,142 +1776,19 @@ export default function LiveMatch() {
               <h3 className="text-xl font-bold">Sorteie os Times Primeiro</h3>
               <p className="text-gray-500 text-sm mt-2">Vá na aba "Sortear" e defina os times para começar um jogo.</p>
             </div>
-          ) : isAdmin ? (
-            <>
-              {renderQueueSequence()}
-              <div className="flex items-center space-x-2 px-2">
-                <Play size={18} className="text-primary" />
-                <h2 className="text-xl font-black uppercase italic tracking-tighter">Preparar Próxima Partida</h2>
-              </div>
-              
-              <div className="bg-card/50 border border-border p-6 rounded-[2.5rem] space-y-6 shadow-xl">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Time A</label>
-                      <select 
-                        value={scheduledTeamA}
-                        onChange={(e) => setScheduledTeamA(e.target.value)}
-                        className="w-full bg-bg border border-border p-4 rounded-2xl text-sm font-bold appearance-none text-primary"
-                      >
-                        {Object.keys(activeMatch.teams!).map(key => (
-                          <option key={key} value={key}>Time {Number(key) + 1}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
-                      {completedScheduledPlayers.teamA.map(id => {
-                        const p = players.find(p => p.id === id);
-                        const isCompleting = !activeMatch.teams![scheduledTeamA]?.includes(id);
-                        return (
-                          <div key={id} className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2 min-w-0">
-                              <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-primary'}`} />
-                              <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
-                                {p?.displayName || p?.name || 'Vazio'}
-                              </span>
-                            </div>
-                            {isCompleting && (
-                              <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
-                                Seq. #{effectiveDrawOrder[id]}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-2">Time B</label>
-                      <select 
-                        value={scheduledTeamB}
-                        onChange={(e) => setScheduledTeamB(e.target.value)}
-                        className="w-full bg-bg border border-border p-4 rounded-2xl text-sm font-bold appearance-none text-white"
-                      >
-                       {Object.keys(activeMatch.teams!).map(key => (
-                          <option key={key} value={key}>Time {Number(key) + 1}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
-                      {completedScheduledPlayers.teamB.map(id => {
-                        const p = players.find(p => p.id === id);
-                        const isCompleting = !activeMatch.teams![scheduledTeamB]?.includes(id);
-                        return (
-                          <div key={id} className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2 min-w-0">
-                              <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-white/30'}`} />
-                              <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
-                                {p?.displayName || p?.name || 'Vazio'}
-                              </span>
-                            </div>
-                            {isCompleting && (
-                              <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
-                                Seq. #{effectiveDrawOrder[id]}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex space-x-3">
-                  <button 
-                    onClick={() => {
-                      const nameA = `Time ${Number(scheduledTeamA) + 1}`;
-                      const nameB = `Time ${Number(scheduledTeamB) + 1}`;
-                      const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
-                      const bandeiraIds = bInfo.players.map(p => p.id);
-                      startLiveGame(
-                        activeMatch.id, 
-                        completedScheduledPlayers.teamA, 
-                        completedScheduledPlayers.teamB, 
-                        nameA, 
-                        nameB,
-                        bandeiraIds
-                      );
-                    }}
-                    className="flex-1 py-4 bg-primary text-bg rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-primary/20"
-                  >
-                    <Play size={14} fill="currentColor" />
-                    <span>Iniciar Agora</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const nameA = `Time ${Number(scheduledTeamA) + 1}`;
-                      const nameB = `Time ${Number(scheduledTeamB) + 1}`;
-                      const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
-                      const bandeiraIds = bInfo.players.map(p => p.id);
-                      createScheduledGame(
-                        activeMatch.id, 
-                        completedScheduledPlayers.teamA, 
-                        completedScheduledPlayers.teamB, 
-                        nameA, 
-                        nameB,
-                        bandeiraIds
-                      );
-                    }}
-                    className="flex-1 py-4 bg-white/5 border border-border text-white rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 hover:bg-white/10"
-                  >
-                    <Plus size={14} />
-                    <span>Agendar</span>
-                  </button>
-                </div>
-              </div>
-            </>
           ) : (
             <div className="space-y-6">
               {renderQueueSequence()}
-              <div className="bg-card rounded-[32px] p-10 border border-border/50 text-center space-y-4 shadow-2xl">
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-primary mx-auto border border-primary/20">
-                  <Timer size={40} />
+              {isAdmin && renderPrepareNextMatch()}
+              {!isAdmin && (
+                <div className="bg-card rounded-[32px] p-10 border border-border/50 text-center space-y-4 shadow-2xl">
+                  <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-primary mx-auto border border-primary/20">
+                    <Timer size={40} />
+                  </div>
+                  <h2 className="text-2xl font-black italic uppercase tracking-tighter">Sem Jogo em Andamento</h2>
+                  <p className="text-gray-500 text-sm max-w-[240px] mx-auto font-medium">Aguarde o administrador iniciar a próxima partida para acompanhar em tempo real.</p>
                 </div>
-                <h2 className="text-2xl font-black italic uppercase tracking-tighter">Sem Jogo em Andamento</h2>
-                <p className="text-gray-500 text-sm max-w-[240px] mx-auto font-medium">Aguarde o administrador iniciar a próxima partida para acompanhar em tempo real.</p>
-              </div>
+              )}
             </div>
           )}
         </section>
@@ -1802,11 +1906,17 @@ export default function LiveMatch() {
 
                 if (bandeirasPlayers.length === 0) return null;
 
+                const activeGameAvailableBandeiras = players.filter(ap => 
+                  (activeMatch.confirmedIds || []).includes(ap.id) &&
+                  !(liveGame.teamA_ids || []).includes(ap.id) &&
+                  !(liveGame.teamB_ids || []).includes(ap.id)
+                );
+
                 return (
                   <div className="mt-4 pt-4 border-t border-white/5 flex flex-col items-center justify-center relative z-10 w-full overflow-hidden">
                     <div className="flex items-center space-x-1.5 text-[9px] font-black uppercase tracking-widest text-gray-500 mb-2">
                       <span className="text-amber-500">🚩</span>
-                      <span>Bandeiras da Partida</span>
+                      <span>{isAdmin ? 'Substituir Bandeiras' : 'Bandeiras da Partida'}</span>
                       {bTeamIdx !== -1 && (
                         <span className="text-gray-400 font-extrabold italic">(Equipe {bTeamIdx + 1})</span>
                       )}
@@ -1815,6 +1925,51 @@ export default function LiveMatch() {
                       {bandeirasPlayers.map((p, idx) => {
                         const name = p.displayName || p.name;
                         const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
+                        
+                        if (isAdmin) {
+                          return (
+                            <div key={p.id} className="flex items-center space-x-1 bg-white/5 border border-white/5 px-2 py-1 rounded-lg shadow-sm whitespace-nowrap">
+                              <span className="text-gray-500 font-bold text-[9px]">#{idx + 1}</span>
+                              <select
+                                value={p.id}
+                                onChange={async (e) => {
+                                  const newId = e.target.value;
+                                  if (!newId) return;
+                                  
+                                  let currentBIds = liveGame.bandeiras_ids && liveGame.bandeiras_ids.length > 0 
+                                    ? [...liveGame.bandeiras_ids] 
+                                    : bandeirasPlayers.map(bp => bp.id);
+                                  
+                                  while (currentBIds.length < 2 && currentBIds.length < bandeirasPlayers.length) {
+                                    currentBIds.push(bandeirasPlayers[currentBIds.length].id);
+                                  }
+                                  
+                                  currentBIds[idx] = newId;
+                                  
+                                  try {
+                                    await updateDoc(doc(db, 'matches', activeMatch.id, 'games', liveGame.id), {
+                                      bandeiras_ids: currentBIds
+                                    });
+                                    console.log("[LiveMatch] Bandeira substituído com sucesso");
+                                  } catch (error) {
+                                    console.error("Erro ao substituir bandeira:", error);
+                                  }
+                                }}
+                                className="bg-transparent border-none text-[9px] font-bold text-white focus:outline-none focus:ring-0 uppercase cursor-pointer py-0 px-1"
+                              >
+                                <option value={p.id} className="bg-bg text-white">
+                                  {name.toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
+                                </option>
+                                {activeGameAvailableBandeiras.filter(ap => ap.id !== p.id).map(ap => (
+                                  <option key={ap.id} value={ap.id} className="bg-bg text-white">
+                                    {(ap.displayName || ap.name).toUpperCase()} {ap.number !== undefined ? `(Nº ${ap.number})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        }
+
                         return (
                           <span key={p.id} className="text-[9px] font-bold text-white px-2 py-1 bg-white/5 border border-white/5 rounded-lg flex items-center space-x-1 shadow-sm whitespace-nowrap">
                             <span className="text-gray-500 font-bold text-[9px]">#{idx + 1}</span>
@@ -2019,8 +2174,9 @@ export default function LiveMatch() {
       )}
 
       {liveGame && (
-        <div className="px-2 mb-6">
+        <div className="px-2 space-y-6 mb-6">
           {renderQueueSequence()}
+          {isAdmin && renderPrepareNextMatch()}
         </div>
       )}
 
@@ -2204,7 +2360,7 @@ export default function LiveMatch() {
             </div>
           ) : (
             activeGames.map((game) => {
-              const rTeams = getGameTeamNames(game, { A: 'Time A', B: 'Time B' });
+              const rTeams = getGameTeamNames(game, { A: 'Time Preto', B: 'Time Branco' });
               return (
                 <div key={game.id} className="bg-card rounded-[2.5rem] border border-border/50 overflow-hidden shadow-lg">
                   <div className={`px-4 py-2 flex items-center justify-between ${game.status === 'RUNNING' ? 'bg-primary/10' : game.status === 'SCHEDULED' ? 'bg-yellow-500/10' : 'bg-white/5'}`}>
@@ -2376,7 +2532,7 @@ export default function LiveMatch() {
             <div className="flex-1 overflow-y-auto p-8 pt-0 custom-scrollbar">
               <div className="grid grid-cols-1 gap-8">
                {editingGame ? (() => {
-                 const edTeams = getGameTeamNames(editingGame, { A: 'Time A', B: 'Time B' });
+                 const edTeams = getGameTeamNames(editingGame, { A: 'Time Preto', B: 'Time Branco' });
                  return (
                    <>
                      <div className="space-y-4">
@@ -2604,7 +2760,9 @@ export default function LiveMatch() {
                           availableConfirmed.forEach(p => {
                             let found = false;
                             const teams = activeMatch.teams || {};
-                            Object.values(teams).forEach((teamIds: any) => {
+                            const currentTeamKey = editingTeamIndex !== null ? String(editingTeamIndex) : null;
+                            Object.entries(teams).forEach(([key, teamIds]: [string, any]) => {
+                              if (currentTeamKey !== null && key === currentTeamKey) return;
                               if (Array.isArray(teamIds) && teamIds.includes(p.id)) found = true;
                             });
                             if (found) inOtherTeams.push(p);
@@ -2614,7 +2772,19 @@ export default function LiveMatch() {
                           const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE') => {
                             const borderColor = type === 'LATE' ? 'border-warning/30' : 'border-primary/30';
                             const textColor = type === 'LATE' ? 'text-warning' : 'text-primary';
-                            const tag = type === 'OTHER' ? 'Equipe' : type === 'BENCH' ? 'Banco' : 'Fora';
+                            
+                            let tag = 'Banco';
+                            if (type === 'LATE') {
+                              tag = 'Fora';
+                            } else if (type === 'OTHER') {
+                              tag = 'Equipe';
+                              if (activeMatch.teams) {
+                                const foundEntry = Object.entries(activeMatch.teams).find(([_, ids]) => (ids as string[] || []).includes(p.id));
+                                if (foundEntry) {
+                                  tag = `Equipe ${Number(foundEntry[0]) + 1}`;
+                                }
+                              }
+                            }
 
                             return (
                               <button 

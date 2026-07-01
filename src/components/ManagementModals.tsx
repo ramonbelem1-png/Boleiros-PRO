@@ -282,7 +282,16 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
                   }`}>
                     {(p.displayName || p.name).charAt(0)}
                   </div>
-                  <span className="text-xs font-semibold truncate">{p.displayName || p.name}</span>
+                  <span className="text-xs font-semibold truncate flex items-center gap-1.5">
+                    {p.displayName || p.name}
+                    {p.number !== undefined && p.number !== null && (
+                      <span className={`text-[9px] font-mono font-black px-1 rounded shrink-0 ${
+                        playerId === p.id ? 'bg-bg text-primary' : 'bg-primary text-bg'
+                      }`}>
+                        #{p.number}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 {playerId === p.id && <Check size={14} />}
               </button>

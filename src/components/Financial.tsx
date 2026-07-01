@@ -225,15 +225,29 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
                 title="Lançar pagamento"
               >
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-full bg-bg border border-border flex items-center justify-center font-bold text-gray-400 overflow-hidden shrink-0">
-                    {player.photoUrl ? (
-                      <img src={player.photoUrl} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      (player.displayName || player.name).charAt(0)
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-bg border border-border flex items-center justify-center font-bold text-gray-400 overflow-hidden">
+                      {player.photoUrl ? (
+                        <img src={player.photoUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        (player.displayName || player.name).charAt(0)
+                      )}
+                    </div>
+                    {player.number !== undefined && player.number !== null && (
+                      <div className="absolute -top-1 -right-1 bg-primary text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full shadow-md">
+                        #{player.number}
+                      </div>
                     )}
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm tracking-tight text-white">{player.displayName || player.name}</h4>
+                    <h4 className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+                      {player.displayName || player.name}
+                      {player.number !== undefined && player.number !== null && (
+                        <span className="text-[10px] bg-white/10 text-primary font-mono font-bold px-1.5 py-0.5 rounded border border-white/5 shrink-0">
+                          #{player.number}
+                        </span>
+                      )}
+                    </h4>
                     <div className="flex items-center space-x-2 mt-0.5">
                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{player.type}</span>
                       <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
@@ -279,7 +293,9 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
                           </span>
                         )}
                         {player && (
-                          <span className="text-[10px] text-primary font-black uppercase">● {player.displayName || player.name}</span>
+                          <span className="text-[10px] text-primary font-black uppercase">
+                            ● {player.displayName || player.name} {player.number !== undefined && player.number !== null && `(#${player.number})`}
+                          </span>
                         )}
                       </div>
                     </div>

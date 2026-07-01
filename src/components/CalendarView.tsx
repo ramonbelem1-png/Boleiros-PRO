@@ -21,7 +21,9 @@ import { useAuth } from './AuthProvider';
 export default function CalendarView() {
   const { matches, players, deleteMatch, deleteGame } = usePelada();
   const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
@@ -309,7 +311,9 @@ export default function CalendarView() {
 function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { match: Match, players: Player[], onClose: () => void, onDeleteMatch: (id: string) => void, onDeleteGame: (mId: string, gId: string) => void }) {
   const { getMatchGames } = usePelada();
   const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [matchGames, setMatchGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
 

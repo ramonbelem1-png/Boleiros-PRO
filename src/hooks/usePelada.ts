@@ -126,8 +126,10 @@ export interface GroupSettings {
 import { useAuth } from '../components/AuthProvider';
 
 export function usePelada() {
-  const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const { role, user, approved } = useAuth();
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -183,7 +185,7 @@ export function usePelada() {
     });
 
     let unsubTransactions: () => void = () => {};
-    if (user) {
+    if (user && (approved || isAdmin)) {
       unsubTransactions = onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(200)), (snap) => {
         setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
       }, (error) => {
@@ -207,7 +209,7 @@ export function usePelada() {
       unsubTransactions();
       unsubSettings();
     };
-  }, [user, isAdmin]);
+  }, [user, isAdmin, approved]);
 
   // Auto-finish expired matches (Triggered by admin login)
   useEffect(() => {

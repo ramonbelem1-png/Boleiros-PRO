@@ -72,7 +72,9 @@ export default function MatchList() {
     return now < dayAfterMatch;
   });
 
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});

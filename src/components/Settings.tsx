@@ -30,7 +30,9 @@ interface SettingsProps {
 export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, settings, onUpdateSettings }: SettingsProps) {
   const { players, matches, deletePlayer, recalculateAllStats } = usePelada();
   const { logout, role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const currentUserPlayer = players.find(p => p.id === user?.uid);
 
   const [localSettings, setLocalSettings] = useState<GroupSettings>(settings);
@@ -593,7 +595,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         </button>
                       ))}
                     </div>
-                    {player.email !== 'ramonbelem1@gmail.com' && (
+                    {player.email !== 'ramoncxavier88@gmail.com' && (
                       <button 
                         onClick={() => setPlayerToDelete(player.id)}
                         className="p-2 text-danger/50 hover:text-danger transition-colors"

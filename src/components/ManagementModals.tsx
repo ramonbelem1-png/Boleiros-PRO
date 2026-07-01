@@ -357,7 +357,9 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
 function PlayerModal({ onSave, onClose, initialData }: any) {
   const { players, settings } = usePelada();
   const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [fullName, setFullName] = useState(initialData?.fullName || '');
   const [displayName, setDisplayName] = useState(initialData?.displayName || initialData?.name || '');
   const [email, setEmail] = useState(initialData?.email || '');

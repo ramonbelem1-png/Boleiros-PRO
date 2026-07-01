@@ -86,7 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isApproved = data.approved === true;
             
             // Garantir que o email solicitado seja ADMIN e APONTADO
-            if (u.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com') {
+            const emailLower = u.email?.trim().toLowerCase();
+            const isAdminEmail = emailLower === 'ramoncarvalhoxavier@gmail.com' || 
+                                 emailLower === 'ramoncxavier88@gmail.com';
+            if (isAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
               if (data.role !== 'ADMIN' || data.approved !== true) {
@@ -97,7 +100,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Se não houver configurações, o primeiro a logar vira admin (bootstrap)
             const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
             
-            if (!firstUserCheck.exists() || u.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com') {
+            const emailLower = u.email?.trim().toLowerCase();
+            const isAdminEmail = emailLower === 'ramoncarvalhoxavier@gmail.com' || 
+                                 emailLower === 'ramoncxavier88@gmail.com';
+            if (!firstUserCheck.exists() || isAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
             } else {

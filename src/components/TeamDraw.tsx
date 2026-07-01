@@ -7,7 +7,9 @@ import { motion } from 'motion/react';
 export default function TeamDraw() {
   const { players, matches, setMatchTeams } = usePelada();
   const { user, role } = useAuth();
-  const isAdmin = role === 'ADMIN' || user?.email?.trim().toLowerCase() === 'ramonbelem1@gmail.com';
+  const isAdmin = role === 'ADMIN' || 
+    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
+    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
 
   // Helper to get adjusted level
   const getAdjustedLevel = (player: Player) => {

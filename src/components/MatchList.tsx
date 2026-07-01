@@ -217,7 +217,7 @@ export default function MatchList() {
       confirmedList.forEach((player, idx) => {
         const isMensalista = player.type === 'MENSALISTA';
         const isPaid = isPlayerPaidForMatch(player, nextMatch.date, transactions, settings, nextMatch.paidIds);
-        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? '' : ' (Diarista)';
+        const paymentLabel = (isPaid ? ' (PG)' : '') + (isMensalista ? '' : ' (Diarista)');
         text += `${idx + 1}. ${player.displayName || player.name} ✅${paymentLabel}\n`;
       });
     }

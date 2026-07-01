@@ -85,9 +85,10 @@ service cloud.firestore {
       }
     }
 
-    // Transactions - Restricted to Admins as requested
+    // Transactions
     match /transactions/{transactionId} {
-      allow read, write: if isAdmin();
+      allow read: if isApproved();
+      allow write: if isAdmin();
     }
 
     // Groups / Config

@@ -6,9 +6,10 @@ type SubTab = 'resumo' | 'extrato' | 'jogadores';
 
 interface FinancialProps {
   onEditTransaction: (t: Transaction) => void;
+  onLaunchPayment?: (p: any) => void;
 }
 
-export default function Financial({ onEditTransaction }: FinancialProps) {
+export default function Financial({ onEditTransaction, onLaunchPayment }: FinancialProps) {
   const { transactions, players, settings, deleteTransaction } = usePelada();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('resumo');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -217,7 +218,12 @@ export default function Financial({ onEditTransaction }: FinancialProps) {
           {players.map(player => {
             const status = getPlayerStatus(player, filterMonth);
             return (
-              <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between">
+              <div 
+                key={player.id} 
+                onClick={() => onLaunchPayment?.(player)}
+                className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between cursor-pointer hover:bg-white/5 hover:border-primary/40 active:scale-[0.98] transition-all"
+                title="Lançar pagamento"
+              >
                 <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 rounded-full bg-bg border border-border flex items-center justify-center font-bold text-gray-400 overflow-hidden shrink-0">
                     {player.photoUrl ? (

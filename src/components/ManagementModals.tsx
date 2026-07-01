@@ -29,7 +29,7 @@ export default function ManagementModals({ type, editingPlayer, editingTransacti
           {type === 'finance' && (
             <TransactionModal 
               onSave={async (data: any) => {
-                if (editingTransaction) {
+                if (editingTransaction && editingTransaction.id) {
                   await updateTransaction(editingTransaction.id, data);
                 } else {
                   await createTransaction(data);

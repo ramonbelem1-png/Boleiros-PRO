@@ -183,8 +183,8 @@ export function usePelada() {
     });
 
     let unsubTransactions: () => void = () => {};
-    if (isAdmin) {
-      unsubTransactions = onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(50)), (snap) => {
+    if (user) {
+      unsubTransactions = onSnapshot(query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(200)), (snap) => {
         setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
       }, (error) => {
         handleFirestoreError(error, 'get', 'transactions');
@@ -229,7 +229,10 @@ export function usePelada() {
     });
   }, [matches, isAdmin]);
 
-  // Auto-promote waiting players when spaces open up or maxPlayers limit changes
+  // Auto-promote waiting players has been disabled as per new rules:
+  // Diaristas stay in the waiting list until an admin manually promotes them,
+  // and Mensalistas go straight to the confirmed list anyway.
+  /*
   useEffect(() => {
     if (!user || matches.length === 0 || !settings.maxPlayers) return;
 
@@ -268,6 +271,7 @@ export function usePelada() {
       }
     });
   }, [matches, settings.maxPlayers, user]);
+  */
 
   // Effect specifically for handling the live game listener
   useEffect(() => {
@@ -417,10 +421,23 @@ export function usePelada() {
     const newConfirmed = [...match.confirmedIds];
     const newWaiting = [...match.waitingIds];
 
-    if (newConfirmed.length < settings.maxPlayers) {
-      newConfirmed.push(playerId);
-    } else if (!newWaiting.includes(playerId)) {
-      newWaiting.push(playerId);
+    const player = players.find(p => p.id === playerId);
+    const isMensalista = player ? player.type === 'MENSALISTA' : false;
+
+    if (isMensalista) {
+      if (!newConfirmed.includes(playerId)) {
+        newConfirmed.push(playerId);
+      }
+      // Remove from waiting list just in case
+      const waitingIdx = newWaiting.indexOf(playerId);
+      if (waitingIdx !== -1) {
+        newWaiting.splice(waitingIdx, 1);
+      }
+    } else {
+      // Diarista: always placed on the waiting list by default as per new requirements
+      if (!newWaiting.includes(playerId)) {
+        newWaiting.push(playerId);
+      }
     }
 
     const currentConfirmations = match.confirmations || {};
@@ -438,6 +455,28 @@ export function usePelada() {
       });
     } catch (error) {
       console.error("Erro ao confirmar presença:", error);
+    }
+  };
+
+  const promotePlayer = async (matchId: string, playerId: string) => {
+    if (!playerId) return;
+    const match = matches.find(m => m.id === matchId);
+    if (!match) return;
+
+    const newConfirmed = [...match.confirmedIds];
+    const newWaiting = match.waitingIds.filter(id => id !== playerId);
+
+    if (!newConfirmed.includes(playerId)) {
+      newConfirmed.push(playerId);
+    }
+
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        confirmedIds: newConfirmed,
+        waitingIds: newWaiting
+      });
+    } catch (error) {
+      console.error("Erro ao promover jogador:", error);
     }
   };
 
@@ -1351,6 +1390,7 @@ export function usePelada() {
     liveGame,
     activeGames,
     confirmPresence,
+    promotePlayer,
     markAbsent,
     createMatch,
     createTransaction,

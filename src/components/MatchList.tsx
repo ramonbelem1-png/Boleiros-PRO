@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { usePelada, Player, formatPosition } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2 } from 'lucide-react';
+import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
 
@@ -9,9 +9,57 @@ const removeAccents = (str: string): string => {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 };
 
+const isPlayerPaidForMatch = (
+  player: Player,
+  matchDate: any,
+  transactions: any[],
+  settings: any,
+  paidIds: string[] = []
+): boolean => {
+  if (player.type !== 'MENSALISTA') {
+    return paidIds ? paidIds.includes(player.id) : false;
+  }
+
+  const matchDateObj = matchDate ? (typeof matchDate.toDate === 'function' ? matchDate.toDate() : new Date(matchDate)) : new Date();
+  const matchYear = matchDateObj.getFullYear();
+  const matchMonth = matchDateObj.getMonth() + 1; // 1-indexed
+  const matchDay = matchDateObj.getDate();
+
+  const matchMonthStr = `${matchYear}-${String(matchMonth).padStart(2, '0')}`;
+
+  // Calculate previous month
+  let prevMonth = matchMonth - 1;
+  let prevYear = matchYear;
+  if (prevMonth === 0) {
+    prevMonth = 12;
+    prevYear = matchYear - 1;
+  }
+  const prevMonthStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+
+  const dueDay = settings.monthlyFeeDueDay || 10;
+
+  const hasPaidForMonth = (monthStr: string) => {
+    return transactions.some(t => 
+      t.playerId === player.id && 
+      t.category === 'MONTHLY' && 
+      t.type === 'INCOME' && 
+      t.referenceMonth === monthStr
+    );
+  };
+
+  const paidTarget = hasPaidForMonth(matchMonthStr);
+  const paidPrev = hasPaidForMonth(prevMonthStr);
+
+  if (matchDay <= dueDay) {
+    return paidPrev || paidTarget;
+  } else {
+    return paidTarget;
+  }
+};
+
 export default function MatchList() {
   const { user, role } = useAuth();
-  const { players, matches, settings, confirmPresence, markAbsent, loading, updateMatch } = usePelada();
+  const { players, matches, settings, confirmPresence, promotePlayer, markAbsent, loading, updateMatch, transactions } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   
   const now = new Date();
@@ -84,6 +132,18 @@ export default function MatchList() {
     }
   };
 
+  const handlePromote = async (matchId: string, playerId: string) => {
+    setSubmitting(true);
+    try {
+      await promotePlayer(matchId, playerId);
+      showFeedback('success', 'Jogador promovido para a lista "dentro"!');
+    } catch (e) {
+      showFeedback('error', 'Erro ao promover jogador.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAdminAbsent = async (matchId: string, playerId: string) => {
     setSubmitting(true);
     try {
@@ -148,13 +208,16 @@ export default function MatchList() {
     const maxPlayers = settings.maxPlayers || 14;
     text += `*DENTRO (${confirmedList.length}/${maxPlayers}):*\n`;
 
+    const matchDateObj = nextMatch.date ? nextMatch.date.toDate() : new Date();
+    const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
+
     if (confirmedList.length === 0) {
       text += `_Nenhum jogador confirmado ainda._\n`;
     } else {
       confirmedList.forEach((player, idx) => {
-        const isPaid = (nextMatch.paidIds && nextMatch.paidIds.includes(player.id));
         const isMensalista = player.type === 'MENSALISTA';
-        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? ' (Mensalista)' : '';
+        const isPaid = isPlayerPaidForMatch(player, nextMatch.date, transactions, settings, nextMatch.paidIds);
+        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? ' (Mensalista - Pendente)' : '';
         text += `${idx + 1}. ${player.displayName || player.name} ✅${paymentLabel}\n`;
       });
     }
@@ -217,7 +280,15 @@ export default function MatchList() {
 
   const confirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds.includes(p.id)) : [];
   const confirmedCount = confirmedPlayers.length;
-  const paidConfirmedCount = nextMatch ? confirmedPlayers.filter(p => p.type === 'MENSALISTA' || (nextMatch.paidIds && nextMatch.paidIds.includes(p.id))).length : 0;
+
+  const matchDateObj = nextMatch?.date ? nextMatch.date.toDate() : new Date();
+  const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
+
+  const paidConfirmedCount = nextMatch 
+    ? confirmedPlayers.filter(player => 
+        isPlayerPaidForMatch(player, nextMatch.date, transactions, settings, nextMatch.paidIds)
+      ).length 
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -412,6 +483,7 @@ export default function MatchList() {
                           showPaidToggle={true}
                           paidIds={nextMatch.paidIds}
                           onTogglePaid={(pid) => handleTogglePaid(nextMatch.id, pid)}
+                          matchDate={nextMatch.date}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -450,6 +522,12 @@ export default function MatchList() {
                           emptyMsg="Nenhum jogador encontrado."
                           isAdmin={isAdmin}
                           confirmations={nextMatch.confirmations}
+                          matchDate={nextMatch.date}
+                          onPromote={(pid) => {
+                            confirmAction('Subir jogador para a lista "dentro"?', () => {
+                              handlePromote(nextMatch.id, pid);
+                            });
+                          }}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista de espera?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -586,14 +664,22 @@ export default function MatchList() {
                                 return (
                                   <>
                                     <button 
-                                      onClick={() => handleAdminConfirm(nextMatch.id, player.id)}
-                                      disabled={submitting || isConfirmed || isWaiting}
+                                      onClick={() => {
+                                        if (isWaiting) {
+                                          handlePromote(nextMatch.id, player.id);
+                                        } else {
+                                          handleAdminConfirm(nextMatch.id, player.id);
+                                        }
+                                      }}
+                                      disabled={submitting || isConfirmed}
                                       className={`p-2 rounded-xl transition-all ${
-                                        isConfirmed || isWaiting 
-                                          ? 'bg-primary text-bg' 
-                                          : 'bg-white/5 text-gray-500 hover:text-primary hover:bg-primary/10'
+                                        isConfirmed 
+                                          ? 'bg-primary text-bg cursor-default' 
+                                          : isWaiting
+                                          ? 'bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 hover:bg-primary hover:text-bg cursor-pointer'
+                                          : 'bg-white/5 text-gray-500 hover:text-primary hover:bg-primary/10 cursor-pointer'
                                       }`}
-                                      title={isConfirmed ? "Confirmado" : isWaiting ? "Na Fila" : "Confirmar Jogador"}
+                                      title={isConfirmed ? "Confirmado" : isWaiting ? "Na Fila (Clique para Subir)" : "Confirmar Jogador"}
                                     >
                                       <Check size={16} strokeWidth={3} />
                                     </button>
@@ -740,10 +826,12 @@ function PresenceSection({
   emptyMsg, 
   isAdmin, 
   onRemove,
+  onPromote,
   confirmations,
   showPaidToggle = false,
   paidIds = [],
-  onTogglePaid
+  onTogglePaid,
+  matchDate
 }: { 
   title?: string, 
   players: Player[], 
@@ -751,11 +839,15 @@ function PresenceSection({
   emptyMsg: string, 
   isAdmin?: boolean, 
   onRemove?: (id: string) => void,
+  onPromote?: (id: string) => void,
   confirmations?: Record<string, string>,
   showPaidToggle?: boolean,
   paidIds?: string[],
-  onTogglePaid?: (playerId: string) => void
+  onTogglePaid?: (playerId: string) => void,
+  matchDate?: any
 }) {
+  const { transactions, settings } = usePelada();
+
   return (
     <div className="space-y-3">
       {title && (
@@ -813,7 +905,18 @@ function PresenceSection({
                 {showPaidToggle ? (
                   <div className="flex items-center">
                     {(() => {
-                      const isPaid = player.type === 'MENSALISTA' || (paidIds && paidIds.includes(player.id));
+                      const matchDateObj = matchDate ? matchDate.toDate() : new Date();
+                      const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
+
+                      const hasPaidMonthly = player.type === 'MENSALISTA' && transactions.some(t => 
+                        t.playerId === player.id && 
+                        t.category === 'MONTHLY' && 
+                        t.type === 'INCOME' && 
+                        t.referenceMonth === matchMonthStr
+                      );
+
+                      const isPaid = isPlayerPaidForMatch(player, matchDate, transactions, settings, paidIds);
+
                       return (
                         <button
                           disabled={!isAdmin || player.type === 'MENSALISTA'}
@@ -823,7 +926,17 @@ function PresenceSection({
                               ? 'bg-primary border-primary text-bg shadow-[0_0_8px_rgba(234,179,8,0.25)]'
                               : 'bg-white/5 border-white/10 text-transparent hover:border-primary/50'
                           } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
-                          title={player.type === 'MENSALISTA' ? 'Mensalista' : isPaid ? 'Pago' : 'Marcar como Pago'}
+                          title={
+                            player.type === 'MENSALISTA'
+                              ? hasPaidMonthly
+                                ? 'Mensalista (Pago)'
+                                : isPaid
+                                ? 'Mensalista (Em Dia - Pago Mês Anterior)'
+                                : 'Mensalista (Pendente)'
+                              : isPaid
+                              ? 'Pago'
+                              : 'Marcar como Pago'
+                          }
                         >
                           <span className={`font-mono text-[10px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
                             PG
@@ -840,6 +953,15 @@ function PresenceSection({
                       ))}
                     </div>
                   )
+                )}
+                {isAdmin && onPromote && (
+                  <button 
+                    onClick={() => onPromote(player.id)}
+                    className="p-2 text-gray-600 hover:text-primary hover:bg-primary/10 rounded-xl transition-colors"
+                    title="Subir jogador para lista 'dentro'"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
                 )}
                 {isAdmin && onRemove && (
                   <button 

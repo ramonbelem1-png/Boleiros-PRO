@@ -112,6 +112,18 @@ export default function App() {
             setEditingTransaction(t);
             setModalType('finance');
           }}
+          onLaunchPayment={(p) => {
+            setEditingTransaction({
+              id: '',
+              amount: p.type === 'MENSALISTA' ? settings.monthlyFee : 0,
+              type: 'INCOME',
+              category: p.type === 'MENSALISTA' ? 'MONTHLY' : 'DAILY',
+              playerId: p.id,
+              description: p.type === 'MENSALISTA' ? 'Mensalidade' : 'Diarista',
+              date: null
+            } as any);
+            setModalType('finance');
+          }}
         />
       ) : <MatchList />;
       case 'play': return <TeamDraw />;

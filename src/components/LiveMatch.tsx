@@ -53,6 +53,7 @@ export default function LiveMatch() {
   const [elapsed, setElapsed] = useState(0);
   const [showEventModal, setShowEventModal] = useState<{ type: 'GOAL'; teamSide: 'A' | 'B'; editIdx?: number } | null>(null);
   const [isOwnGoal, setIsOwnGoal] = useState(false);
+  const [isGoalkeeperEvent, setIsGoalkeeperEvent] = useState(false);
   const [selectedScorer, setSelectedScorer] = useState<string>('');
   const [selectedAssister, setSelectedAssister] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -930,14 +931,18 @@ export default function LiveMatch() {
         await updateGameEvent(activeMatch.id, liveGame.id, showEventModal.editIdx, {
           playerId: selectedScorer,
           assistId: isOwnGoal ? undefined : (selectedAssister || undefined),
-          type: isOwnGoal ? 'OWN_GOAL' : 'GOAL'
+          type: isOwnGoal ? 'OWN_GOAL' : 'GOAL',
+          isGoalkeeperGoal: !isOwnGoal && isGoalkeeperEvent,
+          isGoalkeeperOwnGoal: isOwnGoal && isGoalkeeperEvent,
         });
       } else {
         await addGameEvent(activeMatch.id, liveGame.id, {
           type: isOwnGoal ? 'OWN_GOAL' : 'GOAL',
           playerId: selectedScorer,
           assistId: isOwnGoal ? undefined : (selectedAssister || undefined),
-          teamSide: showEventModal.teamSide
+          teamSide: showEventModal.teamSide,
+          isGoalkeeperGoal: !isOwnGoal && isGoalkeeperEvent,
+          isGoalkeeperOwnGoal: isOwnGoal && isGoalkeeperEvent,
         });
       }
 
@@ -945,6 +950,7 @@ export default function LiveMatch() {
       setSelectedScorer('');
       setSelectedAssister('');
       setIsOwnGoal(false);
+      setIsGoalkeeperEvent(false);
       console.log("[LiveMatch] Goal added successfully");
     } catch (error) {
       console.error("Erro ao registrar/editar gol:", error);
@@ -1823,10 +1829,27 @@ export default function LiveMatch() {
             <div className="bg-card rounded-[2.5rem] border border-border p-8 relative overflow-hidden shadow-2xl">
               <div className="flex items-center justify-between relative z-10">
                 {/* Score Team A */}
-                <div className="flex flex-col items-center flex-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{liveTeamNames.teamA}</span>
-                  <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreA}</div>
-                </div>
+                {isAdmin ? (
+                  <button 
+                    onClick={() => {
+                      setShowEventModal({ type: 'GOAL', teamSide: 'A' });
+                      setSelectedScorer('');
+                      setIsOwnGoal(false);
+                      setIsGoalkeeperEvent(false);
+                      setSelectedAssister('');
+                    }}
+                    className="flex flex-col items-center flex-1 group hover:scale-105 transition-all outline-none"
+                    title="Registrar Gol para o Time Preto"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-1 group-hover:text-primary/80 transition-colors">{liveTeamNames.teamA}</span>
+                    <div className="text-6xl font-black italic text-white drop-shadow-sm group-hover:text-primary transition-colors">{liveGame.scoreA}</div>
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">{liveTeamNames.teamA}</span>
+                    <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreA}</div>
+                  </div>
+                )}
 
                 {/* Central Timer & Controls */}
                 <div className="flex flex-col items-center space-y-4 px-4 border-x border-white/5">
@@ -1872,10 +1895,27 @@ export default function LiveMatch() {
                 </div>
 
                 {/* Score Team B */}
-                <div className="flex flex-col items-center flex-1">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">{liveTeamNames.teamB}</span>
-                  <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreB}</div>
-                </div>
+                {isAdmin ? (
+                  <button 
+                    onClick={() => {
+                      setShowEventModal({ type: 'GOAL', teamSide: 'B' });
+                      setSelectedScorer('');
+                      setIsOwnGoal(false);
+                      setIsGoalkeeperEvent(false);
+                      setSelectedAssister('');
+                    }}
+                    className="flex flex-col items-center flex-1 group hover:scale-105 transition-all outline-none"
+                    title="Registrar Gol para o Time Branco"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1 group-hover:text-blue-300 transition-colors">{liveTeamNames.teamB}</span>
+                    <div className="text-6xl font-black italic text-white drop-shadow-sm group-hover:text-blue-400 transition-colors">{liveGame.scoreB}</div>
+                  </button>
+                ) : (
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">{liveTeamNames.teamB}</span>
+                    <div className="text-6xl font-black italic text-white drop-shadow-sm">{liveGame.scoreB}</div>
+                  </div>
+                )}
               </div>
 
               {/* BANDEIRAS (Linesmen) */}
@@ -1987,69 +2027,98 @@ export default function LiveMatch() {
               })()}
 
               {/* REAL-TIME MATCH EVENTS DISPLAY */}
-              {liveGame.events && liveGame.events.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-2 gap-4 text-xs font-semibold relative z-10">
-                  {/* Team A Goals */}
-                  <div className="space-y-2 border-r border-white/5 pr-4 text-left">
-                    {liveGame.events.filter(e => e.teamSide === 'A').map((e, idx) => (
-                      <div key={idx} className="flex items-start space-x-2 text-gray-300">
-                        <Circle size={8} className="fill-primary text-primary mt-1 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-extrabold uppercase text-[10px] tracking-tight truncate">
-                            {(() => {
-                              const p = players.find(p => p.id === e.playerId);
-                              const name = p ? (p.displayName || p.name) : 'Atleta';
-                              const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
-                              return `${name}${numStr}`;
-                            })()}
-                            {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
-                          </p>
-                          {e.assistId && (
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
-                              Assist: {(() => {
-                                const p = players.find(p => p.id === e.assistId);
-                                const name = p ? (p.displayName || p.name) : 'Atleta';
-                                const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
-                                return `${name}${numStr}`;
-                              })()}
-                            </p>
+              {(() => {
+                const eventsWithIdx = (liveGame.events || []).map((e, idx) => ({ ...e, originalIdx: idx }));
+                return liveGame.events && liveGame.events.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-2 gap-4 text-xs font-semibold relative z-10">
+                    {/* Team A Goals */}
+                    <div className="space-y-2 border-r border-white/5 pr-4 text-left">
+                      {eventsWithIdx.filter(e => e.teamSide === 'A').map((e, idx) => (
+                        <div key={idx} className="flex items-center justify-between group/event text-gray-300 min-w-0 py-1 border-b border-white/[0.02] last:border-0">
+                          <div className="flex items-start space-x-2 min-w-0">
+                            <Circle size={8} className="fill-primary text-primary mt-1 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
+                                {(() => {
+                                  const p = players.find(p => p.id === e.playerId);
+                                  const name = p ? (p.displayName || p.name) : 'Atleta';
+                                  const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                  return `${name}${numStr}`;
+                                })()}
+                                {e.type === 'OWN_GOAL' && <span className="text-danger ml-1 font-black">(GC)</span>}
+                                {e.isGoalkeeperGoal && <span className="text-amber-500 ml-1 font-extrabold text-[8px] tracking-tight">(GOLEIRO)</span>}
+                                {e.isGoalkeeperOwnGoal && <span className="text-red-500 ml-1 font-extrabold text-[8px] tracking-tight">(GC GOLEIRO)</span>}
+                              </p>
+                              {e.assistId && (
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5 truncate">
+                                  Assist: {(() => {
+                                    const p = players.find(p => p.id === e.assistId);
+                                    const name = p ? (p.displayName || p.name) : 'Atleta';
+                                    const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                    return `${name}${numStr}`;
+                                  })()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleRemoveEvent(e.originalIdx)}
+                              className="p-1 text-gray-500 hover:text-red-400 hover:bg-white/5 rounded transition-all shrink-0"
+                              title="Anular este gol"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* Team B Goals */}
-                  <div className="space-y-2 pl-4 text-right">
-                    {liveGame.events.filter(e => e.teamSide === 'B').map((e, idx) => (
-                      <div key={idx} className="flex items-start space-x-2 justify-end text-gray-300">
-                        <div className="min-w-0">
-                          <p className="font-extrabold uppercase text-[10px] tracking-tight truncate">
-                            {(() => {
-                              const p = players.find(p => p.id === e.playerId);
-                              const name = p ? (p.displayName || p.name) : 'Atleta';
-                              const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
-                              return `${name}${numStr}`;
-                            })()}
-                            {e.type === 'OWN_GOAL' && <span className="text-danger ml-0.5 font-black">(GC)</span>}
-                          </p>
-                          {e.assistId && (
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5">
-                              Assist: {(() => {
-                                const p = players.find(p => p.id === e.assistId);
-                                const name = p ? (p.displayName || p.name) : 'Atleta';
-                                const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
-                                return `${name}${numStr}`;
-                              })()}
-                            </p>
+                    {/* Team B Goals */}
+                    <div className="space-y-2 pl-4 text-right">
+                      {eventsWithIdx.filter(e => e.teamSide === 'B').map((e, idx) => (
+                        <div key={idx} className="flex items-center justify-between group/event text-gray-300 min-w-0 py-1 border-b border-white/[0.02] last:border-0 flex-row-reverse">
+                          <div className="flex items-start space-x-2 justify-end text-right min-w-0 flex-row-reverse">
+                            <Circle size={8} className="fill-blue-500 text-blue-500 mt-1 shrink-0 ml-2" />
+                            <div className="min-w-0">
+                              <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
+                                {(() => {
+                                  const p = players.find(p => p.id === e.playerId);
+                                  const name = p ? (p.displayName || p.name) : 'Atleta';
+                                  const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                  return `${name}${numStr}`;
+                                })()}
+                                {e.type === 'OWN_GOAL' && <span className="text-danger ml-1 font-black">(GC)</span>}
+                                {e.isGoalkeeperGoal && <span className="text-amber-500 ml-1 font-extrabold text-[8px] tracking-tight">(GOLEIRO)</span>}
+                                {e.isGoalkeeperOwnGoal && <span className="text-red-500 ml-1 font-extrabold text-[8px] tracking-tight">(GC GOLEIRO)</span>}
+                              </p>
+                              {e.assistId && (
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5 truncate">
+                                  Assist: {(() => {
+                                    const p = players.find(p => p.id === e.assistId);
+                                    const name = p ? (p.displayName || p.name) : 'Atleta';
+                                    const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
+                                    return `${name}${numStr}`;
+                                  })()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleRemoveEvent(e.originalIdx)}
+                              className="p-1 text-gray-500 hover:text-red-400 hover:bg-white/5 rounded transition-all shrink-0"
+                              title="Anular este gol"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           )}
                         </div>
-                        <Circle size={8} className="fill-blue-500 text-blue-500 mt-1 shrink-0" />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {finishStatus.text && finishStatus.type !== 'idle' && (
                 <div className={`mt-4 p-3 rounded-2xl text-center font-bold text-xs relative z-10 animate-in slide-in-from-top-2 ${
@@ -2893,7 +2962,14 @@ export default function LiveMatch() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => setShowEventModal(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-colors">
+              <button 
+                onClick={() => {
+                  setShowEventModal(null);
+                  setIsGoalkeeperEvent(false);
+                  setIsOwnGoal(false);
+                }} 
+                className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-colors"
+              >
                 <Plus className="rotate-45 text-gray-400" />
               </button>
             </div>
@@ -2911,6 +2987,21 @@ export default function LiveMatch() {
                   className={`w-12 h-6 rounded-full transition-all relative ${isOwnGoal ? 'bg-danger' : 'bg-gray-700'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isOwnGoal ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between bg-bg p-4 rounded-2xl border border-border">
+                <div className="flex flex-col text-left">
+                  <span className="text-xs font-bold text-gray-300">GOL DE GOLEIRO?</span>
+                  <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">Não conta para estatísticas do ranking</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsGoalkeeperEvent(!isGoalkeeperEvent);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-all relative ${isGoalkeeperEvent ? 'bg-amber-500' : 'bg-gray-700'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isGoalkeeperEvent ? 'left-7' : 'left-1'}`} />
                 </button>
               </div>
 
@@ -2943,7 +3034,7 @@ export default function LiveMatch() {
                 </select>
               </div>
 
-              {!isOwnGoal && (
+              {!isOwnGoal && !isGoalkeeperEvent && (
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Assistência (Opcional)</label>
                   <select 

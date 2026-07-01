@@ -44,7 +44,6 @@ export default function App() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
 
   const currentUserPlayer = user ? players.find(p => p.id === user.uid) : null;

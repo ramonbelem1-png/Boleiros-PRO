@@ -87,13 +87,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             
             // Garantir que o email solicitado seja ADMIN e APONTADO
             const emailLower = u.email?.trim().toLowerCase();
-            const isAdminEmail = emailLower === 'ramoncarvalhoxavier@gmail.com' || 
-                                 emailLower === 'ramoncxavier88@gmail.com';
+            const isAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
             if (isAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
               if (data.role !== 'ADMIN' || data.approved !== true) {
                 await setDoc(roleRef, { role: 'ADMIN', approved: true }, { merge: true });
+              }
+              // Demote ramoncarvalhoxavier@gmail.com if present in database as ADMIN
+              try {
+                const { getDocs, query, collection, where, updateDoc } = await import('firebase/firestore');
+                const q = query(collection(db, 'user_roles'), where('email', '==', 'ramoncarvalhoxavier@gmail.com'));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach(async (docSnap) => {
+                  if (docSnap.data().role !== 'USER') {
+                    await updateDoc(docSnap.ref, { role: 'USER' });
+                    console.log('ramoncarvalhoxavier@gmail.com demoted to USER');
+                  }
+                });
+              } catch (e) {
+                console.error('Error demoting ramoncarvalhoxavier@gmail.com:', e);
+              }
+            } else if (emailLower === 'ramoncarvalhoxavier@gmail.com') {
+              assignedRole = 'USER';
+              if (data.role !== 'USER') {
+                await setDoc(roleRef, { role: 'USER' }, { merge: true });
               }
             }
           } else {
@@ -101,11 +119,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
             
             const emailLower = u.email?.trim().toLowerCase();
-            const isAdminEmail = emailLower === 'ramoncarvalhoxavier@gmail.com' || 
-                                 emailLower === 'ramoncxavier88@gmail.com';
+            const isAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
             if (!firstUserCheck.exists() || isAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
+            } else if (emailLower === 'ramoncarvalhoxavier@gmail.com') {
+              assignedRole = 'USER';
+              isApproved = firstUserCheck.data()?.autoApprove === true;
             } else {
               assignedRole = 'USER';
               isApproved = firstUserCheck.data()?.autoApprove === true;

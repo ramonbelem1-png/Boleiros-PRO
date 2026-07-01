@@ -73,7 +73,6 @@ export default function MatchList() {
   });
 
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);

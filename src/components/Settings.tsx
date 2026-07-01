@@ -31,7 +31,6 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const { players, matches, deletePlayer, recalculateAllStats } = usePelada();
   const { logout, role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const currentUserPlayer = players.find(p => p.id === user?.uid);
 
@@ -701,7 +700,32 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 return nameMatches || emailMatches;
               });
 
-              if (filteredUserRoles.length === 0) {
+              // Sort: main admin first, then other admins, then alphabetically by name
+              const sortedUserRoles = [...filteredUserRoles].sort((a, b) => {
+                const emailA = a.email?.trim().toLowerCase() || '';
+                const emailB = b.email?.trim().toLowerCase() || '';
+                const isMainAdminA = emailA === 'ramoncxavier88@gmail.com';
+                const isMainAdminB = emailB === 'ramoncxavier88@gmail.com';
+
+                if (isMainAdminA && !isMainAdminB) return -1;
+                if (!isMainAdminA && isMainAdminB) return 1;
+
+                const isAdminA = a.role === 'ADMIN';
+                const isAdminB = b.role === 'ADMIN';
+
+                if (isAdminA && !isAdminB) return -1;
+                if (!isAdminA && isAdminB) return 1;
+
+                const matchedPlayerA = players.find(p => p.id === a.id) || (a.email ? players.find(p => p.email?.trim().toLowerCase() === a.email.trim().toLowerCase()) : null);
+                const nameA = matchedPlayerA ? (matchedPlayerA.displayName || matchedPlayerA.name) : (a.displayName || a.name || 'Usuário');
+
+                const matchedPlayerB = players.find(p => p.id === b.id) || (b.email ? players.find(p => p.email?.trim().toLowerCase() === b.email.trim().toLowerCase()) : null);
+                const nameB = matchedPlayerB ? (matchedPlayerB.displayName || matchedPlayerB.name) : (b.displayName || b.name || 'Usuário');
+
+                return nameA.localeCompare(nameB);
+              });
+
+              if (sortedUserRoles.length === 0) {
                 return (
                   <div className="text-center py-8 text-gray-500 text-xs font-semibold uppercase tracking-widest animate-pulse">
                     Nenhum acesso correspondente
@@ -709,9 +733,11 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 );
               }
 
-              return filteredUserRoles.map(ur => {
+              return sortedUserRoles.map(ur => {
                 const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
                 const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
+                const isMainAdmin = ur.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+
                 return (
                   <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
                     <div className="flex items-center gap-3 min-w-0">
@@ -726,7 +752,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     <div className="flex items-center gap-2 shrink-0">
                       <button 
                         onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
-                        disabled={ur.id === user?.uid}
+                        disabled={ur.id === user?.uid || isMainAdmin}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
                           ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
                         } disabled:opacity-50`}
@@ -736,7 +762,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                       <select 
                         value={ur.role || 'USER'}
                         onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
-                        disabled={ur.id === user?.uid}
+                        disabled={ur.id === user?.uid || isMainAdmin}
                         className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
                       >
                         <option value="ADMIN">ADM</option>
@@ -744,7 +770,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                       </select>
                       <button
                         onClick={() => setUserRoleToDelete(ur)}
-                        disabled={ur.id === user?.uid}
+                        disabled={ur.id === user?.uid || isMainAdmin}
                         className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
                         title="Excluir Acesso e Jogador"
                       >

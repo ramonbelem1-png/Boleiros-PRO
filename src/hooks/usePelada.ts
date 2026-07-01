@@ -128,7 +128,6 @@ import { useAuth } from '../components/AuthProvider';
 export function usePelada() {
   const { role, user, approved } = useAuth();
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -667,6 +666,29 @@ export function usePelada() {
         updatedAt: serverTimestamp()
       });
       console.log(`[usePelada] Jogador ${playerId} atualizado na coleção players!`);
+
+      // Se o jogador virou MENSALISTA, promove automaticamente em peladas abertas
+      if (data.type === 'MENSALISTA') {
+        const openMatches = matches.filter(m => m.status === 'OPEN');
+        for (const match of openMatches) {
+          if (match.waitingIds && match.waitingIds.includes(playerId)) {
+            const newConfirmed = [...match.confirmedIds];
+            if (!newConfirmed.includes(playerId)) {
+              newConfirmed.push(playerId);
+            }
+            const newWaiting = match.waitingIds.filter(id => id !== playerId);
+            try {
+              await updateDoc(doc(db, 'matches', match.id), {
+                confirmedIds: newConfirmed,
+                waitingIds: newWaiting
+              });
+              console.log(`[usePelada] Jogador ${playerId} promovido automaticamente da fila para confirmado por virar MENSALISTA.`);
+            } catch (matchErr) {
+              console.error(`[usePelada] Erro ao promover jogador ${playerId} na pelada ${match.id}:`, matchErr);
+            }
+          }
+        }
+      }
 
       // Sincronizar dados com a coleção 'user_roles' caso as informações fundamentais tenham sido alteradas
       try {

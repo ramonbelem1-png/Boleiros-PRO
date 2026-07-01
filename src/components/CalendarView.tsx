@@ -22,7 +22,6 @@ export default function CalendarView() {
   const { matches, players, deleteMatch, deleteGame } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -312,7 +311,6 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
   const { getMatchGames } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncarvalhoxavier@gmail.com' ||
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   const [matchGames, setMatchGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);

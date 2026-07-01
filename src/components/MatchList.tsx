@@ -217,7 +217,7 @@ export default function MatchList() {
       confirmedList.forEach((player, idx) => {
         const isMensalista = player.type === 'MENSALISTA';
         const isPaid = isPlayerPaidForMatch(player, nextMatch.date, transactions, settings, nextMatch.paidIds);
-        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? ' (Mensalista - Pendente)' : '';
+        const paymentLabel = isPaid ? ' (PG)' : isMensalista ? '' : ' (Diarista)';
         text += `${idx + 1}. ${player.displayName || player.name} ✅${paymentLabel}\n`;
       });
     }
@@ -240,7 +240,9 @@ export default function MatchList() {
     if (waitingList.length > 0) {
       text += `\n⏳ *FILA DE ESPERA:*\n`;
       waitingList.forEach((player, idx) => {
-        text += `${idx + 1}. ${player.displayName || player.name}\n`;
+        const isMensalista = player.type === 'MENSALISTA';
+        const label = isMensalista ? '' : ' (Diarista)';
+        text += `${idx + 1}. ${player.displayName || player.name}${label}\n`;
       });
     }
 

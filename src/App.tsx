@@ -38,7 +38,19 @@ type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 export default function App() {
   const { players, updatePlayer, settings, updateSettings, loading } = usePelada();
   const { role, user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>('list');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = localStorage.getItem('boleiros_active_tab');
+    const validTabs: Tab[] = ['list', 'finance', 'play', 'live', 'social', 'settings'];
+    if (saved && validTabs.includes(saved as Tab)) {
+      return saved as Tab;
+    }
+    return 'list';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('boleiros_active_tab', activeTab);
+  }, [activeTab]);
+
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);

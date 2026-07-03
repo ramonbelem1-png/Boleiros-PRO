@@ -2842,6 +2842,16 @@ export default function LiveMatch() {
                             if (editingGame) {
                               return !editingGame.teamA_ids.includes(p.id) && !editingGame.teamB_ids.includes(p.id);
                             }
+                            
+                            // Se houver uma partida em andamento, ocultar os jogadores que já estão jogando no campo!
+                            if (liveGame && liveGame.status === 'RUNNING') {
+                              const liveA = liveGame.teamA_ids || [];
+                              const liveB = liveGame.teamB_ids || [];
+                              if (liveA.includes(p.id) || liveB.includes(p.id)) {
+                                return false;
+                              }
+                            }
+
                             const teamKey = String(editingTeamIndex);
                             const currentTeam = activeMatch.teams?.[teamKey] || [];
                             return !currentTeam.includes(p.id);
@@ -2866,7 +2876,7 @@ export default function LiveMatch() {
                             else onBench.push(p);
                           });
 
-                          const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE') => {
+                          const renderPlayerButton = (p: Player, type: 'BENCH' | 'OTHER' | 'LATE', queueIndex?: number) => {
                             const borderColor = type === 'LATE' ? 'border-warning/30' : 'border-primary/30';
                             const textColor = type === 'LATE' ? 'text-warning' : 'text-primary';
                             
@@ -2896,15 +2906,22 @@ export default function LiveMatch() {
                                       {p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : ''}
                                     </span>
                                     <span className={`text-[10px] opacity-70 mt-0.5 ${textColor}`}>
+                                      {queueIndex !== undefined ? `Fila #${queueIndex + 1} • ` : ''}
                                       {tag} • {formatPosition(p.position)}
                                       {effectiveDrawOrder[p.id] !== undefined && ` • Seq. #${effectiveDrawOrder[p.id]}`}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-2 flex-shrink-0">
-                                    {effectiveDrawOrder[p.id] !== undefined && (
-                                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-black whitespace-nowrap">
-                                        #{effectiveDrawOrder[p.id]}
+                                    {queueIndex !== undefined ? (
+                                      <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded font-black whitespace-nowrap">
+                                        Fila #{queueIndex + 1}
                                       </span>
+                                    ) : (
+                                      effectiveDrawOrder[p.id] !== undefined && (
+                                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-black whitespace-nowrap">
+                                          #{effectiveDrawOrder[p.id]}
+                                        </span>
+                                      )
                                     )}
                                     <Plus size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
@@ -2914,9 +2931,55 @@ export default function LiveMatch() {
                             );
                           };
 
+                          const isLiveRunning = liveGame && liveGame.status === 'RUNNING';
+
                           return (
                             <div className="space-y-8">
-                              {onBench.length === 0 && inOtherTeams.length === 0 && availableLate.length === 0 && (
+                              {/* Se houver partida em andamento, mostra a sequência de entrada dos jogadores de fora */}
+                              {isLiveRunning && (
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2 text-primary">
+                                    <ArrowRight size={16} />
+                                    <h4 className="text-xs font-black uppercase tracking-widest italic">Sequência de Entrada (Jogadores de Fora)</h4>
+                                  </div>
+                                  
+                                  {(() => {
+                                    const currentTeamKey = editingTeamIndex !== null ? String(editingTeamIndex) : null;
+                                    const currentTeam = currentTeamKey !== null ? (activeMatch.teams?.[currentTeamKey] || []) : [];
+                                    
+                                    // Map playerQueue to Player objects and exclude any player already in the current team
+                                    const waitersToShow = playerQueue
+                                      .map(id => players.find(p => p.id === id))
+                                      .filter((p): p is Player => !!p && !currentTeam.includes(p.id));
+
+                                    if (waitersToShow.length === 0) {
+                                      return (
+                                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider italic p-2">Nenhum jogador na fila de espera</p>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {waitersToShow.map((p, index) => {
+                                          let type: 'BENCH' | 'OTHER' = 'BENCH';
+                                          const teams = activeMatch.teams || {};
+                                          let found = false;
+                                          Object.entries(teams).forEach(([key, teamIds]: [string, any]) => {
+                                            if (currentTeamKey !== null && key === currentTeamKey) return;
+                                            if (Array.isArray(teamIds) && teamIds.includes(p.id)) found = true;
+                                          });
+                                          if (found) type = 'OTHER';
+
+                                          return renderPlayerButton(p, type, index);
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+
+                              {/* Se NÃO houver partida em andamento, mostra as categorias padrões */}
+                              {!isLiveRunning && onBench.length === 0 && inOtherTeams.length === 0 && availableLate.length === 0 && (
                                 <div className="py-12 text-center space-y-2">
                                   <User size={48} className="mx-auto text-gray-600 opacity-20" />
                                   <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Nenhum jogador disponível</p>
@@ -2924,7 +2987,7 @@ export default function LiveMatch() {
                                 </div>
                               )}
 
-                              {onBench.length > 0 && (
+                              {!isLiveRunning && onBench.length > 0 && (
                                 <div className="space-y-3">
                                   <h4 className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">Disponíveis no Banco</h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2933,7 +2996,7 @@ export default function LiveMatch() {
                                 </div>
                               )}
 
-                              {inOtherTeams.length > 0 && (
+                              {!isLiveRunning && inOtherTeams.length > 0 && (
                                 <div className="space-y-3">
                                   <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-400/70 ml-1">Vindos de Outras Equipes</h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -651,7 +651,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matc
                         <div className="mt-1 space-y-0.5 text-center">
                           {game.events?.filter((e: any) => e.teamSide === 'A').map((e: any, evIdx: number) => {
                             const p = players.find(p => p.id === e.playerId);
-                            const pName = p?.displayName || p?.name || '';
+                            const pName = p ? (p.displayName || p.name || '') : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : '');
                             return (
                               <div key={evIdx} className="flex items-center space-x-1 justify-center">
                                 <Circle size={6} className="fill-primary/50 text-primary/50" />
@@ -677,7 +677,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matc
                         <div className="mt-1 space-y-0.5 text-center">
                           {game.events?.filter((e: any) => e.teamSide === 'B').map((e: any, evIdx: number) => {
                             const p = players.find(p => p.id === e.playerId);
-                            const pName = p?.displayName || p?.name || '';
+                            const pName = p ? (p.displayName || p.name || '') : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : '');
                             return (
                               <div key={evIdx} className="flex items-center space-x-1 justify-center">
                                 <Circle size={6} className="fill-primary/50 text-primary/50" />

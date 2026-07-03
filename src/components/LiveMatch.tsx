@@ -737,21 +737,6 @@ export default function LiveMatch() {
         });
       }
     }
-    
-    // Filter out players who are playing in another team
-    const availableOriginalAIds = originalAIds.filter(id => !onFieldPlayerIds.has(id));
-    const availableOriginalBIds = originalBIds.filter(id => !onFieldPlayerIds.has(id));
-    
-    // Find all other team keys except teamAKey and teamBKey
-    const otherTeamKeys = Object.keys(activeMatch.teams).filter(
-      key => String(key) !== String(teamAKey) && String(key) !== String(teamBKey)
-    );
-    
-    const otherTeamPlayerIds = new Set<string>();
-    otherTeamKeys.forEach(key => {
-      const ids = (activeMatch.teams![key] || []).filter(id => existingPlayerIds.has(id));
-      ids.forEach(id => otherTeamPlayerIds.add(id));
-    });
 
     const confirmedIds = (activeMatch.confirmedIds || []).filter(id => existingPlayerIds.has(id));
 
@@ -769,66 +754,128 @@ export default function LiveMatch() {
     });
 
     const benchedPlayerIds = confirmedIds.filter(id => !allRegisteredTeamPlayerIds.has(id));
+    benchedPlayerIds.sort(comparePlayersByWaitTime);
 
-    // Combine both pools as eligible borrowable players
-    const borrowablePoolSet = new Set<string>();
-    
-    // Add benched players first (so they are preferred if metrics are otherwise equal)
-    benchedPlayerIds.forEach(id => borrowablePoolSet.add(id));
-    
-    // Add players from other teams
-    otherTeamPlayerIds.forEach(id => borrowablePoolSet.add(id));
+    // Build the ordered team keys for cascading suggestion:
+    // Use the queue priority order (orderedTeamKeys) so that higher-priority teams
+    // get filled and completed first!
+    const allTeamKeys = Object.keys(activeMatch.teams).sort((a, b) => Number(a) - Number(b));
+    const orderedKeys = orderedTeamKeys;
 
-    // Filter out any players currently on the field
-    const borrowablePool = Array.from(borrowablePoolSet).filter(id => !onFieldPlayerIds.has(id));
-    
-    // Globally sort response by individual players' wait time sequence
-    borrowablePool.sort(comparePlayersByWaitTime);
-    
-    // Complete Team A (first in sequence)
-    const resultA = [...availableOriginalAIds];
-    const needA = Math.max(0, targetSize - resultA.length);
-    const borrowedForA: string[] = [];
-    
-    let poolIndex = 0;
-    while (borrowedForA.length < needA && poolIndex < borrowablePool.length) {
-      const id = borrowablePool[poolIndex];
-      if (!originalAIds.includes(id) && !originalBIds.includes(id)) {
-        borrowedForA.push(id);
+    const completed: Record<string, string[]> = {};
+    const committed = new Set<string>();
+
+    // Initial state of each team filtering out active players in other games
+    const initialTeams: Record<string, string[]> = {};
+    orderedKeys.forEach(key => {
+      const original = (activeMatch.teams![key] || []).filter(id => existingPlayerIds.has(id) && !onFieldPlayerIds.has(id));
+      initialTeams[key] = original;
+    });
+
+    const availableBenched = benchedPlayerIds.filter(id => !onFieldPlayerIds.has(id));
+    let benchedIdx = 0;
+
+    // Run cascading suggestion logic
+    for (let i = 0; i < orderedKeys.length; i++) {
+      const currentKey = orderedKeys[i];
+      const currentPlayers = initialTeams[currentKey].filter(id => !committed.has(id));
+      
+      const need = Math.max(0, targetSize - currentPlayers.length);
+      const borrowed: string[] = [];
+
+      // Find subsequent teams in circular order based on this team's natural position
+      const currentIdxInAll = allTeamKeys.indexOf(currentKey);
+      const nextKeys: string[] = [];
+      for (let offset = 1; offset < allTeamKeys.length; offset++) {
+        const nextIdx = (currentIdxInAll + offset) % allTeamKeys.length;
+        nextKeys.push(allTeamKeys[nextIdx]);
       }
-      poolIndex++;
-    }
-    resultA.push(...borrowedForA);
-    
-    // Complete Team B (second in sequence)
-    const resultB = [...availableOriginalBIds];
-    const needB = Math.max(0, targetSize - resultB.length);
-    const borrowedForB: string[] = [];
-    
-    for (let i = 0; i < borrowablePool.length; i++) {
-      if (borrowedForB.length >= needB) break;
-      const id = borrowablePool[i];
-      if (!resultA.includes(id) && !originalBIds.includes(id)) {
-        borrowedForB.push(id);
+
+      // 1. Fill with subsequent teams' players FIRST (Team of the sequence)
+      let nextKeysIdx = 0;
+      while (borrowed.length < need && nextKeysIdx < nextKeys.length) {
+        const nextKey = nextKeys[nextKeysIdx];
+        const nextTeamPlayers = (initialTeams[nextKey] || []).filter(id => !committed.has(id));
+        
+        let pIdx = 0;
+        while (borrowed.length < need && pIdx < nextTeamPlayers.length) {
+          const idToBorrow = nextTeamPlayers[pIdx];
+          borrowed.push(idToBorrow);
+          pIdx++;
+        }
+        nextKeysIdx++;
       }
+
+      // 2. Fill with available benched players LAST if we still need players
+      while (borrowed.length < need && benchedIdx < availableBenched.length) {
+        const benchedId = availableBenched[benchedIdx];
+        if (!committed.has(benchedId)) {
+          borrowed.push(benchedId);
+        }
+        benchedIdx++;
+      }
+
+      // 3. Form final roster
+      const finalRoster = [...currentPlayers, ...borrowed].slice(0, targetSize);
+      completed[currentKey] = finalRoster;
+
+      // Mark all in final roster as committed
+      finalRoster.forEach(id => committed.add(id));
     }
-    resultB.push(...borrowedForB);
-    
+
     return {
-      teamA: resultA.slice(0, targetSize),
-      teamB: resultB.slice(0, targetSize)
+      teamA: completed[teamAKey] || [],
+      teamB: completed[teamBKey] || [],
+      allCompleted: completed
     };
   }, [
     scheduledTeamA,
     scheduledTeamB,
     activeMatch?.teams,
-    effectiveDrawOrder,
+    activeMatch?.confirmedIds,
     activeMatch?.playersPerTeam,
-    liveGame,
-    queueState.queue,
     players,
+    liveGame,
+    orderedTeamKeys,
     comparePlayersByWaitTime
   ]);
+
+  const manualSuggestions = useMemo(() => {
+    if (!activeMatch?.teams) return { teamASuggestions: [], teamBSuggestions: [] };
+    
+    const existingPlayerIds = new Set(players.map(p => p.id));
+    const originalAIds = (activeMatch.teams[scheduledTeamA] || []).filter(id => existingPlayerIds.has(id));
+    const originalBIds = (activeMatch.teams[scheduledTeamB] || []).filter(id => existingPlayerIds.has(id));
+
+    const teamASuggestions = completedScheduledPlayers.teamA.filter(id => !originalAIds.includes(id));
+    const teamBSuggestions = completedScheduledPlayers.teamB.filter(id => !originalBIds.includes(id));
+
+    return {
+      teamASuggestions,
+      teamBSuggestions
+    };
+  }, [completedScheduledPlayers, scheduledTeamA, scheduledTeamB, activeMatch?.teams, players]);
+
+  const handleIncludeSuggestedPlayer = async (playerId: string, teamKey: string) => {
+    if (!activeMatch?.teams) return;
+    try {
+      const currentTeams = { ...activeMatch.teams };
+      
+      Object.keys(currentTeams).forEach(k => {
+        if (currentTeams[k]) {
+          currentTeams[k] = currentTeams[k].filter(id => id !== playerId);
+        }
+      });
+      
+      let newTeamIds = [...(currentTeams[teamKey] || [])];
+      newTeamIds.push(playerId);
+      currentTeams[teamKey] = newTeamIds;
+      
+      await updateMatch(activeMatch.id, { teams: currentTeams });
+    } catch (error) {
+      console.error("Erro ao incluir jogador sugerido:", error);
+    }
+  };
 
   const playerQueue = useMemo(() => {
     if (!activeMatch) return [];
@@ -939,7 +986,8 @@ export default function LiveMatch() {
 
   const handleAddGoal = async () => {
     console.log("[LiveMatch] handleAddGoal called", { liveGame: liveGame?.id, showEventModal, selectedScorer, isOwnGoal });
-    if (!liveGame || !activeMatch || !showEventModal || !selectedScorer || submitting) {
+    const scorerToSave = isGoalkeeperEvent ? (selectedScorer || 'goleiro') : selectedScorer;
+    if (!liveGame || !activeMatch || !showEventModal || !scorerToSave || submitting) {
       console.log("[LiveMatch] handleAddGoal aborted: preconditions not met");
       return;
     }
@@ -948,7 +996,7 @@ export default function LiveMatch() {
     try {
       if (showEventModal.editIdx !== undefined) {
         await updateGameEvent(activeMatch.id, liveGame.id, showEventModal.editIdx, {
-          playerId: selectedScorer,
+          playerId: scorerToSave,
           assistId: isOwnGoal ? undefined : (selectedAssister || undefined),
           type: isOwnGoal ? 'OWN_GOAL' : 'GOAL',
           isGoalkeeperGoal: !isOwnGoal && isGoalkeeperEvent,
@@ -957,7 +1005,7 @@ export default function LiveMatch() {
       } else {
         await addGameEvent(activeMatch.id, liveGame.id, {
           type: isOwnGoal ? 'OWN_GOAL' : 'GOAL',
-          playerId: selectedScorer,
+          playerId: scorerToSave,
           assistId: isOwnGoal ? undefined : (selectedAssister || undefined),
           teamSide: showEventModal.teamSide,
           isGoalkeeperGoal: !isOwnGoal && isGoalkeeperEvent,
@@ -1386,8 +1434,8 @@ export default function LiveMatch() {
     );
   }
 
-  const teamAPlayers = liveGame ? sortPlayersByPosition(liveGame.teamA_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
-  const teamBPlayers = liveGame ? sortPlayersByPosition(liveGame.teamB_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
+  const teamAPlayers = liveGame ? (liveGame.teamA_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
+  const teamBPlayers = liveGame ? (liveGame.teamB_ids || []).map(id => players.find(p => p.id === id)!).filter(Boolean) : [];
 
   const handleFinishRound = async () => {
     if (!activeMatch) return;
@@ -1638,25 +1686,77 @@ export default function LiveMatch() {
                 </select>
               </div>
               <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
-                {completedScheduledPlayers.teamA.map(id => {
-                  const p = players.find(p => p.id === id);
-                  const isCompleting = !activeMatch.teams![scheduledTeamA]?.includes(id);
-                  return (
-                    <div key={id} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 min-w-0">
-                        <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-primary'}`} />
-                        <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
-                          {p?.displayName || p?.name || 'Vazio'}
-                        </span>
+                {(() => {
+                  const existingPlayerIds = new Set(players.map(p => p.id));
+                  const targetSize = activeMatch.playersPerTeam || 6;
+                  const originalIds = (activeMatch.teams![scheduledTeamA] || []).filter(id => existingPlayerIds.has(id));
+                  
+                  // Render actual players
+                  const renderedActual = originalIds.map(id => {
+                    const p = players.find(player => player.id === id);
+                    return (
+                      <div key={id} className="flex items-center justify-between py-0.5">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+                          <span className="text-[10px] font-bold uppercase truncate text-gray-400">
+                            {p?.displayName || p?.name || 'Vazio'}
+                          </span>
+                        </div>
                       </div>
-                      {isCompleting && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
-                          Seq. #{effectiveDrawOrder[id]}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  });
+
+                  // Render suggestions for vacant spots
+                  const renderedVacancies = [];
+                  const needCount = Math.max(0, targetSize - originalIds.length);
+                  for (let i = 0; i < needCount; i++) {
+                    const suggestedId = manualSuggestions.teamASuggestions[i];
+                    if (suggestedId) {
+                      const sPlayer = players.find(player => player.id === suggestedId);
+                      if (sPlayer) {
+                        renderedVacancies.push(
+                          <div key={`sug-a-${suggestedId}-${i}`} className="flex items-center justify-between bg-primary/5 border border-dashed border-primary/20 rounded-xl p-1.5 px-2 animate-in fade-in duration-300">
+                            <div className="flex items-center space-x-1.5 min-w-0">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black text-primary uppercase truncate leading-tight">
+                                  {sPlayer.displayName || sPlayer.name}
+                                </p>
+                                <p className="text-[8px] text-gray-500 font-extrabold uppercase tracking-wider leading-none">
+                                  Sugestão (Fila)
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                await handleIncludeSuggestedPlayer(suggestedId, scheduledTeamA);
+                              }}
+                              className="p-1 bg-primary/20 hover:bg-primary/35 text-primary border border-primary/30 rounded-lg transition-all shrink-0 cursor-pointer flex items-center justify-center"
+                              title={`Incluir ${sPlayer.displayName || sPlayer.name} no Time Preto`}
+                            >
+                              <Plus size={10} className="stroke-[3]" />
+                            </button>
+                          </div>
+                        );
+                        continue;
+                      }
+                    }
+                    renderedVacancies.push(
+                      <div key={`vac-a-${i}`} className="flex items-center justify-between py-0.5 opacity-50">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <div className="w-1 h-1 rounded-full bg-gray-600" />
+                          <span className="text-[10px] font-medium uppercase truncate text-gray-500">
+                            Vaga
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return [...renderedActual, ...renderedVacancies];
+                })()}
               </div>
             </div>
             
@@ -1675,25 +1775,77 @@ export default function LiveMatch() {
                 </select>
               </div>
               <div className="bg-bg/50 rounded-2xl p-3 space-y-1.5 font-bold">
-                {completedScheduledPlayers.teamB.map(id => {
-                  const p = players.find(p => p.id === id);
-                  const isCompleting = !activeMatch.teams![scheduledTeamB]?.includes(id);
-                  return (
-                    <div key={id} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 min-w-0">
-                        <div className={`w-1 h-1 rounded-full ${isCompleting ? 'bg-amber-500 animate-pulse' : 'bg-white/30'}`} />
-                        <span className={`text-[10px] font-bold uppercase truncate ${isCompleting ? 'text-amber-500 font-extrabold' : 'text-gray-400'}`}>
-                          {p?.displayName || p?.name || 'Vazio'}
-                        </span>
+                {(() => {
+                  const existingPlayerIds = new Set(players.map(p => p.id));
+                  const targetSize = activeMatch.playersPerTeam || 6;
+                  const originalIds = (activeMatch.teams![scheduledTeamB] || []).filter(id => existingPlayerIds.has(id));
+                  
+                  // Render actual players
+                  const renderedActual = originalIds.map(id => {
+                    const p = players.find(player => player.id === id);
+                    return (
+                      <div key={id} className="flex items-center justify-between py-0.5">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <div className="w-1 h-1 rounded-full bg-white/30" />
+                          <span className="text-[10px] font-bold uppercase truncate text-gray-400">
+                            {p?.displayName || p?.name || 'Vazio'}
+                          </span>
+                        </div>
                       </div>
-                      {isCompleting && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black flex-shrink-0">
-                          Seq. #{effectiveDrawOrder[id]}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  });
+
+                  // Render suggestions for vacant spots
+                  const renderedVacancies = [];
+                  const needCount = Math.max(0, targetSize - originalIds.length);
+                  for (let i = 0; i < needCount; i++) {
+                    const suggestedId = manualSuggestions.teamBSuggestions[i];
+                    if (suggestedId) {
+                      const sPlayer = players.find(player => player.id === suggestedId);
+                      if (sPlayer) {
+                        renderedVacancies.push(
+                          <div key={`sug-b-${suggestedId}-${i}`} className="flex items-center justify-between bg-primary/5 border border-dashed border-primary/20 rounded-xl p-1.5 px-2 animate-in fade-in duration-300">
+                            <div className="flex items-center space-x-1.5 min-w-0">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black text-primary uppercase truncate leading-tight">
+                                  {sPlayer.displayName || sPlayer.name}
+                                </p>
+                                <p className="text-[8px] text-gray-500 font-extrabold uppercase tracking-wider leading-none">
+                                  Sugestão (Fila)
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                await handleIncludeSuggestedPlayer(suggestedId, scheduledTeamB);
+                              }}
+                              className="p-1 bg-primary/20 hover:bg-primary/35 text-primary border border-primary/30 rounded-lg transition-all shrink-0 cursor-pointer flex items-center justify-center"
+                              title={`Incluir ${sPlayer.displayName || sPlayer.name} no Time Branco`}
+                            >
+                              <Plus size={10} className="stroke-[3]" />
+                            </button>
+                          </div>
+                        );
+                        continue;
+                      }
+                    }
+                    renderedVacancies.push(
+                      <div key={`vac-b-${i}`} className="flex items-center justify-between py-0.5 opacity-50">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <div className="w-1 h-1 rounded-full bg-gray-600" />
+                          <span className="text-[10px] font-medium uppercase truncate text-gray-500">
+                            Vaga
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return [...renderedActual, ...renderedVacancies];
+                })()}
               </div>
             </div>
           </div>
@@ -2067,7 +2219,7 @@ export default function LiveMatch() {
                               <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
                                 {(() => {
                                   const p = players.find(p => p.id === e.playerId);
-                                  const name = p ? (p.displayName || p.name) : 'Atleta';
+                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : 'Atleta');
                                   const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
                                   return `${name}${numStr}`;
                                 })()}
@@ -2110,7 +2262,7 @@ export default function LiveMatch() {
                               <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
                                 {(() => {
                                   const p = players.find(p => p.id === e.playerId);
-                                  const name = p ? (p.displayName || p.name) : 'Atleta';
+                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : 'Atleta');
                                   const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
                                   return `${name}${numStr}`;
                                 })()}
@@ -2316,7 +2468,10 @@ export default function LiveMatch() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {activeMatch.teams && orderedTeamKeys.map(key => {
             const teamIds = activeMatch.teams[key] || [];
-            const sortedIds = sortPlayersByPosition(teamIds as string[]);
+            const sortedIds = teamIds as string[];
+            const completedRoster = completedScheduledPlayers?.allCompleted?.[key] || [];
+            const suggestedIdsForTeam = completedRoster.filter(id => !sortedIds.includes(id));
+
             return (
               <div key={key} className="bg-card p-5 rounded-[2rem] border border-border/50 relative overflow-hidden group shadow-xl">
                 <div className="flex justify-between items-center mb-5">
@@ -2348,7 +2503,10 @@ export default function LiveMatch() {
                       </div>
                     )}
                   </div>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{sortedIds.length} Atletas</span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                    {sortedIds.length} {sortedIds.length === 1 ? 'Atleta' : 'Atletas'}
+                    {suggestedIdsForTeam.length > 0 && ` (+ ${suggestedIdsForTeam.length} sug)`}
+                  </span>
                 </div>
                 
                 <div className="space-y-2">
@@ -2371,56 +2529,71 @@ export default function LiveMatch() {
                           )}
                         </div>
                         <div className="flex items-center space-x-2">
-                          {p && effectiveDrawOrder[p.id] !== undefined && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/15 leading-none mr-1">
-                              Seq. #{effectiveDrawOrder[p.id]}
-                            </span>
-                          )}
                           {isGK && <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />}
                         </div>
                       </div>
                     );
                   })}
-                  {isAdmin && topWaitingPlayer && (
-                    <div className="pt-2 mt-2 border-t border-dashed border-white/10 flex items-center justify-between animate-in fade-in duration-300">
-                      <div className="flex flex-col min-w-0 flex-1 pr-2">
-                        <span className="text-[9px] text-amber-500 font-extrabold uppercase tracking-widest leading-none mb-1">
-                          Sugerido da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})
-                        </span>
-                        <span className="text-white text-xs font-bold truncate">
-                          {topWaitingPlayer.displayName || topWaitingPlayer.name}
-                        </span>
+
+                  {suggestedIdsForTeam.map((suggestedId, sIdx) => {
+                    const p = players.find(p => p.id === suggestedId);
+                    if (!p) return null;
+                    const isGK = p.position === 'GOLEIRO' || p.secondaryPosition === 'GOLEIRO';
+                    return (
+                      <div key={`sug-${key}-${suggestedId}-${sIdx}`} className="flex items-center justify-between text-[11px] font-bold py-1.5 px-2 bg-primary/5 border border-dashed border-primary/20 rounded-xl min-w-0 gap-2 mt-1 animate-in fade-in duration-300">
+                        <div className="flex items-center space-x-2 min-w-0 flex-1">
+                          <span className={`w-8 text-[9px] text-center rounded px-1 shrink-0 bg-primary/15 text-primary uppercase font-bold`}>
+                            {formatPosition(p.position) || 'POS'}
+                          </span>
+                          <span className="text-primary truncate min-w-0 flex-1" title={p.displayName || p.name}>
+                            {p.displayName || p.name}
+                          </span>
+                          {p.number !== undefined && p.number !== null && (
+                            <span className="text-[9px] font-black text-primary/80 shrink-0 ml-1 whitespace-nowrap">
+                              (Nº {p.number})
+                            </span>
+                          )}
+                          <span className="text-[8px] text-gray-400 font-extrabold uppercase tracking-wider shrink-0 bg-white/5 px-1.5 py-0.5 rounded">
+                            SUGESTÃO
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {isAdmin && (
+                            <button
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
+                                const currentTeams = { ...activeMatch.teams };
+                                const teamKey = String(key);
+                                
+                                // Remove player from other teams if exists to avoid duplicated instances
+                                Object.keys(currentTeams).forEach(k => {
+                                  if (currentTeams[k]) {
+                                    currentTeams[k] = currentTeams[k].filter(id => id !== suggestedId);
+                                  }
+                                });
+
+                                let newTeamIds = [...(currentTeams[teamKey] || [])];
+                                newTeamIds.push(suggestedId);
+                                currentTeams[teamKey] = newTeamIds;
+
+                                try {
+                                  await updateMatch(activeMatch.id, { teams: currentTeams });
+                                } catch (error) {
+                                  console.error("Erro ao adicionar jogador sugerido:", error);
+                                }
+                              }}
+                              className="p-1.5 bg-primary/20 hover:bg-primary/35 text-primary border border-primary/30 rounded-lg transition-all shrink-0 cursor-pointer flex items-center justify-center"
+                              title={`Incluir ${p.displayName || p.name} no Time`}
+                            >
+                              <Plus size={10} className="stroke-[3]" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          const currentTeams = { ...activeMatch.teams };
-                          const teamKey = String(key);
-                          
-                          // Remove player from other teams if exists to avoid duplicated instances
-                          Object.keys(currentTeams).forEach(k => {
-                            if (currentTeams[k]) {
-                              currentTeams[k] = currentTeams[k].filter(id => id !== topWaitingPlayer.id);
-                            }
-                          });
-
-                          let newTeamIds = [...(currentTeams[teamKey] || [])];
-                          newTeamIds.push(topWaitingPlayer.id);
-                          currentTeams[teamKey] = newTeamIds;
-
-                          try {
-                             await updateMatch(activeMatch.id, { teams: currentTeams });
-                          } catch (error) {
-                             console.error("Erro ao adicionar jogador sugerido:", error);
-                          }
-                        }}
-                        className="px-2 py-1.5 bg-primary/20 hover:bg-primary/35 text-primary border border-primary/30 hover:border-primary/50 rounded-xl text-[9px] uppercase font-black tracking-widest shrink-0 transition-all flex items-center space-x-1"
-                        title={`Adicionar ${topWaitingPlayer.displayName || topWaitingPlayer.name} a esta equipe`}
-                      >
-                        <Plus size={10} />
-                        <span>Incluir</span>
-                      </button>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -2534,7 +2707,7 @@ export default function LiveMatch() {
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
-                                if (!p) return '';
+                                if (!p) return e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : '';
                                 const name = p.displayName || p.name;
                                 return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                               })()}
@@ -2557,7 +2730,7 @@ export default function LiveMatch() {
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
                               {(() => {
                                 const p = players.find(p => p.id === e.playerId);
-                                if (!p) return '';
+                                if (!p) return e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : '';
                                 const name = p.displayName || p.name;
                                 return p.number !== undefined && p.number !== null ? `${name} (Nº ${p.number})` : name;
                               })()}
@@ -2635,7 +2808,7 @@ export default function LiveMatch() {
                      <div className="space-y-4">
                        <h4 className="text-xs font-black uppercase text-primary tracking-widest">{edTeams.teamA}</h4>
                        <div className="space-y-2">
-                         {sortPlayersByPosition(editingGame.teamA_ids || []).map((id) => (
+                         {(editingGame.teamA_ids || []).map((id) => (
                            <div key={id} className="flex items-center gap-2 group">
                              <button 
                                onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', replacedPlayerId: id, mode: 'SWAP' })}
@@ -2673,7 +2846,7 @@ export default function LiveMatch() {
                             >
                               <div className="flex flex-col">
                                 <span className="text-xs text-primary font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
-                                  <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                                  <span>Da Fila</span>
                                 </span>
                                 <span className="text-sm font-bold text-white truncate">
                                   {topWaitingPlayer.displayName || topWaitingPlayer.name}
@@ -2689,7 +2862,7 @@ export default function LiveMatch() {
                      <div className="space-y-4">
                        <h4 className="text-xs font-black uppercase text-white tracking-widest">{edTeams.teamB}</h4>
                        <div className="space-y-2">
-                         {sortPlayersByPosition(editingGame.teamB_ids || []).map((id) => (
+                         {(editingGame.teamB_ids || []).map((id) => (
                            <div key={id} className="flex items-center gap-2 group">
                              <button 
                                onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'B', replacedPlayerId: id, mode: 'SWAP' })}
@@ -2727,7 +2900,7 @@ export default function LiveMatch() {
                             >
                               <div className="flex flex-col">
                                 <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
-                                  <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                                  <span>Da Fila</span>
                                 </span>
                                 <span className="text-sm font-bold text-white truncate">
                                   {topWaitingPlayer.displayName || topWaitingPlayer.name}
@@ -2746,7 +2919,7 @@ export default function LiveMatch() {
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-primary tracking-widest">Membros da Equipe</h4>
                   <div className="grid grid-cols-1 gap-2">
-                    {sortPlayersByPosition(activeMatch.teams?.[String(editingTeamIndex!)] || []).map((id) => (
+                    {(activeMatch.teams?.[String(editingTeamIndex!)] || []).map((id) => (
                       <div key={id} className="flex items-center gap-2 group">
                         <button 
                           onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', replacedPlayerId: id, mode: 'SWAP' })}
@@ -2775,7 +2948,7 @@ export default function LiveMatch() {
                       >
                         <div className="flex flex-col">
                           <span className="text-xs text-primary font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
-                            <span>Da Fila (Seq. #{effectiveDrawOrder[topWaitingPlayer.id]})</span>
+                            <span>Da Fila</span>
                           </span>
                           <span className="text-sm font-bold text-white truncate">
                             {topWaitingPlayer.displayName || topWaitingPlayer.name}
@@ -2908,20 +3081,13 @@ export default function LiveMatch() {
                                     <span className={`text-[10px] opacity-70 mt-0.5 ${textColor}`}>
                                       {queueIndex !== undefined ? `Fila #${queueIndex + 1} • ` : ''}
                                       {tag} • {formatPosition(p.position)}
-                                      {effectiveDrawOrder[p.id] !== undefined && ` • Seq. #${effectiveDrawOrder[p.id]}`}
                                     </span>
                                   </div>
                                   <div className="flex items-center space-x-2 flex-shrink-0">
-                                    {queueIndex !== undefined ? (
+                                    {queueIndex !== undefined && (
                                       <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded font-black whitespace-nowrap">
                                         Fila #{queueIndex + 1}
                                       </span>
-                                    ) : (
-                                      effectiveDrawOrder[p.id] !== undefined && (
-                                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-black whitespace-nowrap">
-                                          #{effectiveDrawOrder[p.id]}
-                                        </span>
-                                      )
                                     )}
                                     <Plus size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
@@ -3087,7 +3253,11 @@ export default function LiveMatch() {
                 </div>
                 <button
                   onClick={() => {
-                    setIsGoalkeeperEvent(!isGoalkeeperEvent);
+                    const nextVal = !isGoalkeeperEvent;
+                    setIsGoalkeeperEvent(nextVal);
+                    if (nextVal) {
+                      setSelectedScorer('');
+                    }
                   }}
                   className={`w-12 h-6 rounded-full transition-all relative ${isGoalkeeperEvent ? 'bg-amber-500' : 'bg-gray-700'}`}
                 >
@@ -3095,34 +3265,36 @@ export default function LiveMatch() {
                 </button>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">
-                  {isOwnGoal ? 'Quem marcou contra?' : 'Quem marcou?'} *
-                </label>
-                <select 
-                  value={selectedScorer}
-                  onChange={(e) => setSelectedScorer(e.target.value)}
-                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-bold text-white"
-                >
-                  <option value="" className="bg-bg">Selecione o jogador</option>
-                  {(() => {
-                    const availablePlayers = showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers;
-                    
-                    if (availablePlayers.length === 0) {
-                      return <option disabled className="bg-bg italic">Nenhum jogador encontrado neste time</option>;
-                    }
-                    
-                    return availablePlayers.map(p => {
-                      const suffix = p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : '';
-                      return (
-                        <option key={p.id} value={p.id} className="bg-bg">
-                          {(p.displayName || p.name) + suffix}
-                        </option>
-                      );
-                    });
-                  })()}
-                </select>
-              </div>
+              {!isGoalkeeperEvent && (
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">
+                    {isOwnGoal ? 'Quem marcou contra?' : 'Quem marcou?'} *
+                  </label>
+                  <select 
+                    value={selectedScorer}
+                    onChange={(e) => setSelectedScorer(e.target.value)}
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-bold text-white"
+                  >
+                    <option value="" className="bg-bg">Selecione o jogador</option>
+                    {(() => {
+                      const availablePlayers = showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers;
+                      
+                      if (availablePlayers.length === 0) {
+                        return <option disabled className="bg-bg italic">Nenhum jogador encontrado neste time</option>;
+                      }
+                      
+                      return availablePlayers.map(p => {
+                        const suffix = p.number !== undefined && p.number !== null ? ` (Nº ${p.number})` : '';
+                        return (
+                          <option key={p.id} value={p.id} className="bg-bg">
+                            {(p.displayName || p.name) + suffix}
+                          </option>
+                        );
+                      });
+                    })()}
+                  </select>
+                </div>
+              )}
 
               {!isOwnGoal && !isGoalkeeperEvent && (
                 <div>
@@ -3151,7 +3323,7 @@ export default function LiveMatch() {
               )}
 
               <button 
-                disabled={!selectedScorer || submitting}
+                disabled={(!isGoalkeeperEvent && !selectedScorer) || submitting}
                 onClick={handleAddGoal}
                 className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest disabled:opacity-50 transition-all flex items-center justify-center space-x-2"
               >

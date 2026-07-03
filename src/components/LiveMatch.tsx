@@ -233,8 +233,9 @@ export default function LiveMatch() {
       }
     });
 
-    // Mapeia para os objetos correspondentes de jogador e remove nulos/indefinidos
+    // Mapeia para os objetos correspondentes de jogador e remove nulos/indefinidos, garantindo que o jogador esteja confirmado na pelada
     const teamPlayers = teamPlayerIds
+      .filter(id => (activeMatch.confirmedIds || []).includes(id))
       .map(id => players.find(p => p.id === id))
       .filter((p): p is Player => p !== undefined);
 
@@ -539,6 +540,24 @@ export default function LiveMatch() {
       suggested
     };
   }, [finishedGames, activeMatch?.teams, teamsCount, liveGame]);
+
+  const orderedTeamKeys = useMemo(() => {
+    if (!activeMatch?.teams) return [];
+    const keysInQueue = (queueState?.queue || []).map(String);
+    const keysOnField = (queueState?.onField || []).map(String);
+    
+    // Combine queue first, then on field
+    const order = [...keysInQueue, ...keysOnField];
+    
+    // Just in case there are other teams not captured in queue or onField
+    const allKeys = Object.keys(activeMatch.teams).sort((a, b) => Number(a) - Number(b));
+    allKeys.forEach(k => {
+      if (!order.includes(k)) {
+        order.push(k);
+      }
+    });
+    return order;
+  }, [activeMatch?.teams, queueState?.queue, queueState?.onField]);
 
   // Sync customBandeiras when scheduled teams or queue changes
   useEffect(() => {
@@ -1411,8 +1430,8 @@ export default function LiveMatch() {
           <h3 className="text-xs font-black uppercase tracking-widest italic">Sequência de Entrada</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Próximo Jogo */}
+        <div className="grid grid-cols-1 gap-4">
+          {/* Próximo Jogo (Oculto por enquanto a pedido do usuário)
           <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 block">Sugerido Próximo Confronto</span>
             {liveGame ? (
@@ -1494,6 +1513,7 @@ export default function LiveMatch() {
               return null;
             })()}
           </div>
+          */}
 
           {/* Fila de espera */}
           <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2 font-black">
@@ -1517,7 +1537,7 @@ export default function LiveMatch() {
             )}
           </div>
 
-          {/* Fila de Jogadores */}
+          {/* Fila de Jogadores (Oculto por enquanto a pedido do usuário)
           <div className="bg-bg p-3.5 rounded-2xl border border-border/50 space-y-2 font-black">
             <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 block">Fila de Jogadores (Sequência)</span>
             {playerQueue.length === 0 ? (
@@ -1576,6 +1596,7 @@ export default function LiveMatch() {
               </div>
             )}
           </div>
+          */}
         </div>
       </div>
     );
@@ -1584,10 +1605,13 @@ export default function LiveMatch() {
   const renderPrepareNextMatch = () => {
     if (!activeMatch?.teams || Object.keys(activeMatch.teams).length < 2) return null;
 
+    const bInfo = getBandeirasForMatch(Number(scheduledTeamA), Number(scheduledTeamB));
+    const flagTeamIdx = bInfo.teamIdx;
+    const flagTeamPlayerIds = flagTeamIdx !== -1 && activeMatch.teams ? (activeMatch.teams[String(flagTeamIdx)] || []) : [];
+
     const availableBandeiras = players.filter(p => 
-      (activeMatch.confirmedIds || []).includes(p.id) &&
-      !completedScheduledPlayers.teamA.includes(p.id) &&
-      !completedScheduledPlayers.teamB.includes(p.id)
+      flagTeamPlayerIds.includes(p.id) &&
+      (activeMatch.confirmedIds || []).includes(p.id)
     );
 
     return (
@@ -1947,7 +1971,9 @@ export default function LiveMatch() {
 
                 if (bandeirasPlayers.length === 0) return null;
 
+                const flagTeamPlayerIds = bTeamIdx !== -1 && activeMatch.teams ? (activeMatch.teams[String(bTeamIdx)] || []) : [];
                 const activeGameAvailableBandeiras = players.filter(ap => 
+                  (bTeamIdx !== -1 ? flagTeamPlayerIds.includes(ap.id) : true) &&
                   (activeMatch.confirmedIds || []).includes(ap.id) &&
                   !(liveGame.teamA_ids || []).includes(ap.id) &&
                   !(liveGame.teamB_ids || []).includes(ap.id)
@@ -2288,7 +2314,8 @@ export default function LiveMatch() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {activeMatch.teams && (Object.entries(activeMatch.teams).sort(([a], [b]) => Number(a) - Number(b))).map(([key, teamIds]) => {
+          {activeMatch.teams && orderedTeamKeys.map(key => {
+            const teamIds = activeMatch.teams[key] || [];
             const sortedIds = sortPlayersByPosition(teamIds as string[]);
             return (
               <div key={key} className="bg-card p-5 rounded-[2rem] border border-border/50 relative overflow-hidden group shadow-xl">

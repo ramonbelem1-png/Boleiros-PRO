@@ -18,8 +18,53 @@ import { ChevronLeft, ChevronRight, X, Clock, Users, Trophy, UserX, Trash2, Circ
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
 
+const getParticipantsCount = (match: Match, matchParticipants?: Record<string, string[]>) => {
+  if (matchParticipants && matchParticipants[match.id]) {
+    return matchParticipants[match.id].length;
+  }
+  const ids = new Set<string>();
+  if (Array.isArray(match.confirmedIds)) {
+    match.confirmedIds.forEach(id => {
+      if (id) ids.add(id);
+    });
+  }
+  if (match.teams) {
+    Object.values(match.teams).forEach((teamPlayerIds: any) => {
+      if (Array.isArray(teamPlayerIds)) {
+        teamPlayerIds.forEach(id => {
+          if (id) ids.add(id);
+        });
+      }
+    });
+  }
+  return ids.size;
+};
+
+const getParticipants = (match: Match, playersList: Player[], matchParticipants?: Record<string, string[]>) => {
+  if (matchParticipants && matchParticipants[match.id]) {
+    const ids = new Set(matchParticipants[match.id]);
+    return playersList.filter(p => ids.has(p.id));
+  }
+  const ids = new Set<string>();
+  if (Array.isArray(match.confirmedIds)) {
+    match.confirmedIds.forEach(id => {
+      if (id) ids.add(id);
+    });
+  }
+  if (match.teams) {
+    Object.values(match.teams).forEach((teamPlayerIds: any) => {
+      if (Array.isArray(teamPlayerIds)) {
+        teamPlayerIds.forEach(id => {
+          if (id) ids.add(id);
+        });
+      }
+    });
+  }
+  return playersList.filter(p => ids.has(p.id));
+};
+
 export default function CalendarView() {
-  const { matches, players, deleteMatch, deleteGame } = usePelada();
+  const { matches, players, deleteMatch, deleteGame, getMatchGames } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || 
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
@@ -28,6 +73,73 @@ export default function CalendarView() {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [confirmDeleteMatch, setConfirmDeleteMatch] = useState<string | null>(null);
   const [confirmDeleteGame, setConfirmDeleteGame] = useState<{matchId: string, gameId: string} | null>(null);
+  const [matchParticipants, setMatchParticipants] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    let active = true;
+    async function loadAllParticipants() {
+      const results: Record<string, string[]> = {};
+      
+      await Promise.all(
+        matches.map(async (match) => {
+          const participantIds = new Set<string>();
+
+          // 1. From confirmedIds
+          if (Array.isArray(match.confirmedIds)) {
+            match.confirmedIds.forEach(id => {
+              if (id) participantIds.add(id);
+            });
+          }
+
+          // 2. From match.teams
+          if (match.teams) {
+            Object.values(match.teams).forEach((teamPlayerIds: any) => {
+              if (Array.isArray(teamPlayerIds)) {
+                teamPlayerIds.forEach(id => {
+                  if (id) participantIds.add(id);
+                });
+              }
+            });
+          }
+
+          // 3. From games
+          try {
+            const games = await getMatchGames(match.id);
+            games.forEach(game => {
+              const teamA = game.startingTeamA_ids || game.teamA_ids || [];
+              const teamB = game.startingTeamB_ids || game.teamB_ids || [];
+              teamA.forEach(id => {
+                if (id) participantIds.add(id);
+              });
+              teamB.forEach(id => {
+                if (id) participantIds.add(id);
+              });
+
+              game.events?.forEach(evt => {
+                if (evt.playerId) participantIds.add(evt.playerId);
+                if (evt.assistId) participantIds.add(evt.assistId);
+              });
+            });
+          } catch (err) {
+            console.error(`Error loading games for match ${match.id}:`, err);
+          }
+
+          results[match.id] = Array.from(participantIds);
+        })
+      );
+
+      if (active) {
+        setMatchParticipants(results);
+      }
+    }
+
+    if (matches.length > 0) {
+      loadAllParticipants();
+    }
+    return () => {
+      active = false;
+    };
+  }, [matches, getMatchGames]);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -180,7 +292,7 @@ export default function CalendarView() {
                           </div>
                           <div className="flex items-center space-x-1">
                             <Users size={10} />
-                            <span className="text-[10px] font-bold uppercase">{match.confirmedIds.length} Atletas</span>
+                            <span className="text-[10px] font-bold uppercase">{getParticipantsCount(match, matchParticipants)} Atletas</span>
                           </div>
                         </div>
                       </div>
@@ -224,6 +336,7 @@ export default function CalendarView() {
             onClose={() => setSelectedMatch(null)} 
             onDeleteMatch={(id) => setConfirmDeleteMatch(id)}
             onDeleteGame={(mId, gId) => setConfirmDeleteGame({matchId: mId, gameId: gId})}
+            matchParticipants={matchParticipants}
           />
         )}
       </AnimatePresence>
@@ -307,7 +420,7 @@ export default function CalendarView() {
   );
 }
 
-function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { match: Match, players: Player[], onClose: () => void, onDeleteMatch: (id: string) => void, onDeleteGame: (mId: string, gId: string) => void }) {
+function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matchParticipants }: { match: Match, players: Player[], onClose: () => void, onDeleteMatch: (id: string) => void, onDeleteGame: (mId: string, gId: string) => void, matchParticipants?: Record<string, string[]> }) {
   const { getMatchGames } = usePelada();
   const { role, user } = useAuth();
   const isAdmin = role === 'ADMIN' || 
@@ -433,7 +546,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
 
   const matchDate = match.date.toDate ? match.date.toDate() : new Date(match.date);
   
-  const confirmed = players.filter(p => match.confirmedIds.includes(p.id));
+  const participants = getParticipants(match, players, matchParticipants);
   const absentEntries = match.absentIds.map(a => ({
     player: players.find(p => p.id === a.userId),
     reason: a.reason
@@ -586,14 +699,14 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame }: { 
         </div>
 
         <div className="space-y-6">
-          {/* Confirmed */}
+          {/* Participants */}
           <section className="space-y-3">
              <div className="flex items-center space-x-2 text-primary px-1">
                <Users size={14} />
-               <h4 className="text-[10px] font-black uppercase tracking-widest">Confirmados ({confirmed.length})</h4>
+               <h4 className="text-[10px] font-black uppercase tracking-widest">Participantes ({participants.length})</h4>
              </div>
              <div className="grid grid-cols-1 gap-2">
-               {confirmed.map(p => (
+               {participants.map(p => (
                  <div key={p.id} className="flex items-center space-x-3 bg-bg/50 p-3 rounded-2xl border border-border/20">
                    <div className="w-8 h-8 rounded-full bg-bg border border-border overflow-hidden">
                      {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{(p.displayName || p.name).charAt(0)}</div>}

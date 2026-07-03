@@ -27,15 +27,45 @@ export default function SocialStats() {
       if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
       return (b.assistencias || 0) - (a.assistencias || 0);
     })[0];
+
+    // Pereba: Active player with the lowest score
+    const activePlayers = [...list].filter(p => (p.gamesPlayed || 0) > 0);
+    const candidates = activePlayers.length > 0 ? activePlayers : list;
+    const perebaShare = [...candidates].sort((a, b) => {
+      if (a.totalPts !== b.totalPts) return a.totalPts - b.totalPts; // Lowest points first
+      if ((b.contra || 0) !== (a.contra || 0)) return (b.contra || 0) - (a.contra || 0); // More own goals is worse
+      return (a.vitorias || 0) - (b.vitorias || 0); // Fewer wins is worse
+    })[0];
     
     const periodLabel = period === 'geral' ? 'Geral' : period === 'temporada' ? 'Temporada' : period === 'mes' ? 'Mês' : 'Rodada';
-    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${topScorerShare?.displayName || topScorerShare?.name || '-'}\n🎯 Garçom: ${topAssisterShare?.displayName || topAssisterShare?.name || '-'}\n🔥 Maior Pontuação: ${topPointsShare?.displayName || topPointsShare?.name || '-'}\n\n#Futebol #Pelada #BoleirosPRO`;
+
+    const scorerText = topScorerShare && (topScorerShare.gols || 0) > 0 
+      ? `${topScorerShare.displayName || topScorerShare.name} - ${topScorerShare.gols} ${topScorerShare.gols === 1 ? 'gol' : 'gols'}`
+      : '-';
+
+    const assisterText = topAssisterShare 
+      ? `${topAssisterShare.displayName || topAssisterShare.name} - ${(topAssisterShare.assistencias || 0)} assist.`
+      : '-';
+
+    const pointsText = topPointsShare 
+      ? `${topPointsShare.displayName || topPointsShare.name} - ${topPointsShare.totalPts} ${topPointsShare.totalPts === 1 ? 'pt' : 'pts'}`
+      : '-';
+
+    const perebaText = perebaShare 
+      ? `${perebaShare.displayName || perebaShare.name} - ${perebaShare.totalPts} ${perebaShare.totalPts === 1 ? 'pt' : 'pts'}`
+      : '-';
+
+    const shareUrl = window.location.origin.includes('localhost') || window.location.origin.includes('ais-dev') || window.location.origin.includes('ais-pre')
+      ? 'https://boleiros-pro.vercel.app/' 
+      : window.location.origin;
+
+    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${scorerText}\n🎯 Garçom: ${assisterText}\n🔥 Maior Pontuação: ${pointsText}\n♿ Pereba: ${perebaText}\n\n#Futebol #Pelada #BoleirosPRO ${shareUrl}`;
+
     try {
       if (navigator.share) {
         await navigator.share({
           title: `Ranking ${periodLabel}`,
           text: text,
-          url: window.location.href,
         });
       } else {
         await navigator.clipboard.writeText(text);
@@ -171,23 +201,58 @@ export default function SocialStats() {
   };
 
   const currentRanking = getSortedRanking();
-  const topOverall = currentRanking[0];
-  
-  // Scorer, Assister and Winner derived from full list with robust sorting
-  const topScorer = [...currentRanking].sort((a, b) => {
-    if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
-    return b.totalPts - a.totalPts;
-  })[0];
-  
-  const topAssister = [...currentRanking].sort((a, b) => {
-    if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
-    return b.totalPts - a.totalPts;
-  })[0];
 
-  const topWinner = [...currentRanking].sort((a, b) => {
-    if ((b.vitorias || 0) !== (a.vitorias || 0)) return (b.vitorias || 0) - (a.vitorias || 0);
-    return b.totalPts - a.totalPts;
-  })[0];
+  // Always derive period highlights from the total list of active/period-involved players
+  const periodRanking = React.useMemo(() => {
+    let list = players.map(p => {
+      const stats = period === 'geral' ? p : (periodStats[p.id] || { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 });
+      const gamesPlayed = (stats.vitorias || 0) + (stats.derrotas || 0) + (stats.empates || 0);
+      return { 
+        ...p, 
+        ...stats,
+        gamesPlayed,
+        totalPts: ((stats.gols || 0) * 2) + (stats.assistencias || 0) + ((stats.vitorias || 0) * 2) + (stats.empates || 0) + gamesPlayed
+      };
+    });
+
+    if (period !== 'geral') {
+      list = list.filter(p => p.totalPts > 0 || (p.vitorias || 0) > 0 || (p.derrotas || 0) > 0 || (p.empates || 0) > 0);
+    }
+
+    return list;
+  }, [players, period, periodStats]);
+
+  const topOverall = React.useMemo(() => {
+    return [...periodRanking].sort((a, b) => {
+      if (b.totalPts !== a.totalPts) return b.totalPts - a.totalPts;
+      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+      return (b.vitorias || 0) - (a.vitorias || 0);
+    })[0];
+  }, [periodRanking]);
+
+  const topScorer = React.useMemo(() => {
+    return [...periodRanking].sort((a, b) => {
+      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
+      return b.totalPts - a.totalPts;
+    })[0];
+  }, [periodRanking]);
+
+  const topAssister = React.useMemo(() => {
+    return [...periodRanking].sort((a, b) => {
+      if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
+      return b.totalPts - a.totalPts;
+    })[0];
+  }, [periodRanking]);
+
+  const topPereba = React.useMemo(() => {
+    const activePlayers = [...periodRanking].filter(p => (p.gamesPlayed || 0) > 0);
+    const candidates = activePlayers.length > 0 ? activePlayers : periodRanking;
+    return [...candidates].sort((a, b) => {
+      if (a.totalPts !== b.totalPts) return a.totalPts - b.totalPts;
+      if ((b.contra || 0) !== (a.contra || 0)) return (b.contra || 0) - (a.contra || 0);
+      return (a.vitorias || 0) - (b.vitorias || 0);
+    })[0];
+  }, [periodRanking]);
 
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Rankings...</div>;
 
@@ -349,9 +414,12 @@ export default function SocialStats() {
 
             <div className="grid grid-cols-2 gap-y-8 gap-x-6">
               <AwardItem label="CRAQUE" name={topOverall ? (topOverall.displayName || topOverall.name) : "-"} icon={<Trophy size={14} />} />
-              <AwardItem label="GOLEADOR" name={topScorer ? (topScorer.displayName || topScorer.name) : "-"} icon={<Star size={14} />} />
-              <AwardItem label="GARÇOM" name={topAssister ? (topAssister.displayName || topAssister.name) : "-"} icon={<Star size={14} />} />
-              <AwardItem label="PONTUAÇÃO" name={`${(topOverall?.totalPts || 0)} PTS`} icon={<TrendingUp size={14} />} />
+              <AwardItem label="GOLEADOR" name={topScorer && (topScorer.gols || 0) > 0 ? `${topScorer.displayName || topScorer.name} - ${topScorer.gols} ${topScorer.gols === 1 ? 'gol' : 'gols'}` : "-"} icon={<Star size={14} />} />
+              <AwardItem label="GARÇOM" name={topAssister ? `${topAssister.displayName || topAssister.name} - ${(topAssister.assistencias || 0)} assist.` : "-"} icon={<Star size={14} />} />
+              <AwardItem label="PONTUAÇÃO" name={topOverall ? `${topOverall.displayName || topOverall.name} - ${topOverall.totalPts} ${topOverall.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<TrendingUp size={14} />} />
+              <div className="col-span-2 pt-4 border-t border-white/5">
+                <AwardItem label="PEREBA" name={topPereba ? `${topPereba.displayName || topPereba.name} - ${topPereba.totalPts} ${topPereba.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<ShieldAlert size={14} />} isBad={true} />
+              </div>
             </div>
           </div>
         </div>

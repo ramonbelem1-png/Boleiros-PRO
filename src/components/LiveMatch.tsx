@@ -33,10 +33,24 @@ export default function LiveMatch() {
   const isAdmin = role === 'ADMIN' || 
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
 
-  const [confirmState, setConfirmState] = useState<{message: string, onConfirm: () => void} | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    onConfirm: () => void;
+    title?: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmClass?: string;
+  } | null>(null);
 
-  const confirmAction = (message: string, action: () => void) => {
-    setConfirmState({ message, onConfirm: action });
+  const confirmAction = (
+    message: string,
+    action: () => void,
+    title?: string,
+    confirmText?: string,
+    cancelText?: string,
+    confirmClass?: string
+  ) => {
+    setConfirmState({ message, onConfirm: action, title, confirmText, cancelText, confirmClass });
   };
 
   console.log(`[LiveMatch] isAdmin: ${isAdmin}, role: ${role}, email: ${user?.email}`);
@@ -403,6 +417,73 @@ export default function LiveMatch() {
   // 2. Identify the number of teams
   const teamsCount = Object.keys(activeMatch?.teams || {}).length;
 
+  // Reconstruct the exact circular sequence/queue of all teams based on chronological results of finished games.
+  const simulatedSequence = useMemo(() => {
+    if (!activeMatch?.teams) return [];
+    
+    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
+    let sequence = [...validTeamKeys]; // initially [0, 1, 2, ...]
+
+    const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
+      if (teamName && teamName.startsWith('Time ')) {
+        const teamNum = parseInt(teamName.replace('Time ', ''), 10);
+        if (!isNaN(teamNum)) {
+          const teamIdx = teamNum - 1;
+          if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
+            return teamIdx;
+          }
+        }
+      }
+
+      if (!teamIds || teamIds.length === 0 || !activeMatch?.teams) return -1;
+      let bestKey = -1;
+      let maxOverlap = 0;
+      Object.entries(activeMatch.teams).forEach(([key, ids]) => {
+        const idsArray = (ids || []) as string[];
+        const overlap = teamIds.filter(id => idsArray.includes(id)).length;
+        if (overlap > maxOverlap) {
+          maxOverlap = overlap;
+          bestKey = Number(key);
+        }
+      });
+      return bestKey;
+    };
+
+    const gameTeams = finishedGames.map(game => {
+      const teamA = getTeamIndexLocal(game.teamA_ids, game.teamA_name);
+      const teamB = getTeamIndexLocal(game.teamB_ids, game.teamB_name);
+      return { teamA, teamB, scoreA: game.scoreA ?? 0, scoreB: game.scoreB ?? 0 };
+    });
+
+    gameTeams.forEach(gt => {
+      const { teamA, teamB, scoreA, scoreB } = gt;
+      if (teamA === -1 || teamB === -1) return;
+
+      const isDraw = scoreA === scoreB;
+      const winA = scoreA > scoreB;
+      
+      if (isDraw) {
+        // Draw: both leave the field, they both go to the end of the sequence.
+        // We filter out teamA and teamB and push them at the end.
+        sequence = sequence.filter(x => x !== teamA && x !== teamB);
+        sequence.push(teamA);
+        sequence.push(teamB);
+      } else {
+        const winner = winA ? teamA : teamB;
+        const loser = winA ? teamB : teamA;
+
+        // The winner goes/stays at the top (first position)
+        // The loser goes to the very end of the sequence (last position)
+        // The rest of the teams maintain their relative order in between.
+        sequence = sequence.filter(x => x !== winner && x !== loser);
+        sequence.unshift(winner);
+        sequence.push(loser);
+      }
+    });
+
+    return sequence;
+  }, [finishedGames, activeMatch?.teams]);
+
   // 3. Compute suggested active state and waiting queue
   const queueState = useMemo(() => {
     if (!activeMatch?.teams || teamsCount < 2) {
@@ -461,56 +542,14 @@ export default function LiveMatch() {
         }
       }
     } else {
-      // No games played yet -> initially empty, suggesting Time 1 and Time 2 from waiting list
       currentOnField = [];
     }
 
-    // Find the index of the most recent finished game where each team played (newest to oldest index)
-    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
-    const lastPlayedIndices: Record<number, number> = {};
-    const gamesPlayedCount: Record<number, number> = {};
-    validTeamKeys.forEach(key => {
-      lastPlayedIndices[key] = -1;
-      gamesPlayedCount[key] = 0;
-    });
-
-    gameTeams.forEach((gg, gameIdx) => {
-      if (gg.teamA !== -1 && lastPlayedIndices[gg.teamA] !== undefined) {
-        lastPlayedIndices[gg.teamA] = gameIdx;
-        gamesPlayedCount[gg.teamA]++;
-      }
-      if (gg.teamB !== -1 && lastPlayedIndices[gg.teamB] !== undefined) {
-        lastPlayedIndices[gg.teamB] = gameIdx;
-        gamesPlayedCount[gg.teamB]++;
-      }
-    });
-
-    // Build the wait list of all teams not currently on the field
-    const waitingTeams: number[] = [];
+    // Build the wait list of all teams not currently on the field using simulatedSequence
     const onFieldIndices = new Set(currentOnField);
-    validTeamKeys.forEach(key => {
-      if (!onFieldIndices.has(key)) {
-        waitingTeams.push(key);
-      }
-    });
+    const waitingTeams = simulatedSequence.filter(key => !onFieldIndices.has(key));
 
-    // Sort waiting teams:
-    // Primary: lastPlayedIndex ascending (smallest first, which means played longest ago, or -1 for never played)
-    // Tie-breaker 1: gamesPlayedCount ascending (fewer total games played has priority)
-    // Tie-breaker 2: team index ascending (to preserve original sequence order)
-    waitingTeams.sort((a, b) => {
-      const lastA = lastPlayedIndices[a];
-      const lastB = lastPlayedIndices[b];
-      if (lastA !== lastB) {
-        return lastA - lastB;
-      }
-      const countA = gamesPlayedCount[a] || 0;
-      const countB = gamesPlayedCount[b] || 0;
-      if (countA !== countB) {
-        return countA - countB;
-      }
-      return a - b;
-    });
+    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
 
     // Calculate suggestions for the next confront based on rule
     let suggested: number[] = [];
@@ -539,17 +578,15 @@ export default function LiveMatch() {
       queue: waitingTeams,
       suggested
     };
-  }, [finishedGames, activeMatch?.teams, teamsCount, liveGame]);
+  }, [finishedGames, activeMatch?.teams, teamsCount, liveGame, simulatedSequence]);
 
   const orderedTeamKeys = useMemo(() => {
     if (!activeMatch?.teams) return [];
-    const keysInQueue = (queueState?.queue || []).map(String);
-    const keysOnField = (queueState?.onField || []).map(String);
     
-    // Combine queue first, then on field
-    const order = [...keysInQueue, ...keysOnField];
+    // Follow the simulatedSequence as our baseline order
+    const order = (simulatedSequence || []).map(String);
     
-    // Just in case there are other teams not captured in queue or onField
+    // Just in case there are other keys (though simulatedSequence should cover all valid keys)
     const allKeys = Object.keys(activeMatch.teams).sort((a, b) => Number(a) - Number(b));
     allKeys.forEach(k => {
       if (!order.includes(k)) {
@@ -557,7 +594,7 @@ export default function LiveMatch() {
       }
     });
     return order;
-  }, [activeMatch?.teams, queueState?.queue, queueState?.onField]);
+  }, [activeMatch?.teams, simulatedSequence]);
 
   // Sync customBandeiras when scheduled teams or queue changes
   useEffect(() => {
@@ -783,12 +820,12 @@ export default function LiveMatch() {
       const need = Math.max(0, targetSize - currentPlayers.length);
       const borrowed: string[] = [];
 
-      // Find subsequent teams in circular order based on this team's natural position
-      const currentIdxInAll = allTeamKeys.indexOf(currentKey);
+      // Find subsequent teams in circular order based on this team's priority position in the queue/display
+      const currentIdxInOrdered = orderedKeys.indexOf(currentKey);
       const nextKeys: string[] = [];
-      for (let offset = 1; offset < allTeamKeys.length; offset++) {
-        const nextIdx = (currentIdxInAll + offset) % allTeamKeys.length;
-        nextKeys.push(allTeamKeys[nextIdx]);
+      for (let offset = 1; offset < orderedKeys.length; offset++) {
+        const nextIdx = (currentIdxInOrdered + offset) % orderedKeys.length;
+        nextKeys.push(orderedKeys[nextIdx]);
       }
 
       // 1. Fill with subsequent teams' players FIRST (Team of the sequence)
@@ -1060,6 +1097,55 @@ export default function LiveMatch() {
 
     try {
       setFinishStatus({ type: 'loading', text: 'Salvando estatísticas no servidor...' });
+      
+      // Update static teams with active players to prevent them from leaving or being reset
+      const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
+        if (teamName && teamName.startsWith('Time ')) {
+          const teamNum = parseInt(teamName.replace('Time ', ''), 10);
+          if (!isNaN(teamNum)) {
+            const teamIdx = teamNum - 1;
+            if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
+              return teamIdx;
+            }
+          }
+        }
+
+        if (!teamIds || teamIds.length === 0 || !activeMatch?.teams) return -1;
+        let bestKey = -1;
+        let maxOverlap = 0;
+        Object.entries(activeMatch.teams).forEach(([key, ids]) => {
+          const idsArray = (ids || []) as string[];
+          const overlap = teamIds.filter(id => idsArray.includes(id)).length;
+          if (overlap > maxOverlap) {
+            maxOverlap = overlap;
+            bestKey = Number(key);
+          }
+        });
+        return bestKey;
+      };
+
+      const gameTeamAIdx = getTeamIndexLocal(liveGame.teamA_ids, liveGame.teamA_name);
+      const gameTeamBIdx = getTeamIndexLocal(liveGame.teamB_ids, liveGame.teamB_name);
+
+      const currentTeams = { ...activeMatch.teams };
+      let teamsChanged = false;
+      if (gameTeamAIdx !== -1 && liveGame.teamA_ids) {
+        currentTeams[String(gameTeamAIdx)] = liveGame.teamA_ids;
+        teamsChanged = true;
+      }
+      if (gameTeamBIdx !== -1 && liveGame.teamB_ids) {
+        currentTeams[String(gameTeamBIdx)] = liveGame.teamB_ids;
+        teamsChanged = true;
+      }
+      if (teamsChanged) {
+        try {
+          await updateMatch(activeMatch.id, { teams: currentTeams });
+          console.log("[LiveMatch] Equipes estáticas sincronizadas com os jogadores reais que jogaram");
+        } catch (err) {
+          console.error("Erro ao sincronizar equipes estáticas na finalização:", err);
+        }
+      }
+
       await finishGame(activeMatch.id, liveGame.id, {
         scoreA: Number(liveGame.scoreA) || 0,
         scoreB: Number(liveGame.scoreB) || 0,
@@ -1445,6 +1531,52 @@ export default function LiveMatch() {
     try {
       // 1. Finalize current live game if any
       if (liveGame && liveGame.status === 'RUNNING') {
+        const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
+          if (teamName && teamName.startsWith('Time ')) {
+            const teamNum = parseInt(teamName.replace('Time ', ''), 10);
+            if (!isNaN(teamNum)) {
+              const teamIdx = teamNum - 1;
+              if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
+                return teamIdx;
+              }
+            }
+          }
+
+          if (!teamIds || teamIds.length === 0 || !activeMatch?.teams) return -1;
+          let bestKey = -1;
+          let maxOverlap = 0;
+          Object.entries(activeMatch.teams).forEach(([key, ids]) => {
+            const idsArray = (ids || []) as string[];
+            const overlap = teamIds.filter(id => idsArray.includes(id)).length;
+            if (overlap > maxOverlap) {
+              maxOverlap = overlap;
+              bestKey = Number(key);
+            }
+          });
+          return bestKey;
+        };
+
+        const gameTeamAIdx = getTeamIndexLocal(liveGame.teamA_ids, liveGame.teamA_name);
+        const gameTeamBIdx = getTeamIndexLocal(liveGame.teamB_ids, liveGame.teamB_name);
+
+        const currentTeams = { ...activeMatch.teams };
+        let teamsChanged = false;
+        if (gameTeamAIdx !== -1 && liveGame.teamA_ids) {
+          currentTeams[String(gameTeamAIdx)] = liveGame.teamA_ids;
+          teamsChanged = true;
+        }
+        if (gameTeamBIdx !== -1 && liveGame.teamB_ids) {
+          currentTeams[String(gameTeamBIdx)] = liveGame.teamB_ids;
+          teamsChanged = true;
+        }
+        if (teamsChanged) {
+          try {
+            await updateMatch(activeMatch.id, { teams: currentTeams });
+          } catch (err) {
+            console.error("Erro ao sincronizar equipes estáticas na finalização da rodada:", err);
+          }
+        }
+
         await finishGame(activeMatch.id, liveGame.id, {
           scoreA: liveGame.scoreA,
           scoreB: liveGame.scoreB,
@@ -1901,19 +2033,58 @@ export default function LiveMatch() {
           <div className="flex space-x-3">
             {!liveGame && (
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const nameA = `Time ${Number(scheduledTeamA) + 1}`;
                   const nameB = `Time ${Number(scheduledTeamB) + 1}`;
                   const bandeiraIds = (customBandeiras || [])
                     .filter(id => id && typeof id === 'string' && id !== '');
-                  startLiveGame(
-                    activeMatch.id, 
-                    completedScheduledPlayers.teamA, 
-                    completedScheduledPlayers.teamB, 
-                    nameA, 
-                    nameB,
-                    bandeiraIds
-                  );
+                  
+                  const targetSize = activeMatch.playersPerTeam || 6;
+                  const isAIncomplete = completedScheduledPlayers.teamA.length < targetSize;
+                  const isBIncomplete = completedScheduledPlayers.teamB.length < targetSize;
+
+                  const runStart = async () => {
+                    // Persist the actual rosters being scheduled to the static teams so they don't get automatically reset
+                    const currentTeams = { ...activeMatch.teams };
+                    let teamsChanged = false;
+                    if (activeMatch.teams[scheduledTeamA] !== undefined) {
+                      currentTeams[scheduledTeamA] = completedScheduledPlayers.teamA;
+                      teamsChanged = true;
+                    }
+                    if (activeMatch.teams[scheduledTeamB] !== undefined) {
+                      currentTeams[scheduledTeamB] = completedScheduledPlayers.teamB;
+                      teamsChanged = true;
+                    }
+                    if (teamsChanged) {
+                      try {
+                        await updateMatch(activeMatch.id, { teams: currentTeams });
+                      } catch (error) {
+                        console.error("Erro ao atualizar equipes estáticas ao iniciar partida:", error);
+                      }
+                    }
+
+                    startLiveGame(
+                      activeMatch.id, 
+                      completedScheduledPlayers.teamA, 
+                      completedScheduledPlayers.teamB, 
+                      nameA, 
+                      nameB,
+                      bandeiraIds
+                    );
+                  };
+
+                  if (isAIncomplete || isBIncomplete) {
+                    confirmAction(
+                      `Atenção: Os times estão incompletos!\n\nVocê tem ${completedScheduledPlayers.teamA.length} jogadores escalados no ${nameA} e ${completedScheduledPlayers.teamB.length} no ${nameB} (o configurado é ${targetSize} vs ${targetSize}).\n\nDeseja iniciar a partida incompleta mesmo assim?`,
+                      runStart,
+                      'Time Incompleto',
+                      'Sim, Iniciar',
+                      'Não, Cancelar',
+                      'bg-primary text-bg hover:opacity-90 shadow-primary/20 text-black font-black'
+                    );
+                  } else {
+                    await runStart();
+                  }
                 }}
                 className="flex-1 py-4 bg-primary text-bg rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-primary/20 cursor-pointer"
               >
@@ -1922,11 +2093,31 @@ export default function LiveMatch() {
               </button>
             )}
             <button 
-              onClick={() => {
+              onClick={async () => {
                 const nameA = `Time ${Number(scheduledTeamA) + 1}`;
                 const nameB = `Time ${Number(scheduledTeamB) + 1}`;
                 const bandeiraIds = (customBandeiras || [])
                   .filter(id => id && typeof id === 'string' && id !== '');
+
+                // Persist the actual rosters being scheduled to the static teams so they don't get automatically reset
+                const currentTeams = { ...activeMatch.teams };
+                let teamsChanged = false;
+                if (activeMatch.teams[scheduledTeamA] !== undefined) {
+                  currentTeams[scheduledTeamA] = completedScheduledPlayers.teamA;
+                  teamsChanged = true;
+                }
+                if (activeMatch.teams[scheduledTeamB] !== undefined) {
+                  currentTeams[scheduledTeamB] = completedScheduledPlayers.teamB;
+                  teamsChanged = true;
+                }
+                if (teamsChanged) {
+                  try {
+                    await updateMatch(activeMatch.id, { teams: currentTeams });
+                  } catch (error) {
+                    console.error("Erro ao atualizar equipes estáticas ao agendar partida:", error);
+                  }
+                }
+
                 createScheduledGame(
                   activeMatch.id, 
                   completedScheduledPlayers.teamA, 
@@ -3346,18 +3537,20 @@ export default function LiveMatch() {
             animate={{ scale: 1, opacity: 1 }}
             className="w-full max-w-sm bg-card border border-border rounded-[2.5rem] p-6 shadow-2xl relative"
           >
-            <h3 className="text-xl font-black uppercase text-white mb-4">Confirmar Ação</h3>
+            <h3 className="text-xl font-black uppercase text-white mb-4">{confirmState.title || "Confirmar Ação"}</h3>
             <p className="text-sm font-bold text-gray-400 mb-8 whitespace-pre-wrap">{confirmState.message}</p>
             <div className="flex gap-4">
-              <button onClick={() => setConfirmState(null)} className="flex-1 p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white">Cancelar</button>
+              <button onClick={() => setConfirmState(null)} className="flex-1 p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white">
+                {confirmState.cancelText || "Cancelar"}
+              </button>
               <button 
                 onClick={() => {
                   confirmState.onConfirm();
                   setConfirmState(null);
                 }} 
-                className="flex-1 p-4 rounded-2xl bg-red-500 text-white font-black hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                className={`flex-1 p-4 rounded-2xl font-black transition-all shadow-lg ${confirmState.confirmClass || "bg-red-500 text-white hover:bg-red-600 shadow-red-500/20"}`}
               >
-                Confirmar
+                {confirmState.confirmText || "Confirmar"}
               </button>
             </div>
           </motion.div>

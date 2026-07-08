@@ -59,7 +59,7 @@ export default function SocialStats() {
       ? 'https://boleiros-pro.vercel.app/' 
       : window.location.origin;
 
-    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${scorerText}\n🎯 Garçom: ${assisterText}\n🔥 Maior Pontuação: ${pointsText}\n♿ Pereba: ${perebaText}\n\n#Futebol #Pelada #BoleirosPRO ${shareUrl}`;
+    const text = `🏆 Ranking (${periodLabel}) - Boleiros PRO\n\n⚽ Artilheiro: ${scorerText}\n🎯 Garçom: ${assisterText}\n🔥 Maior Pontuação: ${pointsText}\n🐢 Pereba: ${perebaText}\n\n#Futebol #Pelada #BoleirosPRO ${shareUrl}`;
 
     try {
       if (navigator.share) {
@@ -418,7 +418,7 @@ export default function SocialStats() {
               <AwardItem label="GARÇOM" name={topAssister ? `${topAssister.displayName || topAssister.name} - ${(topAssister.assistencias || 0)} assist.` : "-"} icon={<Star size={14} />} />
               <AwardItem label="PONTUAÇÃO" name={topOverall ? `${topOverall.displayName || topOverall.name} - ${topOverall.totalPts} ${topOverall.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<TrendingUp size={14} />} />
               <div className="col-span-2 pt-4 border-t border-white/5">
-                <AwardItem label="PEREBA" name={topPereba ? `${topPereba.displayName || topPereba.name} - ${topPereba.totalPts} ${topPereba.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<ShieldAlert size={14} />} isBad={true} />
+                <AwardItem label="PEREBA" name={topPereba ? `${topPereba.displayName || topPereba.name} - ${topPereba.totalPts} ${topPereba.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<span className="text-sm">🐢</span>} isBad={true} />
               </div>
             </div>
           </div>

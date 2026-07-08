@@ -217,8 +217,7 @@ export default function MatchList() {
     } else {
       confirmedList.forEach((player, idx) => {
         const isMensalista = player.type === 'MENSALISTA';
-        const isPaid = isPlayerPaidForMatch(player, nextMatch.date, transactions, settings, nextMatch.paidIds);
-        const paymentLabel = (isPaid ? ' (PG)' : '') + (isMensalista ? '' : ' (Diarista)');
+        const paymentLabel = isMensalista ? '' : ' (Diarista)';
         text += `${idx + 1}. ${player.displayName || player.name} ✅${paymentLabel}\n`;
       });
     }
@@ -409,38 +408,40 @@ export default function MatchList() {
                 </div>
 
                 {/* Compartilhar Lista no WhatsApp */}
-                <div className="px-1 mb-4">
-                  <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/10 border border-[#25D366]/20 rounded-3xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-                    <div className="flex items-center space-x-3 w-full sm:w-auto">
-                      <div className="w-10 h-10 rounded-full bg-[#25D366]/20 flex items-center justify-center shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" className="text-[#25D366]" viewBox="0 0 16 16">
-                          <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.948h.003c4.368 0 7.927-3.558 7.929-7.93a7.88 7.88 0 0 0-2.325-5.614M10.59 10.62c-.455.082-.593-.182-.743-.455-.179-.327-.513-.918-.636-1.161-.123-.243-.164-.365-.082-.487.082-.122.365-.426.548-.68.182-.254.218-.396.122-.593-.082-.182-.513-1.235-.742-1.744-.216-.481-.433-.42-.636-.433l-.403-.008c-.201 0-.527.078-.718.29-.191.212-.73.713-.73 1.74 0 1.026.742 2.019.845 2.162.102.143 1.461 2.23 3.542 3.125.495.213.882.34 1.183.437.498.158.951.135 1.31.083.399-.057 1.22-.5 1.392-1.012.172-.513.172-.951.121-1.042-.05-.092-.192-.135-.403-.243Z"/>
-                        </svg>
+                {isAdmin && (
+                  <div className="px-1 mb-4">
+                    <div className="bg-gradient-to-r from-[#25D366]/10 to-[#128C7E]/10 border border-[#25D366]/20 rounded-3xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                      <div className="flex items-center space-x-3 w-full sm:w-auto">
+                        <div className="w-10 h-10 rounded-full bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" className="text-[#25D366]" viewBox="0 0 16 16">
+                            <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.948h.003c4.368 0 7.927-3.558 7.929-7.93a7.88 7.88 0 0 0-2.325-5.614M10.59 10.62c-.455.082-.593-.182-.743-.455-.179-.327-.513-.918-.636-1.161-.123-.243-.164-.365-.082-.487.082-.122.365-.426.548-.68.182-.254.218-.396.122-.593-.082-.182-.513-1.235-.742-1.744-.216-.481-.433-.42-.636-.433l-.403-.008c-.201 0-.527.078-.718.29-.191.212-.73.713-.73 1.74 0 1.026.742 2.019.845 2.162.102.143 1.461 2.23 3.542 3.125.495.213.882.34 1.183.437.498.158.951.135 1.31.083.399-.057 1.22-.5 1.392-1.012.172-.513.172-.951.121-1.042-.05-.092-.192-.135-.403-.243Z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className="text-white text-xs font-black uppercase tracking-wider">Compartilhar Pelada</h4>
+                          <p className="text-[10px] text-gray-400 font-medium">Envie a lista de confirmados, vagas e fila no WhatsApp.</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-white text-xs font-black uppercase tracking-wider">Compartilhar Pelada</h4>
-                        <p className="text-[10px] text-gray-400 font-medium">Envie a lista de confirmados, vagas e fila no WhatsApp.</p>
+                      
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                        <button
+                          onClick={handleCopyToClipboard}
+                          className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 text-gray-300 text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                        >
+                          Copiar
+                        </button>
+                        <a
+                          href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generateWhatsAppText())}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-bg text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-lg shadow-[#25D366]/20"
+                        >
+                          WhatsApp
+                        </a>
                       </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                      <button
-                        onClick={handleCopyToClipboard}
-                        className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 text-gray-300 text-xs font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                      >
-                        Copiar
-                      </button>
-                      <a
-                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(generateWhatsAppText())}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 sm:flex-initial h-10 px-4 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-bg text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-lg shadow-[#25D366]/20"
-                      >
-                        WhatsApp
-                      </a>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Search Player Input */}
                 <div className="px-1">

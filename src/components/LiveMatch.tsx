@@ -2660,8 +2660,11 @@ export default function LiveMatch() {
           {activeMatch.teams && orderedTeamKeys.map(key => {
             const teamIds = activeMatch.teams[key] || [];
             const sortedIds = teamIds as string[];
+            const targetSize = activeMatch.playersPerTeam || 6;
+            const vacantCount = Math.max(0, targetSize - sortedIds.length);
             const completedRoster = completedScheduledPlayers?.allCompleted?.[key] || [];
-            const suggestedIdsForTeam = completedRoster.filter(id => !sortedIds.includes(id));
+            const allSuggestions = completedRoster.filter(id => !sortedIds.includes(id));
+            const suggestedIdsForTeam = allSuggestions.slice(0, vacantCount);
 
             return (
               <div key={key} className="bg-card p-5 rounded-[2rem] border border-border/50 relative overflow-hidden group shadow-xl">

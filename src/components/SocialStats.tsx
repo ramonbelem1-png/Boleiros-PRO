@@ -10,49 +10,22 @@ export default function SocialStats() {
   const [calculating, setCalculating] = React.useState(false);
 
   const handleShare = async () => {
-    const list = getSortedRanking();
-    
-    const topScorerShare = [...list].sort((a, b) => {
-      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
-      return b.totalPts - a.totalPts;
-    })[0];
-    
-    const topAssisterShare = [...list].sort((a, b) => {
-      if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
-      return b.totalPts - a.totalPts;
-    })[0];
-    
-    const topPointsShare = [...list].sort((a, b) => {
-      if (b.totalPts !== a.totalPts) return b.totalPts - a.totalPts;
-      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
-      return (b.assistencias || 0) - (a.assistencias || 0);
-    })[0];
-
-    // Pereba: Active player with the lowest score
-    const activePlayers = [...list].filter(p => (p.gamesPlayed || 0) > 0);
-    const candidates = activePlayers.length > 0 ? activePlayers : list;
-    const perebaShare = [...candidates].sort((a, b) => {
-      if (a.totalPts !== b.totalPts) return a.totalPts - b.totalPts; // Lowest points first
-      if ((b.contra || 0) !== (a.contra || 0)) return (b.contra || 0) - (a.contra || 0); // More own goals is worse
-      return (a.vitorias || 0) - (b.vitorias || 0); // Fewer wins is worse
-    })[0];
-    
     const periodLabel = period === 'geral' ? 'Geral' : period === 'temporada' ? 'Temporada' : period === 'mes' ? 'Mês' : 'Rodada';
 
-    const scorerText = topScorerShare && (topScorerShare.gols || 0) > 0 
-      ? `${topScorerShare.displayName || topScorerShare.name} - ${topScorerShare.gols} ${topScorerShare.gols === 1 ? 'gol' : 'gols'}`
+    const scorerText = goleadores.length > 0
+      ? `${goleadores.map(p => p.displayName || p.name).join(', ')} - ${goleadores[0].gols} ${goleadores[0].gols === 1 ? 'gol' : 'gols'}`
       : '-';
 
-    const assisterText = topAssisterShare 
-      ? `${topAssisterShare.displayName || topAssisterShare.name} - ${(topAssisterShare.assistencias || 0)} assist.`
+    const assisterText = garcons.length > 0 
+      ? `${garcons.map(p => p.displayName || p.name).join(', ')} - ${garcons[0].assistencias} assist.`
       : '-';
 
-    const pointsText = topPointsShare 
-      ? `${topPointsShare.displayName || topPointsShare.name} - ${topPointsShare.totalPts} ${topPointsShare.totalPts === 1 ? 'pt' : 'pts'}`
+    const pointsText = craques.length > 0 
+      ? `${craques.map(p => p.displayName || p.name).join(', ')} - ${craques[0].totalPts} ${craques[0].totalPts === 1 ? 'pt' : 'pts'}`
       : '-';
 
-    const perebaText = perebaShare 
-      ? `${perebaShare.displayName || perebaShare.name} - ${perebaShare.totalPts} ${perebaShare.totalPts === 1 ? 'pt' : 'pts'}`
+    const perebaText = perebas.length > 0 
+      ? `${perebas.map(p => p.displayName || p.name).join(', ')} - ${perebas[0].totalPts} ${perebas[0].totalPts === 1 ? 'pt' : 'pts'}`
       : '-';
 
     const shareUrl = window.location.origin.includes('localhost') || window.location.origin.includes('ais-dev') || window.location.origin.includes('ais-pre')
@@ -222,36 +195,34 @@ export default function SocialStats() {
     return list;
   }, [players, period, periodStats]);
 
-  const topOverall = React.useMemo(() => {
-    return [...periodRanking].sort((a, b) => {
-      if (b.totalPts !== a.totalPts) return b.totalPts - a.totalPts;
-      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
-      return (b.vitorias || 0) - (a.vitorias || 0);
-    })[0];
+  const craques = React.useMemo(() => {
+    if (periodRanking.length === 0) return [];
+    const maxPts = Math.max(...periodRanking.map(p => p.totalPts));
+    if (maxPts < 0) return [];
+    return periodRanking.filter(p => p.totalPts === maxPts);
   }, [periodRanking]);
 
-  const topScorer = React.useMemo(() => {
-    return [...periodRanking].sort((a, b) => {
-      if ((b.gols || 0) !== (a.gols || 0)) return (b.gols || 0) - (a.gols || 0);
-      return b.totalPts - a.totalPts;
-    })[0];
+  const goleadores = React.useMemo(() => {
+    if (periodRanking.length === 0) return [];
+    const maxGols = Math.max(...periodRanking.map(p => p.gols || 0));
+    if (maxGols <= 0) return [];
+    return periodRanking.filter(p => (p.gols || 0) === maxGols);
   }, [periodRanking]);
 
-  const topAssister = React.useMemo(() => {
-    return [...periodRanking].sort((a, b) => {
-      if ((b.assistencias || 0) !== (a.assistencias || 0)) return (b.assistencias || 0) - (a.assistencias || 0);
-      return b.totalPts - a.totalPts;
-    })[0];
+  const garcons = React.useMemo(() => {
+    if (periodRanking.length === 0) return [];
+    const maxAssists = Math.max(...periodRanking.map(p => p.assistencias || 0));
+    if (maxAssists <= 0) return [];
+    return periodRanking.filter(p => (p.assistencias || 0) === maxAssists);
   }, [periodRanking]);
 
-  const topPereba = React.useMemo(() => {
-    const activePlayers = [...periodRanking].filter(p => (p.gamesPlayed || 0) > 0);
+  const perebas = React.useMemo(() => {
+    if (periodRanking.length === 0) return [];
+    const activePlayers = periodRanking.filter(p => (p.gamesPlayed || 0) > 0);
     const candidates = activePlayers.length > 0 ? activePlayers : periodRanking;
-    return [...candidates].sort((a, b) => {
-      if (a.totalPts !== b.totalPts) return a.totalPts - b.totalPts;
-      if ((b.contra || 0) !== (a.contra || 0)) return (b.contra || 0) - (a.contra || 0);
-      return (a.vitorias || 0) - (b.vitorias || 0);
-    })[0];
+    if (candidates.length === 0) return [];
+    const minPts = Math.min(...candidates.map(p => p.totalPts));
+    return candidates.filter(p => p.totalPts === minPts);
   }, [periodRanking]);
 
   if (loading) return <div className="p-8 text-center text-gray-500 text-xs font-bold uppercase tracking-widest animate-pulse">Carregando Rankings...</div>;
@@ -413,12 +384,33 @@ export default function SocialStats() {
             </div>
 
             <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-              <AwardItem label="CRAQUE" name={topOverall ? (topOverall.displayName || topOverall.name) : "-"} icon={<Trophy size={14} />} />
-              <AwardItem label="GOLEADOR" name={topScorer && (topScorer.gols || 0) > 0 ? `${topScorer.displayName || topScorer.name} - ${topScorer.gols} ${topScorer.gols === 1 ? 'gol' : 'gols'}` : "-"} icon={<Star size={14} />} />
-              <AwardItem label="GARÇOM" name={topAssister ? `${topAssister.displayName || topAssister.name} - ${(topAssister.assistencias || 0)} assist.` : "-"} icon={<Star size={14} />} />
-              <AwardItem label="PONTUAÇÃO" name={topOverall ? `${topOverall.displayName || topOverall.name} - ${topOverall.totalPts} ${topOverall.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<TrendingUp size={14} />} />
+              <AwardItem 
+                label="CRAQUE" 
+                name={craques.length > 0 ? craques.map(p => p.displayName || p.name).join(', ') : "-"} 
+                icon={<Trophy size={14} />} 
+              />
+              <AwardItem 
+                label="GOLEADOR" 
+                name={goleadores.length > 0 ? `${goleadores.map(p => p.displayName || p.name).join(', ')} - ${goleadores[0].gols} ${goleadores[0].gols === 1 ? 'gol' : 'gols'}` : "-"} 
+                icon={<Star size={14} />} 
+              />
+              <AwardItem 
+                label="GARÇOM" 
+                name={garcons.length > 0 ? `${garcons.map(p => p.displayName || p.name).join(', ')} - ${garcons[0].assistencias} assist.` : "-"} 
+                icon={<Star size={14} />} 
+              />
+              <AwardItem 
+                label="PONTUAÇÃO" 
+                name={craques.length > 0 ? `${craques.map(p => p.displayName || p.name).join(', ')} - ${craques[0].totalPts} ${craques[0].totalPts === 1 ? 'pt' : 'pts'}` : "-"} 
+                icon={<TrendingUp size={14} />} 
+              />
               <div className="col-span-2 pt-4 border-t border-white/5">
-                <AwardItem label="PEREBA" name={topPereba ? `${topPereba.displayName || topPereba.name} - ${topPereba.totalPts} ${topPereba.totalPts === 1 ? 'pt' : 'pts'}` : "-"} icon={<span className="text-sm">🐢</span>} isBad={true} />
+                <AwardItem 
+                  label="PEREBA" 
+                  name={perebas.length > 0 ? `${perebas.map(p => p.displayName || p.name).join(', ')} - ${perebas[0].totalPts} ${perebas[0].totalPts === 1 ? 'pt' : 'pts'}` : "-"} 
+                  icon={<span className="text-sm">🐢</span>} 
+                  isBad={true} 
+                />
               </div>
             </div>
           </div>
@@ -437,7 +429,7 @@ function AwardItem({ label, name, icon, isBad = false }: { label: string, name: 
         </div>
         <span className="text-[10px] font-black uppercase tracking-widest leading-none">{label}</span>
       </div>
-      <p className="text-sm font-bold text-white truncate">{name}</p>
+      <p className="text-sm font-bold text-white leading-tight break-words">{name}</p>
     </div>
   );
 }

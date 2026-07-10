@@ -424,6 +424,11 @@ export default function LiveMatch() {
     const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
     let sequence = [...validTeamKeys]; // initially [0, 1, 2, ...]
 
+    const gamesPlayedMap: Record<number, number> = {};
+    validTeamKeys.forEach(k => {
+      gamesPlayedMap[k] = 0;
+    });
+
     const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
       if (teamName && teamName.startsWith('Time ')) {
         const teamNum = parseInt(teamName.replace('Time ', ''), 10);
@@ -457,17 +462,46 @@ export default function LiveMatch() {
 
     gameTeams.forEach(gt => {
       const { teamA, teamB, scoreA, scoreB } = gt;
-      if (teamA === -1 || teamB === -1) return;
+      if (teamA === -1 || teamB === -1 || teamA === teamB) return;
+
+      // Track games played for both teams
+      gamesPlayedMap[teamA] = (gamesPlayedMap[teamA] || 0) + 1;
+      gamesPlayedMap[teamB] = (gamesPlayedMap[teamB] || 0) + 1;
 
       const isDraw = scoreA === scoreB;
       const winA = scoreA > scoreB;
       
       if (isDraw) {
         // Draw: both leave the field, they both go to the end of the sequence.
+        const playedA = gamesPlayedMap[teamA] || 0;
+        const playedB = gamesPlayedMap[teamB] || 0;
+
+        let firstToPush: number;
+        let lastToPush: number;
+
+        if (playedA > playedB) {
+          // A played more, so A goes last
+          firstToPush = teamB;
+          lastToPush = teamA;
+        } else if (playedB > playedA) {
+          // B played more, so B goes last
+          firstToPush = teamA;
+          lastToPush = teamB;
+        } else {
+          // Equal games played: lower team index has preference (goes first), higher team index goes last
+          if (teamA < teamB) {
+            firstToPush = teamA;
+            lastToPush = teamB;
+          } else {
+            firstToPush = teamB;
+            lastToPush = teamA;
+          }
+        }
+
         // We filter out teamA and teamB and push them at the end.
         sequence = sequence.filter(x => x !== teamA && x !== teamB);
-        sequence.push(teamA);
-        sequence.push(teamB);
+        sequence.push(firstToPush);
+        sequence.push(lastToPush);
       } else {
         const winner = winA ? teamA : teamB;
         const loser = winA ? teamB : teamA;
@@ -481,7 +515,7 @@ export default function LiveMatch() {
       }
     });
 
-    return sequence;
+    return Array.from(new Set(sequence));
   }, [finishedGames, activeMatch?.teams]);
 
   // 3. Compute suggested active state and waiting queue
@@ -794,10 +828,17 @@ export default function LiveMatch() {
     benchedPlayerIds.sort(comparePlayersByWaitTime);
 
     // Build the ordered team keys for cascading suggestion:
-    // Use the queue priority order (orderedTeamKeys) so that higher-priority teams
-    // get filled and completed first!
-    const allTeamKeys = Object.keys(activeMatch.teams).sort((a, b) => Number(a) - Number(b));
-    const orderedKeys = orderedTeamKeys;
+    // Ensure the currently scheduled teams (teamAKey, teamBKey) are processed first
+    // so they have highest priority to borrow players from subsequent teams,
+    // following the circular sequence starting from them.
+    const orderedKeys: string[] = [];
+    if (teamAKey) orderedKeys.push(teamAKey);
+    if (teamBKey && teamBKey !== teamAKey) orderedKeys.push(teamBKey);
+    orderedTeamKeys.forEach(key => {
+      if (!orderedKeys.includes(key)) {
+        orderedKeys.push(key);
+      }
+    });
 
     const completed: Record<string, string[]> = {};
     const committed = new Set<string>();

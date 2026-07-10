@@ -417,13 +417,12 @@ export default function LiveMatch() {
   // 2. Identify the number of teams
   const teamsCount = Object.keys(activeMatch?.teams || {}).length;
 
-  // Reconstruct the exact circular sequence/queue of all teams based on chronological results of finished games.
+  // Reconstruct the exact circular sequence/queue of all teams based on chronological results of finished games and team creation times.
   const simulatedSequence = useMemo(() => {
     if (!activeMatch?.teams) return [];
     
-    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
-    let sequence = [...validTeamKeys]; // initially [0, 1, 2, ...]
-
+    const validTeamKeys = Object.keys(activeMatch.teams).map(Number).sort((a, b) => a - b);
+    
     const gamesPlayedMap: Record<number, number> = {};
     validTeamKeys.forEach(k => {
       gamesPlayedMap[k] = 0;
@@ -460,63 +459,110 @@ export default function LiveMatch() {
       return { teamA, teamB, scoreA: game.scoreA ?? 0, scoreB: game.scoreB ?? 0 };
     });
 
-    gameTeams.forEach(gt => {
-      const { teamA, teamB, scoreA, scoreB } = gt;
-      if (teamA === -1 || teamB === -1 || teamA === teamB) return;
+    // We compile a chronological list of events: team additions and game completions.
+    interface SimulationEvent {
+      type: 'TEAM_CREATED' | 'GAME_FINISHED';
+      timestamp: number;
+      teamKey?: number;
+      game?: { teamA: number; teamB: number; scoreA: number; scoreB: number };
+    }
 
-      // Track games played for both teams
-      gamesPlayedMap[teamA] = (gamesPlayedMap[teamA] || 0) + 1;
-      gamesPlayedMap[teamB] = (gamesPlayedMap[teamB] || 0) + 1;
+    const events: SimulationEvent[] = [];
 
-      const isDraw = scoreA === scoreB;
-      const winA = scoreA > scoreB;
-      
-      if (isDraw) {
-        // Draw: both leave the field, they both go to the end of the sequence.
-        const playedA = gamesPlayedMap[teamA] || 0;
-        const playedB = gamesPlayedMap[teamB] || 0;
+    validTeamKeys.forEach(k => {
+      const tCreated = activeMatch.teamCreatedTimes?.[String(k)] ?? (Number(k) * 1000);
+      events.push({
+        type: 'TEAM_CREATED',
+        timestamp: tCreated,
+        teamKey: k
+      });
+    });
 
-        let firstToPush: number;
-        let lastToPush: number;
+    gameTeams.forEach((gt, idx) => {
+      const game = finishedGames[idx];
+      const gameTime = game.startTime?.toDate?.().getTime() || 
+                       (typeof game.startTime === 'number' ? game.startTime : 
+                        (game.startTime ? new Date(game.startTime).getTime() : 0)) ||
+                       (Date.now() - (finishedGames.length - idx) * 10000);
+      events.push({
+        type: 'GAME_FINISHED',
+        timestamp: gameTime,
+        game: gt
+      });
+    });
 
-        if (playedA > playedB) {
-          // A played more, so A goes last
-          firstToPush = teamB;
-          lastToPush = teamA;
-        } else if (playedB > playedA) {
-          // B played more, so B goes last
-          firstToPush = teamA;
-          lastToPush = teamB;
-        } else {
-          // Equal games played: lower team index has preference (goes first), higher team index goes last
-          if (teamA < teamB) {
+    // Sort events chronologically. If timestamps are identical, TEAM_CREATED should be processed first.
+    events.sort((a, b) => {
+      if (a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      if (a.type === 'TEAM_CREATED' && b.type !== 'TEAM_CREATED') return -1;
+      if (b.type === 'TEAM_CREATED' && a.type !== 'TEAM_CREATED') return 1;
+      return 0;
+    });
+
+    let sequence: number[] = [];
+
+    events.forEach(evt => {
+      if (evt.type === 'TEAM_CREATED') {
+        const tk = evt.teamKey!;
+        if (!sequence.includes(tk)) {
+          sequence.push(tk);
+        }
+      } else if (evt.type === 'GAME_FINISHED') {
+        const gt = evt.game!;
+        const { teamA, teamB, scoreA, scoreB } = gt;
+        if (teamA === -1 || teamB === -1 || teamA === teamB) return;
+
+        // Ensure both teams exist in our sequence
+        if (!sequence.includes(teamA)) sequence.push(teamA);
+        if (!sequence.includes(teamB)) sequence.push(teamB);
+
+        gamesPlayedMap[teamA] = (gamesPlayedMap[teamA] || 0) + 1;
+        gamesPlayedMap[teamB] = (gamesPlayedMap[teamB] || 0) + 1;
+
+        const isDraw = scoreA === scoreB;
+        const winA = scoreA > scoreB;
+
+        if (isDraw) {
+          const playedA = gamesPlayedMap[teamA] || 0;
+          const playedB = gamesPlayedMap[teamB] || 0;
+
+          let firstToPush: number;
+          let lastToPush: number;
+
+          if (playedA > playedB) {
+            firstToPush = teamB;
+            lastToPush = teamA;
+          } else if (playedB > playedA) {
             firstToPush = teamA;
             lastToPush = teamB;
           } else {
-            firstToPush = teamB;
-            lastToPush = teamA;
+            if (teamA < teamB) {
+              firstToPush = teamA;
+              lastToPush = teamB;
+            } else {
+              firstToPush = teamB;
+              lastToPush = teamA;
+            }
           }
+
+          sequence = sequence.filter(x => x !== teamA && x !== teamB);
+          sequence.push(firstToPush);
+          sequence.push(lastToPush);
+        } else {
+          const winner = winA ? teamA : teamB;
+          const loser = winA ? teamB : teamA;
+
+          sequence = sequence.filter(x => x !== winner && x !== loser);
+          sequence.unshift(winner);
+          sequence.push(loser);
         }
-
-        // We filter out teamA and teamB and push them at the end.
-        sequence = sequence.filter(x => x !== teamA && x !== teamB);
-        sequence.push(firstToPush);
-        sequence.push(lastToPush);
-      } else {
-        const winner = winA ? teamA : teamB;
-        const loser = winA ? teamB : teamA;
-
-        // The winner goes/stays at the top (first position)
-        // The loser goes to the very end of the sequence (last position)
-        // The rest of the teams maintain their relative order in between.
-        sequence = sequence.filter(x => x !== winner && x !== loser);
-        sequence.unshift(winner);
-        sequence.push(loser);
       }
     });
 
     return Array.from(new Set(sequence));
-  }, [finishedGames, activeMatch?.teams]);
+  }, [finishedGames, activeMatch?.teams, activeMatch?.teamCreatedTimes]);
 
   // 3. Compute suggested active state and waiting queue
   const queueState = useMemo(() => {
@@ -601,7 +647,8 @@ export default function LiveMatch() {
     } else {
       // 2 teams currently on the field
       if (waitingTeams.length > 0) {
-        suggested = [currentOnField[0] !== undefined ? currentOnField[0] : 0, waitingTeams[0]];
+        const fallbackId = validTeamKeys[0] !== undefined ? validTeamKeys[0] : 0;
+        suggested = [currentOnField[0] !== undefined ? currentOnField[0] : fallbackId, waitingTeams[0]];
       } else {
         suggested = validTeamKeys.slice(0, 2);
       }
@@ -665,38 +712,60 @@ export default function LiveMatch() {
 
   // 4. Auto-update scheduledTeamA and scheduledTeamB to match suggestions by default
   useEffect(() => {
+    if (!activeMatch?.teams) return;
+    const keys = Object.keys(activeMatch.teams).sort((a, b) => Number(a) - Number(b));
+    if (keys.length === 0) return;
+
+    let targetA = scheduledTeamA;
+    let targetB = scheduledTeamB;
+
     if (liveGame) {
       // When a game is active, auto-suggest the first two waiting teams in the queue
       if (queueState.queue.length >= 2) {
-        setScheduledTeamA(String(queueState.queue[0]));
-        setScheduledTeamB(String(queueState.queue[1]));
+        targetA = String(queueState.queue[0]);
+        targetB = String(queueState.queue[1]);
       } else if (queueState.queue.length === 1) {
-        setScheduledTeamA(String(queueState.queue[0]));
-        const otherKey = Object.keys(activeMatch?.teams || {}).find(k => k !== String(queueState.queue[0]));
+        targetA = String(queueState.queue[0]);
+        const otherKey = keys.find(k => k !== String(queueState.queue[0]));
         if (otherKey !== undefined) {
-          setScheduledTeamB(otherKey);
+          targetB = otherKey;
         }
       }
     } else {
       // Standard lobby behavior
       if (queueState.suggested.length >= 2) {
-        setScheduledTeamA(String(queueState.suggested[0]));
-        setScheduledTeamB(String(queueState.suggested[1]));
+        targetA = String(queueState.suggested[0]);
+        targetB = String(queueState.suggested[1]);
       } else if (queueState.suggested.length === 1) {
-        setScheduledTeamA(String(queueState.suggested[0]));
+        targetA = String(queueState.suggested[0]);
         if (queueState.queue.length > 0) {
           const other = queueState.queue.find(q => q !== queueState.suggested[0]);
           if (other !== undefined) {
-            setScheduledTeamB(String(other));
+            targetB = String(other);
           } else {
-            setScheduledTeamB('0');
+            targetB = keys.find(k => k !== String(queueState.suggested[0])) || keys[0] || '0';
           }
         } else {
-          setScheduledTeamB('0');
+          targetB = keys.find(k => k !== String(queueState.suggested[0])) || keys[0] || '0';
         }
       }
     }
-  }, [queueState.suggested, queueState.queue, liveGame, activeMatch?.teams]);
+
+    // Ensure targetA and targetB are always valid keys of activeMatch.teams and not equal
+    if (activeMatch.teams[targetA] === undefined) {
+      targetA = keys[0] || '0';
+    }
+    if (activeMatch.teams[targetB] === undefined || targetB === targetA) {
+      targetB = keys.find(k => k !== targetA) || keys[0] || '0';
+    }
+
+    if (targetA !== scheduledTeamA) {
+      setScheduledTeamA(targetA);
+    }
+    if (targetB !== scheduledTeamB) {
+      setScheduledTeamB(targetB);
+    }
+  }, [queueState.suggested, queueState.queue, liveGame, activeMatch?.teams, scheduledTeamA, scheduledTeamB]);
 
   // Auto-healing to detect and remove duplicate player assignments across static teams in real-time
   useEffect(() => {
@@ -743,6 +812,51 @@ export default function LiveMatch() {
       }
     }
   }, [activeMatch?.id, activeMatch?.teams, updateMatch]);
+
+  // Auto-healing / sync teamCreatedTimes and nextTeamIndex in the database
+  useEffect(() => {
+    if (!activeMatch?.id || !activeMatch.teams || !isAdmin) return;
+
+    const existingTimes = activeMatch.teamCreatedTimes || {};
+    const teamKeys = Object.keys(activeMatch.teams);
+    let hasMissing = false;
+    const updatedTimes = { ...existingTimes };
+
+    teamKeys.forEach(k => {
+      if (updatedTimes[k] === undefined) {
+        hasMissing = true;
+        // For pre-existing teams, assign a default timestamp based on key value to preserve original order
+        updatedTimes[k] = Number(k) * 1000;
+      }
+    });
+
+    // Clean up timestamps of deleted teams
+    Object.keys(existingTimes).forEach(k => {
+      if (activeMatch.teams![k] === undefined) {
+        hasMissing = true;
+        delete updatedTimes[k];
+      }
+    });
+
+    const maxKey = teamKeys.length > 0 ? Math.max(...teamKeys.map(Number)) : -1;
+    let nextIndexUpdate = activeMatch.nextTeamIndex;
+    let nextIndexChanged = false;
+
+    if (activeMatch.nextTeamIndex === undefined || activeMatch.nextTeamIndex <= maxKey) {
+      nextIndexUpdate = maxKey + 1;
+      nextIndexChanged = true;
+    }
+
+    if (hasMissing || nextIndexChanged) {
+      const updateData: any = {};
+      if (hasMissing) updateData.teamCreatedTimes = updatedTimes;
+      if (nextIndexChanged) updateData.nextTeamIndex = nextIndexUpdate;
+
+      updateMatch(activeMatch.id, updateData).catch((err) => {
+        console.error("[LiveMatch] Erro ao sincronizar timestamps e próximo índice das equipes:", err);
+      });
+    }
+  }, [activeMatch?.id, activeMatch?.teams, activeMatch?.teamCreatedTimes, activeMatch?.nextTeamIndex, isAdmin, updateMatch]);
 
   const completedScheduledPlayers = useMemo(() => {
     if (!activeMatch?.teams) return { teamA: [], teamB: [] };
@@ -1344,15 +1458,8 @@ export default function LiveMatch() {
         // Remove the team key
         delete currentTeams[teamKey];
         
-        // Reindex remaining keys sequentially to avoid gaps
-        const remainingKeys = Object.keys(currentTeams).map(Number).sort((a, b) => a - b);
-        const reindexedTeams: Record<string, string[]> = {};
-        remainingKeys.forEach((k, idx) => {
-          reindexedTeams[String(idx)] = currentTeams[String(k)] || [];
-        });
-        
-        await updateMatch(activeMatch.id, { teams: reindexedTeams });
-        console.log("[LiveMatch] Equipe excluída com sucesso e reordenada");
+        await updateMatch(activeMatch.id, { teams: currentTeams });
+        console.log("[LiveMatch] Equipe excluída com sucesso");
       } catch (error: any) {
         console.error("Erro ao excluir equipe:", error);
       }
@@ -1536,12 +1643,26 @@ export default function LiveMatch() {
     if (!activeMatch) return;
     const currentTeams = { ...(activeMatch.teams || {}) };
     const keys = Object.keys(currentTeams).map(Number);
-    const nextKeyNum = keys.length > 0 ? Math.max(...keys) + 1 : 0;
+    
+    let nextKeyNum = 0;
+    if (activeMatch.nextTeamIndex !== undefined) {
+      nextKeyNum = activeMatch.nextTeamIndex;
+    } else {
+      nextKeyNum = keys.length > 0 ? Math.max(...keys) + 1 : 0;
+    }
+    
     const nextKey = String(nextKeyNum);
     currentTeams[nextKey] = [];
     
+    const updatedTimes = { ...(activeMatch.teamCreatedTimes || {}) };
+    updatedTimes[nextKey] = Date.now();
+    
     try {
-      await updateMatch(activeMatch.id, { teams: currentTeams });
+      await updateMatch(activeMatch.id, { 
+        teams: currentTeams,
+        teamCreatedTimes: updatedTimes,
+        nextTeamIndex: nextKeyNum + 1
+      });
       setEditingTeamIndex(nextKeyNum);
       setSwapTarget({ type: 'PLAYER', teamSide: 'A', mode: 'ADD' });
     } catch (error) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Player, Transaction, usePelada, formatPosition } from '../hooks/usePelada';
-import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check } from 'lucide-react';
+import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check, Search } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthProvider';
@@ -133,7 +133,7 @@ function CreateMatchModal({ onSave, onClose }: any) {
 }
 
 function TransactionModal({ onSave, onClose, initialData }: any) {
-  const { players } = usePelada();
+  const { players, settings } = usePelada();
   
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -148,6 +148,7 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
   const [desc, setDesc] = useState(initialData?.description || '');
   const [category, setCategory] = useState(initialData?.category || 'OTHER');
   const [playerId, setPlayerId] = useState(initialData?.playerId || '');
+  const [playerSearch, setPlayerSearch] = useState('');
   
   // Ref mensalidade
   const now = new Date();
@@ -173,11 +174,25 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
     setDisplayAmount(formatCurrency(numericValue));
   };
 
+  const handleCategoryChange = (newCat: string) => {
+    setCategory(newCat);
+    if (newCat === 'MONTHLY') {
+      const fee = settings?.monthlyFee || 50;
+      setAmount(fee);
+      setDisplayAmount(formatCurrency(fee));
+    } else if (newCat === 'DAILY') {
+      const fee = settings?.dailyFee || 15;
+      setAmount(fee);
+      setDisplayAmount(formatCurrency(fee));
+    }
+  };
+
   const categories = [
     { id: 'MONTHLY', label: 'Mensalidade' },
     { id: 'DAILY', label: 'Diarista' },
     { id: 'FIELD_RENT', label: 'Aluguel' },
     { id: 'BALL', label: 'Bola' },
+    { id: 'REFEREE', label: 'Arbitragem' },
     { id: 'OTHER', label: 'Outros' }
   ];
 
@@ -215,7 +230,7 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
           {categories.map(cat => (
             <button 
               key={cat.id}
-              onClick={() => setCategory(cat.id as any)}
+              onClick={() => handleCategoryChange(cat.id)}
               className={`py-2 px-3 rounded-lg border text-[10px] font-black tracking-widest text-left flex items-center justify-between transition-all ${
                 category === cat.id ? 'bg-primary/20 border-primary text-primary' : 'border-border text-gray-500'
               }`}
@@ -267,35 +282,61 @@ function TransactionModal({ onSave, onClose, initialData }: any) {
               <button onClick={() => setPlayerId('')} className="text-[10px] text-primary font-bold">Limpar</button>
             )}
           </div>
+          
+          <div className="relative">
+            <input 
+              type="text"
+              placeholder="Buscar jogador..."
+              value={playerSearch}
+              onChange={(e) => setPlayerSearch(e.target.value)}
+              className="w-full bg-bg border border-border rounded-xl py-2 pl-9 pr-3 text-xs text-gray-100 placeholder-gray-500 focus:border-primary outline-none"
+            />
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={14} />
+          </div>
+
           <div className="max-h-40 overflow-y-auto space-y-1 p-2 bg-bg/50 rounded-xl border border-border/50 scrollbar-thin">
-            {players.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPlayerId(p.id)}
-                className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-all ${
-                  playerId === p.id ? 'bg-primary text-bg' : 'hover:bg-white/5 text-gray-400'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    playerId === p.id ? 'bg-bg/20' : 'bg-gray-800'
-                  }`}>
-                    {(p.displayName || p.name).charAt(0)}
+            {players.filter((p: any) => {
+              const name = (p.displayName || p.name || '').toLowerCase();
+              const numStr = p.number !== undefined && p.number !== null ? String(p.number) : '';
+              const q = playerSearch.toLowerCase();
+              return name.includes(q) || numStr.includes(q);
+            }).length === 0 ? (
+              <p className="text-[10px] text-gray-500 text-center py-2">Nenhum jogador encontrado</p>
+            ) : (
+              players.filter((p: any) => {
+                const name = (p.displayName || p.name || '').toLowerCase();
+                const numStr = p.number !== undefined && p.number !== null ? String(p.number) : '';
+                const q = playerSearch.toLowerCase();
+                return name.includes(q) || numStr.includes(q);
+              }).map((p: any) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPlayerId(p.id)}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-all ${
+                    playerId === p.id ? 'bg-primary text-bg' : 'hover:bg-white/5 text-gray-400'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      playerId === p.id ? 'bg-bg/20' : 'bg-gray-800'
+                    }`}>
+                      {(p.displayName || p.name).charAt(0)}
+                    </div>
+                    <span className="text-xs font-semibold truncate flex items-center gap-1.5">
+                      {p.displayName || p.name}
+                      {p.number !== undefined && p.number !== null && (
+                        <span className={`text-[9px] font-mono font-black px-1 rounded shrink-0 ${
+                          playerId === p.id ? 'bg-bg text-primary' : 'bg-primary text-bg'
+                        }`}>
+                          #{p.number}
+                        </span>
+                      )}
+                    </span>
                   </div>
-                  <span className="text-xs font-semibold truncate flex items-center gap-1.5">
-                    {p.displayName || p.name}
-                    {p.number !== undefined && p.number !== null && (
-                      <span className={`text-[9px] font-mono font-black px-1 rounded shrink-0 ${
-                        playerId === p.id ? 'bg-bg text-primary' : 'bg-primary text-bg'
-                      }`}>
-                        #{p.number}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                {playerId === p.id && <Check size={14} />}
-              </button>
-            ))}
+                  {playerId === p.id && <Check size={14} />}
+                </button>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -562,7 +603,7 @@ function PlayerModal({ onSave, onClose, initialData }: any) {
         <label className="relative group cursor-pointer">
           <div className="w-20 h-20 rounded-full bg-bg border-2 border-border/50 flex items-center justify-center overflow-hidden transition-all group-hover:border-primary">
             {photoUrl ? (
-              <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+              <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="text-gray-600 flex flex-col items-center">
                 {uploading ? <Loader2 className="animate-spin" size={20} /> : <Camera size={20} />}

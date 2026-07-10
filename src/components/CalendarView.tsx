@@ -709,7 +709,7 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matc
                {participants.map(p => (
                  <div key={p.id} className="flex items-center space-x-3 bg-bg/50 p-3 rounded-2xl border border-border/20">
                    <div className="w-8 h-8 rounded-full bg-bg border border-border overflow-hidden">
-                     {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{(p.displayName || p.name).charAt(0)}</div>}
+                     {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{(p.displayName || p.name).charAt(0)}</div>}
                    </div>
                    <span className="text-sm font-bold text-white">{p.displayName || p.name}</span>
                  </div>

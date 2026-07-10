@@ -146,7 +146,7 @@ export default function OnboardingProfile({ user, players, onSave, onLogout }: O
             <div className="relative group cursor-pointer">
               <div className="w-24 h-24 rounded-[2rem] bg-bg border-2 border-border/60 hover:border-primary/50 transition-all overflow-hidden flex items-center justify-center">
                 {photoUrl ? (
-                  <img src={photoUrl} alt="Preview" className="w-full h-full object-cover animate-fade-in" />
+                  <img src={photoUrl} alt="Preview" className="w-full h-full object-cover animate-fade-in" referrerPolicy="no-referrer" />
                 ) : (
                   <ImageIcon size={32} className="text-gray-600 group-hover:text-primary transition-all" />
                 )}

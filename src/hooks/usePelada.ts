@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
   query, 
@@ -98,6 +98,8 @@ export interface Match {
   waitingIds: string[];
   result?: { scoreA: number; scoreB: number };
   teams?: Record<string, string[]>; // Map of team index to player UIDs
+  teamCreatedTimes?: Record<string, number>; // Map of team index to creation timestamp
+  nextTeamIndex?: number;
   playersPerTeam?: number;
   gameRules?: string;
   confirmations?: Record<string, string>; // playerId -> ISO timestamp
@@ -110,7 +112,7 @@ export interface Transaction {
   date: any;
   amount: number;
   type: 'INCOME' | 'EXPENSE';
-  category: 'MONTHLY' | 'DAILY' | 'FIELD_RENT' | 'BALL' | 'OTHER';
+  category: 'MONTHLY' | 'DAILY' | 'FIELD_RENT' | 'BALL' | 'REFEREE' | 'OTHER';
   description: string;
   playerId?: string;
   referenceMonth?: string;
@@ -770,6 +772,7 @@ export function usePelada() {
     });
     await updateDoc(doc(db, 'matches', matchId), { 
       teams: teamsObj,
+      nextTeamIndex: teamsIds.length,
       ...extraData
     });
   };
@@ -1418,14 +1421,14 @@ export function usePelada() {
     }
   };
 
-  const getMatchGames = async (matchId: string) => {
+  const getMatchGames = useCallback(async (matchId: string) => {
     const q = query(
       collection(db, 'matches', matchId, 'games'),
       orderBy('startTime', 'asc')
     );
     const snap = await getDocs(q);
     return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
-  };
+  }, []);
 
   return {
     players,

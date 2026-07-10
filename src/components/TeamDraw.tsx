@@ -459,7 +459,7 @@ export default function TeamDraw() {
                         player.position === 'GOLEIRO' ? 'text-yellow-500' : 'text-gray-500'
                       }`}>
                         {player.photoUrl ? (
-                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
+                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           (player.displayName || player.name).charAt(0)
                         )}

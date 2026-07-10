@@ -581,7 +581,7 @@ export default function MatchList() {
                                     <div className="flex items-center space-x-3">
                                       <div className="w-10 h-10 rounded-full bg-bg flex items-center justify-center font-bold text-gray-500 border border-border overflow-hidden">
                                         {p?.photoUrl ? (
-                                          <img src={p.photoUrl} alt={p.displayName || p.name} className="w-full h-full object-cover" />
+                                          <img src={p.photoUrl} alt={p.displayName || p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                         ) : (
                                           (p?.displayName || p?.name || '').charAt(0)
                                         )}
@@ -633,7 +633,7 @@ export default function MatchList() {
                         <div className="flex items-center space-x-4">
                           <div className="w-12 h-12 rounded-full overflow-hidden bg-bg border border-border flex items-center justify-center">
                             {player.photoUrl ? (
-                              <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
+                              <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <span className="text-gray-500 font-bold">{(player.displayName || player.name).charAt(0)}</span>
                             )}
@@ -873,7 +873,7 @@ function PresenceSection({
                 <div className="relative">
                   <div className="w-12 h-12 rounded-full overflow-hidden bg-bg border border-border flex items-center justify-center">
                     {player.photoUrl ? (
-                      <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
+                      <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <span className="text-gray-500 font-bold">{(player.displayName || player.name).charAt(0)}</span>
                     )}

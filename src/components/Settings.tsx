@@ -266,7 +266,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         <div className="bg-card rounded-[32px] p-6 border border-border/50 flex items-center gap-4 mb-2">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 transition-transform hover:scale-105 border border-primary/20 overflow-hidden">
             {currentUserPlayer?.photoUrl ? (
-              <img src={currentUserPlayer.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+              <img src={currentUserPlayer.photoUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <UserCircle size={40} className="stroke-[1.5]" />
             )}
@@ -328,7 +328,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
             <div className="relative z-10 flex flex-col items-center text-center space-y-4 py-4">
               <div className="w-24 h-24 rounded-3xl bg-bg border-2 border-border/50 overflow-hidden shadow-2xl">
                 {currentUserPlayer?.photoUrl ? (
-                  <img src={currentUserPlayer.photoUrl} alt={currentUserPlayer.displayName || currentUserPlayer.name} className="w-full h-full object-cover" />
+                  <img src={currentUserPlayer.photoUrl} alt={currentUserPlayer.displayName || currentUserPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary">
                     <User size={40} />
@@ -451,7 +451,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                             <span className="text-[10px] font-black text-primary mt-1 leading-none">{uploadProgress}%</span>
                           </div>
                         ) : player.photoUrl ? (
-                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
+                          <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           (player.displayName || player.name).charAt(0)
                         )}

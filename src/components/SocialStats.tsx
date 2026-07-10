@@ -9,6 +9,78 @@ export default function SocialStats() {
   const [periodStats, setPeriodStats] = React.useState<Record<string, any>>({});
   const [calculating, setCalculating] = React.useState(false);
 
+  // States for selected historical metrics
+  const [selectedMatchId, setSelectedMatchId] = React.useState<string>('');
+  const [selectedMonthKey, setSelectedMonthKey] = React.useState<string>('');
+  const [selectedYear, setSelectedYear] = React.useState<number | null>(null);
+
+  const finishedMatches = React.useMemo(() => {
+    return matches.filter(m => m.status === 'FINISHED');
+  }, [matches]);
+
+  const availableMonths = React.useMemo(() => {
+    const monthsMap = new Map<string, { year: number; month: number; label: string }>();
+    finishedMatches.forEach(m => {
+      const mDate = m.date?.toDate();
+      if (!mDate) return;
+      const year = mDate.getFullYear();
+      const month = mDate.getMonth(); // 0-indexed
+      const key = `${year}-${month}`;
+      if (!monthsMap.has(key)) {
+        const monthName = mDate.toLocaleDateString('pt-BR', { month: 'long' });
+        const capitalizedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+        monthsMap.set(key, {
+          year,
+          month,
+          label: `${capitalizedMonthName} de ${year}`
+        });
+      }
+    });
+    return Array.from(monthsMap.entries()).map(([key, value]) => ({
+      key,
+      ...value
+    })).sort((a, b) => {
+      const [yearA, monthA] = a.key.split('-').map(Number);
+      const [yearB, monthB] = b.key.split('-').map(Number);
+      if (yearA !== yearB) return yearB - yearA;
+      return monthB - monthA;
+    });
+  }, [finishedMatches]);
+
+  const availableYears = React.useMemo(() => {
+    const yearsSet = new Set<number>();
+    finishedMatches.forEach(m => {
+      const mDate = m.date?.toDate();
+      if (mDate) {
+        yearsSet.add(mDate.getFullYear());
+      }
+    });
+    return Array.from(yearsSet).sort((a, b) => b - a);
+  }, [finishedMatches]);
+
+  const activeMatchId = selectedMatchId || (finishedMatches[0]?.id || '');
+  const activeMonthKey = selectedMonthKey || (availableMonths[0]?.key || '');
+  const activeYear = selectedYear || (availableYears[0] || new Date().getFullYear());
+
+  const selectedMatch = React.useMemo(() => {
+    return finishedMatches.find(m => m.id === activeMatchId);
+  }, [selectedMatchId, finishedMatches, activeMatchId]);
+
+  const selectedMatchLabel = React.useMemo(() => {
+    if (!selectedMatch) return 'Sem Rodada';
+    const mDate = selectedMatch.date?.toDate();
+    const formattedDate = mDate ? mDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const isLatest = finishedMatches[0]?.id === selectedMatch.id;
+    return isLatest ? `Última Rodada (${formattedDate})` : `Rodada de ${formattedDate}`;
+  }, [selectedMatch, finishedMatches]);
+
+  const selectedMonthLabel = React.useMemo(() => {
+    const found = availableMonths.find(m => m.key === activeMonthKey);
+    return found ? found.label : 'Mês atual';
+  }, [availableMonths, activeMonthKey]);
+
+  const selectedYearLabel = `Temporada ${activeYear}`;
+
   const handleShare = async () => {
     const periodLabel = period === 'geral' ? 'Geral' : period === 'temporada' ? 'Temporada' : period === 'mes' ? 'Mês' : 'Rodada';
 
@@ -58,18 +130,37 @@ export default function SocialStats() {
       setCalculating(true);
       const stats: Record<string, any> = {};
       
-      const now = new Date();
-      const startOfYear = new Date(now.getFullYear(), 0, 1);
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      
-      let targetMatches = matches.filter(m => m.status === 'FINISHED');
+      let targetMatches = [...finishedMatches];
 
       if (period === 'rodada') {
-        targetMatches = targetMatches.slice(0, 1);
+        if (activeMatchId) {
+          targetMatches = targetMatches.filter(m => m.id === activeMatchId);
+        } else {
+          targetMatches = targetMatches.slice(0, 1);
+        }
       } else if (period === 'mes') {
-        targetMatches = targetMatches.filter(m => m.date.toDate() >= startOfMonth);
+        if (activeMonthKey) {
+          const [year, month] = activeMonthKey.split('-').map(Number);
+          targetMatches = targetMatches.filter(m => {
+            const mDate = m.date?.toDate();
+            return mDate && mDate.getFullYear() === year && mDate.getMonth() === month;
+          });
+        } else {
+          const now = new Date();
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          targetMatches = targetMatches.filter(m => m.date.toDate() >= startOfMonth);
+        }
       } else if (period === 'temporada') {
-        targetMatches = targetMatches.filter(m => m.date.toDate() >= startOfYear);
+        if (activeYear) {
+          targetMatches = targetMatches.filter(m => {
+            const mDate = m.date?.toDate();
+            return mDate && mDate.getFullYear() === activeYear;
+          });
+        } else {
+          const now = new Date();
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          targetMatches = targetMatches.filter(m => m.date.toDate() >= startOfYear);
+        }
       }
 
       const matchesWithGames = await Promise.all(targetMatches.map(async m => {
@@ -128,7 +219,7 @@ export default function SocialStats() {
     }
 
     calculate();
-  }, [period, matches]);
+  }, [period, finishedMatches, activeMatchId, activeMonthKey, activeYear, getMatchGames]);
 
   const getSortedRanking = () => {
     let list = players.map(p => {
@@ -245,7 +336,7 @@ export default function SocialStats() {
       </div>
 
       {/* Ranking Section */}
-      <section className="space-y-4">
+      <section className="space-y-4 animate-in fade-in duration-300 isolate transform-gpu backface-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
           <div className="flex flex-col">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">
@@ -253,11 +344,11 @@ export default function SocialStats() {
             </h3>
             <div className="flex items-center space-x-1 text-gray-600 mt-1">
               <TrendingUp size={10} />
-              <span className="text-[10px] font-bold uppercase tracking-tight">
+              <span className="text-[10px] font-bold uppercase tracking-tight text-gray-400">
                 {period === 'geral' ? 'Todo o Histórico' : 
-                 period === 'temporada' ? `Temporada ${new Date().getFullYear()}` :
-                 period === 'mes' ? `Filtro Mensal` :
-                 `Última Rodada`}
+                 period === 'temporada' ? selectedYearLabel :
+                 period === 'mes' ? selectedMonthLabel :
+                 selectedMatchLabel}
               </span>
             </div>
           </div>
@@ -275,6 +366,91 @@ export default function SocialStats() {
           </div>
         </div>
 
+        {/* Historical Selection Dropdowns */}
+        {period !== 'geral' && (
+          <div className="mx-2 p-3 bg-card/40 rounded-2xl border border-border/40 flex flex-col gap-1.5 shadow-inner isolate transform-gpu backface-hidden">
+            <span className="text-[9px] font-black uppercase tracking-[0.15em] text-primary/80">
+              Histórico / Filtrar por {period === 'rodada' ? 'Rodada' : period === 'mes' ? 'Mês' : 'Temporada'}
+            </span>
+            
+            {period === 'rodada' && (
+              <div className="relative">
+                <select
+                  value={activeMatchId}
+                  onChange={(e) => setSelectedMatchId(e.target.value)}
+                  className="w-full bg-bg border border-border/60 hover:border-primary/50 rounded-xl py-2 pl-3 pr-10 text-xs font-semibold text-gray-100 outline-none cursor-pointer transition-all appearance-none focus:border-primary focus:ring-1 focus:ring-primary"
+                >
+                  {finishedMatches.map((m, idx) => {
+                    const mDate = m.date?.toDate();
+                    const formattedDate = mDate ? mDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+                    return (
+                      <option key={m.id} value={m.id} className="bg-card text-gray-100">
+                        {idx === 0 ? `Última Rodada (${formattedDate})` : `Rodada de ${formattedDate}`}
+                      </option>
+                    );
+                  })}
+                  {finishedMatches.length === 0 && (
+                    <option value="" className="bg-card text-gray-500">Nenhuma rodada finalizada</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                  <svg className="fill-current h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {period === 'mes' && (
+              <div className="relative">
+                <select
+                  value={activeMonthKey}
+                  onChange={(e) => setSelectedMonthKey(e.target.value)}
+                  className="w-full bg-bg border border-border/60 hover:border-primary/50 rounded-xl py-2 pl-3 pr-10 text-xs font-semibold text-gray-100 outline-none cursor-pointer transition-all appearance-none focus:border-primary focus:ring-1 focus:ring-primary"
+                >
+                  {availableMonths.map((m) => (
+                    <option key={m.key} value={m.key} className="bg-card text-gray-100">
+                      {m.label}
+                    </option>
+                  ))}
+                  {availableMonths.length === 0 && (
+                    <option value="" className="bg-card text-gray-500">Nenhum mês com partidas</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                  <svg className="fill-current h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {period === 'temporada' && (
+              <div className="relative">
+                <select
+                  value={activeYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="w-full bg-bg border border-border/60 hover:border-primary/50 rounded-xl py-2 pl-3 pr-10 text-xs font-semibold text-gray-100 outline-none cursor-pointer transition-all appearance-none focus:border-primary focus:ring-1 focus:ring-primary"
+                >
+                  {availableYears.map((year) => (
+                    <option key={year} value={year} className="bg-card text-gray-100">
+                      Temporada de {year}
+                    </option>
+                  ))}
+                  {availableYears.length === 0 && (
+                    <option value="" className="bg-card text-gray-500">Nenhuma temporada registrada</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                  <svg className="fill-current h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {calculating ? (
           <div className="p-20 text-center space-y-4 animate-in fade-in duration-500">
             <div className="relative w-12 h-12 mx-auto">
@@ -284,7 +460,7 @@ export default function SocialStats() {
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Calculando Estatísticas...</p>
           </div>
         ) : (
-          <div className="bg-card rounded-[32px] border border-border/50 divide-y divide-border/30 overflow-hidden shadow-xl animate-in slide-in-from-bottom-2 duration-500">
+          <div className="bg-card rounded-[32px] border border-border/50 divide-y divide-border/30 overflow-hidden shadow-xl animate-in slide-in-from-bottom-2 duration-500 isolate transform-gpu backface-hidden">
             {currentRanking.map((player, idx) => (
               <div key={player.id} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
                 <div className="flex items-center space-x-3">
@@ -299,7 +475,7 @@ export default function SocialStats() {
                   <div className="flex items-center space-x-2">
                     <div className="w-9 h-9 rounded-lg bg-bg border border-border flex items-center justify-center font-bold text-gray-500 overflow-hidden shadow-inner">
                       {player.photoUrl ? (
-                        <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" />
+                        <img src={player.photoUrl} alt={player.displayName || player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         (player.displayName || player.name).charAt(0)
                       )}

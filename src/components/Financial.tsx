@@ -228,7 +228,7 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
                   <div className="relative shrink-0">
                     <div className="w-10 h-10 rounded-full bg-bg border border-border flex items-center justify-center font-bold text-gray-400 overflow-hidden">
                       {player.photoUrl ? (
-                        <img src={player.photoUrl} alt="" className="w-full h-full object-cover" />
+                        <img src={player.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         (player.displayName || player.name).charAt(0)
                       )}

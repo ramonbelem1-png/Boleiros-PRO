@@ -452,8 +452,8 @@ export default function TeamDraw() {
               </div>
               
               <div className="grid grid-cols-1 gap-2">
-                {team.map(player => (
-                  <div key={player.id} className="bg-card p-3 rounded-2xl border border-border/50 flex items-center justify-between">
+                {team.map((player, pIdx) => (
+                  <div key={`${player.id}-${pIdx}`} className="bg-card p-3 rounded-2xl border border-border/50 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 rounded-full bg-bg border border-border flex items-center justify-center text-[10px] font-bold overflow-hidden ${
                         player.position === 'GOLEIRO' ? 'text-yellow-500' : 'text-gray-500'

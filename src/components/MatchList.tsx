@@ -246,6 +246,9 @@ export default function MatchList() {
       });
     }
 
+    const appUrl = 'https://boleiros-pro.vercel.app/';
+    text += `\n📲 *Confirmem a presença através do aplicativo:*\n${appUrl}`;
+
     return text;
   };
 

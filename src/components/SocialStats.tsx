@@ -462,7 +462,7 @@ export default function SocialStats() {
         ) : (
           <div className="bg-card rounded-[32px] border border-border/50 divide-y divide-border/30 overflow-hidden shadow-xl animate-in slide-in-from-bottom-2 duration-500 isolate transform-gpu backface-hidden">
             {currentRanking.map((player, idx) => (
-              <div key={player.id} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+              <div key={`${player.id}-${idx}`} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
                 <div className="flex items-center space-x-3">
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center font-black text-xs ${
                     idx === 0 ? 'bg-yellow-500 text-bg' : 

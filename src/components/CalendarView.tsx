@@ -706,8 +706,8 @@ function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matc
                <h4 className="text-[10px] font-black uppercase tracking-widest">Participantes ({participants.length})</h4>
              </div>
              <div className="grid grid-cols-1 gap-2">
-               {participants.map(p => (
-                 <div key={p.id} className="flex items-center space-x-3 bg-bg/50 p-3 rounded-2xl border border-border/20">
+               {participants.map((p, idx) => (
+                  <div key={`${p.id}-${idx}`} className="flex items-center space-x-3 bg-bg/50 p-3 rounded-2xl border border-border/20">
                    <div className="w-8 h-8 rounded-full bg-bg border border-border overflow-hidden">
                      {p.photoUrl ? <img src={p.photoUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center font-bold text-[10px]">{(p.displayName || p.name).charAt(0)}</div>}
                    </div>

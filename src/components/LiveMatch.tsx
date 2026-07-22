@@ -433,9 +433,9 @@ export default function LiveMatch() {
         const teamNum = parseInt(teamName.replace('Time ', ''), 10);
         if (!isNaN(teamNum)) {
           const teamIdx = teamNum - 1;
-          if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
-            return teamIdx;
-          }
+          // Return the team index directly, even if it is no longer in activeMatch.teams,
+          // so deleted teams still correctly affect other teams' positions in the queue.
+          return teamIdx;
         }
       }
 
@@ -561,7 +561,8 @@ export default function LiveMatch() {
       }
     });
 
-    return Array.from(new Set(sequence));
+    // Filter out deleted teams from the final sequence so they are not included in the queue/suggestions
+    return Array.from(new Set(sequence)).filter(key => validTeamKeys.includes(key));
   }, [finishedGames, activeMatch?.teams, activeMatch?.teamCreatedTimes]);
 
   // 3. Compute suggested active state and waiting queue
@@ -570,14 +571,16 @@ export default function LiveMatch() {
       return { onField: [] as number[], queue: [] as number[], suggested: [] as number[] };
     }
 
+    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
+
     const getTeamIndexLocal = (teamIds: string[] | undefined, teamName: string | undefined): number => {
       if (teamName && teamName.startsWith('Time ')) {
         const teamNum = parseInt(teamName.replace('Time ', ''), 10);
         if (!isNaN(teamNum)) {
           const teamIdx = teamNum - 1;
-          if (activeMatch?.teams && activeMatch.teams[String(teamIdx)] !== undefined) {
-            return teamIdx;
-          }
+          // Return the team index directly, even if it is no longer in activeMatch.teams,
+          // so deleted teams still correctly affect other teams' positions in the queue.
+          return teamIdx;
         }
       }
 
@@ -625,11 +628,12 @@ export default function LiveMatch() {
       currentOnField = [];
     }
 
+    // Filter currentOnField to only include valid/existing teams
+    currentOnField = currentOnField.filter(key => validTeamKeys.includes(key));
+
     // Build the wait list of all teams not currently on the field using simulatedSequence
     const onFieldIndices = new Set(currentOnField);
     const waitingTeams = simulatedSequence.filter(key => !onFieldIndices.has(key));
-
-    const validTeamKeys = Object.keys(activeMatch?.teams || {}).map(Number).sort((a, b) => a - b);
 
     // Calculate suggestions for the next confront based on rule
     let suggested: number[] = [];
@@ -901,19 +905,42 @@ export default function LiveMatch() {
       
       const gameTeamAIdx = getTeamIndexLocal(liveGame.teamA_ids, liveGame.teamA_name);
       const gameTeamBIdx = getTeamIndexLocal(liveGame.teamB_ids, liveGame.teamB_name);
+
+      const isSubstitute = (pId: string): boolean => {
+        const homeKey = playerHomeTeamKey[pId];
+        if (!homeKey) return false;
+        const homeIdx = Number(homeKey);
+        return homeIdx !== gameTeamAIdx && homeIdx !== gameTeamBIdx;
+      };
       
       const isTeamAPlaying = String(gameTeamAIdx) === String(teamAKey);
       const isTeamBPlaying = String(gameTeamBIdx) === String(teamBKey);
       
       if (!isTeamAPlaying && !isTeamBPlaying) {
-        // Our teams are NOT playing, so anyone currently on the field is unavailable
-        if (liveGame.teamA_ids) liveGame.teamA_ids.filter(id => existingPlayerIds.has(id)).forEach(id => onFieldPlayerIds.add(id));
-        if (liveGame.teamB_ids) liveGame.teamB_ids.filter(id => existingPlayerIds.has(id)).forEach(id => onFieldPlayerIds.add(id));
+        // Our teams are NOT playing, so anyone currently on the field is unavailable (excluding temporary substitutes)
+        if (liveGame.teamA_ids) {
+          liveGame.teamA_ids
+            .filter(id => existingPlayerIds.has(id) && !isSubstitute(id))
+            .forEach(id => onFieldPlayerIds.add(id));
+        }
+        if (liveGame.teamB_ids) {
+          liveGame.teamB_ids
+            .filter(id => existingPlayerIds.has(id) && !isSubstitute(id))
+            .forEach(id => onFieldPlayerIds.add(id));
+        }
       } else {
-        // One of our teams is playing, exclude opponent's players or other active players
+        // One of our teams is playing, exclude opponent's players or other active players (excluding temporary substitutes)
         const allOnField = new Set<string>();
-        if (liveGame.teamA_ids) liveGame.teamA_ids.filter(id => existingPlayerIds.has(id)).forEach(id => allOnField.add(id));
-        if (liveGame.teamB_ids) liveGame.teamB_ids.filter(id => existingPlayerIds.has(id)).forEach(id => allOnField.add(id));
+        if (liveGame.teamA_ids) {
+          liveGame.teamA_ids
+            .filter(id => existingPlayerIds.has(id) && !isSubstitute(id))
+            .forEach(id => allOnField.add(id));
+        }
+        if (liveGame.teamB_ids) {
+          liveGame.teamB_ids
+            .filter(id => existingPlayerIds.has(id) && !isSubstitute(id))
+            .forEach(id => allOnField.add(id));
+        }
         
         allOnField.forEach(id => {
           if (!originalAIds.includes(id) && !originalBIds.includes(id)) {
@@ -1029,7 +1056,8 @@ export default function LiveMatch() {
     players,
     liveGame,
     orderedTeamKeys,
-    comparePlayersByWaitTime
+    comparePlayersByWaitTime,
+    playerHomeTeamKey
   ]);
 
   const manualSuggestions = useMemo(() => {
@@ -1285,11 +1313,17 @@ export default function LiveMatch() {
       const currentTeams = { ...activeMatch.teams };
       let teamsChanged = false;
       if (gameTeamAIdx !== -1 && liveGame.teamA_ids) {
-        currentTeams[String(gameTeamAIdx)] = liveGame.teamA_ids;
+        currentTeams[String(gameTeamAIdx)] = liveGame.teamA_ids.filter(id => {
+          const homeKey = playerHomeTeamKey[id];
+          return !homeKey || homeKey === String(gameTeamAIdx);
+        });
         teamsChanged = true;
       }
       if (gameTeamBIdx !== -1 && liveGame.teamB_ids) {
-        currentTeams[String(gameTeamBIdx)] = liveGame.teamB_ids;
+        currentTeams[String(gameTeamBIdx)] = liveGame.teamB_ids.filter(id => {
+          const homeKey = playerHomeTeamKey[id];
+          return !homeKey || homeKey === String(gameTeamBIdx);
+        });
         teamsChanged = true;
       }
       if (teamsChanged) {
@@ -1448,6 +1482,56 @@ export default function LiveMatch() {
     });
   };
 
+  const handleRemovePlayerFromRunningGame = async (playerId: string, teamSide: 'A' | 'B') => {
+    if (!activeMatch || !editingGame || editingGame.status !== 'RUNNING') return;
+
+    const pObj = players.find(p => p.id === playerId);
+    const pName = pObj ? (pObj.displayName || pObj.name) : "Jogador";
+
+    const confirmMsg = `Deseja remover ${pName.toUpperCase()} do time nesta partida em andamento? Ele também será removido da escalação do time estático e da pelada.`;
+
+    confirmAction(confirmMsg, async () => {
+      // 1. Remove o jogador do time da partida ativa (sem substituto automático)
+      let newTeamA = (editingGame.teamA_ids || []).filter(id => id !== playerId);
+      let newTeamB = (editingGame.teamB_ids || []).filter(id => id !== playerId);
+
+      // 2. Remove o jogador excluído do time estático e da pelada (confirmedIds, waitingIds)
+      const currentTeams = { ...activeMatch.teams };
+      const sortedKeys = Object.keys(currentTeams).map(Number).sort((a, b) => a - b);
+      const newTeams: Record<string, string[]> = {};
+      for (const k of sortedKeys) {
+        const keyStr = String(k);
+        const playersInTeam = currentTeams[keyStr] || [];
+        newTeams[keyStr] = playersInTeam.filter(id => id !== playerId);
+      }
+
+      const newConfirmedIds = (activeMatch.confirmedIds || []).filter(id => id !== playerId);
+      const newWaitingIds = (activeMatch.waitingIds || []).filter(id => id !== playerId);
+
+      try {
+        // Atualiza a partida estática no banco
+        await updateMatch(activeMatch.id, { 
+          teams: newTeams,
+          confirmedIds: newConfirmedIds,
+          waitingIds: newWaitingIds
+        });
+
+        // Atualiza o jogo em andamento no banco
+        const gameRef = doc(db, 'matches', activeMatch.id, 'games', editingGame.id);
+        await updateDoc(gameRef, {
+          teamA_ids: newTeamA,
+          teamB_ids: newTeamB
+        });
+
+        // Atualiza o estado local do overlay de edição
+        setEditingGame({ ...editingGame, teamA_ids: newTeamA, teamB_ids: newTeamB });
+        console.log(`[LiveMatch] Exclusão realizada. ${pName} removido.`);
+      } catch (error) {
+        console.error("Erro ao remover jogador de jogo em andamento:", error);
+      }
+    });
+  };
+
   const handleDeleteTeam = async (teamKey: string) => {
     if (!activeMatch) return;
     
@@ -1485,6 +1569,32 @@ export default function LiveMatch() {
 
     return onBench.sort((a, b) => comparePlayersByWaitTime(a.id, b.id))[0];
   }, [activeMatch?.confirmedIds, activeMatch?.teams, players, comparePlayersByWaitTime]);
+
+  const sequencePlayer = useMemo(() => {
+    if (!activeMatch || !editingGame || editingGame.status !== 'RUNNING') return null;
+    
+    const nextWaitingTeamIdx = queueState.queue[0];
+    if (nextWaitingTeamIdx === undefined) return null;
+    
+    const seqTeamPlayerIds = activeMatch.teams[String(nextWaitingTeamIdx)] || [];
+    const confirmedSeqPlayers = seqTeamPlayerIds.filter(id => 
+      (activeMatch.confirmedIds || []).includes(id) &&
+      !(editingGame.teamA_ids || []).includes(id) &&
+      !(editingGame.teamB_ids || []).includes(id)
+    );
+    
+    if (confirmedSeqPlayers.length > 0) {
+      const pId = confirmedSeqPlayers[0];
+      const pObj = players.find(p => p.id === pId);
+      if (pObj) {
+        return {
+          player: pObj,
+          teamName: `Time ${nextWaitingTeamIdx + 1}`
+        };
+      }
+    }
+    return null;
+  }, [activeMatch, editingGame, queueState.queue, players]);
 
   const handleQuickAddNext = async (playerId: string, teamSide?: 'A' | 'B') => {
     if (!activeMatch) return;
@@ -1812,11 +1922,11 @@ export default function LiveMatch() {
                       <div className="pt-2 space-y-1">
                         <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 block">🚩 Bandeiras Próximo Jogo:</span>
                         <div className="flex gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none items-center py-0.5 max-w-full">
-                          {bInfo.players.map(p => {
+                          {bInfo.players.map((p, idx) => {
                             const name = p.displayName || p.name;
                             const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
                             return (
-                              <span key={p.id} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
+                              <span key={`${p.id}-${idx}`} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
                                 {truncated}
                               </span>
                             );
@@ -1837,11 +1947,11 @@ export default function LiveMatch() {
                     <div className="pt-2 space-y-1">
                       <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 block">🚩 Bandeiras do Jogo:</span>
                       <div className="flex gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none items-center py-0.5 max-w-full">
-                        {bInfo.players.map(p => {
+                        {bInfo.players.map((p, idx) => {
                           const name = p.displayName || p.name;
                           const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
                           return (
-                            <span key={p.id} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
+                            <span key={`${p.id}-${idx}`} className="px-1.5 py-0.5 bg-white/5 border border-white/5 rounded text-[10px] font-bold text-gray-300 uppercase whitespace-nowrap">
                               {truncated}
                             </span>
                           );
@@ -1896,7 +2006,7 @@ export default function LiveMatch() {
                         const name = p.displayName || p.name;
                         const games = playerStats[id]?.gamesPlayedCount ?? 0;
                         return (
-                          <React.Fragment key={id}>
+                          <React.Fragment key={`${id}-${index}`}>
                             <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[10px] font-bold text-amber-500 inline-flex items-center gap-1 group/item">
                               <span className="text-[10px] text-amber-500/60 font-black mr-0.5">#{index + 1}</span>
                               <span className="truncate max-w-[70px] uppercase">{name}</span>
@@ -1986,10 +2096,10 @@ export default function LiveMatch() {
                   const originalIds = (activeMatch.teams![scheduledTeamA] || []).filter(id => existingPlayerIds.has(id));
                   
                   // Render actual players
-                  const renderedActual = originalIds.map(id => {
+                  const renderedActual = originalIds.map((id, idx) => {
                     const p = players.find(player => player.id === id);
                     return (
-                      <div key={id} className="flex items-center justify-between py-0.5">
+                      <div key={`${id}-${idx}`} className="flex items-center justify-between py-0.5">
                         <div className="flex items-center space-x-2 min-w-0">
                           <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
                           <span className="text-[10px] font-bold uppercase truncate text-gray-400">
@@ -2075,10 +2185,10 @@ export default function LiveMatch() {
                   const originalIds = (activeMatch.teams![scheduledTeamB] || []).filter(id => existingPlayerIds.has(id));
                   
                   // Render actual players
-                  const renderedActual = originalIds.map(id => {
+                  const renderedActual = originalIds.map((id, idx) => {
                     const p = players.find(player => player.id === id);
                     return (
-                      <div key={id} className="flex items-center justify-between py-0.5">
+                      <div key={`${id}-${idx}`} className="flex items-center justify-between py-0.5">
                         <div className="flex items-center space-x-2 min-w-0">
                           <div className="w-1 h-1 rounded-full bg-white/30" />
                           <span className="text-[10px] font-bold uppercase truncate text-gray-400">
@@ -2163,7 +2273,7 @@ export default function LiveMatch() {
                   className="w-full bg-bg border border-border p-3 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-primary cursor-pointer font-sans"
                 >
                   <option value="">Selecione...</option>
-                  {availableBandeiras.map(p => (
+                  {availableBandeiras.filter(p => p.id !== (customBandeiras?.[1] || '')).map(p => (
                     <option key={p.id} value={p.id}>
                       {(p.displayName || p.name).toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
                     </option>
@@ -2182,7 +2292,7 @@ export default function LiveMatch() {
                   className="w-full bg-bg border border-border p-3 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-primary cursor-pointer font-sans"
                 >
                   <option value="">Selecione...</option>
-                  {availableBandeiras.map(p => (
+                  {availableBandeiras.filter(p => p.id !== (customBandeiras?.[0] || '')).map(p => (
                     <option key={p.id} value={p.id}>
                       {(p.displayName || p.name).toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
                     </option>
@@ -2532,7 +2642,14 @@ export default function LiveMatch() {
                                 <option value={p.id} className="bg-bg text-white">
                                   {name.toUpperCase()} {p.number !== undefined ? `(Nº ${p.number})` : ''}
                                 </option>
-                                {activeGameAvailableBandeiras.filter(ap => ap.id !== p.id).map(ap => (
+                                {activeGameAvailableBandeiras.filter(ap => {
+                                  let currentBIds = liveGame.bandeiras_ids && liveGame.bandeiras_ids.length > 0 
+                                    ? [...liveGame.bandeiras_ids] 
+                                    : bandeirasPlayers.map(bp => bp.id);
+                                  const otherIdx = idx === 0 ? 1 : 0;
+                                  const otherBId = currentBIds[otherIdx];
+                                  return ap.id !== p.id && ap.id !== otherBId;
+                                }).map(ap => (
                                   <option key={ap.id} value={ap.id} className="bg-bg text-white">
                                     {(ap.displayName || ap.name).toUpperCase()} {ap.number !== undefined ? `(Nº ${ap.number})` : ''}
                                   </option>
@@ -3103,13 +3220,13 @@ export default function LiveMatch() {
                         🚩 Bandeiras:
                       </span>
                       <div className="flex items-center gap-1.5 flex-row flex-nowrap overflow-x-auto scroller-none min-w-0 pr-1 py-0.5">
-                        {game.bandeiras_ids.map(id => {
+                        {game.bandeiras_ids.map((id, idx) => {
                           const p = players.find(p => p.id === id);
                           if (!p) return null;
                           const name = p.displayName || p.name;
                           const truncated = name.length > 10 ? name.slice(0, 10).trim() + '.' : name;
                           return (
-                            <span key={id} className="text-[10px] font-bold text-gray-400 bg-white/[0.03] px-1.5 py-0.5 rounded leading-none shrink-0 border border-white/5 uppercase whitespace-nowrap">
+                            <span key={`${id}-${idx}`} className="text-[10px] font-bold text-gray-400 bg-white/[0.03] px-1.5 py-0.5 rounded leading-none shrink-0 border border-white/5 uppercase whitespace-nowrap">
                               {truncated}
                             </span>
                           );
@@ -3164,8 +3281,8 @@ export default function LiveMatch() {
                      <div className="space-y-4">
                        <h4 className="text-xs font-black uppercase text-primary tracking-widest">{edTeams.teamA}</h4>
                        <div className="space-y-2">
-                         {(editingGame.teamA_ids || []).map((id) => (
-                           <div key={id} className="flex items-center gap-2 group">
+                         {(editingGame.teamA_ids || []).map((id, idx) => (
+                            <div key={`${id}-${idx}`} className="flex items-center gap-2 group">
                              <button 
                                onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', replacedPlayerId: id, mode: 'SWAP' })}
                                className={`flex-1 p-4 bg-bg border rounded-2xl text-left flex items-center justify-between ${swapTarget?.replacedPlayerId === id && swapTarget?.teamSide === 'A' && swapTarget.mode === 'SWAP' ? 'border-primary' : 'border-border'}`}
@@ -3181,7 +3298,13 @@ export default function LiveMatch() {
                                <Edit2 size={12} className="text-gray-500" />
                              </button>
                              <button 
-                               onClick={() => handleRemovePlayerFromTeam(id)}
+                               onClick={() => {
+                                  if (editingGame && editingGame.status === 'RUNNING') {
+                                    handleRemovePlayerFromRunningGame(id, 'A');
+                                  } else {
+                                    handleRemovePlayerFromTeam(id);
+                                  }
+                                }}
                                className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
                              >
                                <Trash2 size={16} />
@@ -3195,9 +3318,27 @@ export default function LiveMatch() {
                            <Plus size={16} />
                            <span className="text-xs font-bold uppercase tracking-widest">Adicionar Man.</span>
                          </button>
-                         {topWaitingPlayer && (
-                            <button
-                              onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'A')}
+                         {sequencePlayer && (
+                             <button
+                               onClick={() => handleQuickAddNext(sequencePlayer.player.id, 'A')}
+                               className="w-full p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-left hover:bg-amber-500/20 hover:border-amber-500/50 transition-all group mt-2"
+                             >
+                               <div className="flex flex-col">
+                                 <span className="text-xs text-amber-500 font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
+                                   <span>Sugestão da Sequência ({sequencePlayer.teamName})</span>
+                                 </span>
+                                 <span className="text-sm font-bold text-white truncate">
+                                   {sequencePlayer.player.displayName || sequencePlayer.player.name}
+                                 </span>
+                               </div>
+                               <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                 <Plus size={16} className="text-amber-500" />
+                               </div>
+                             </button>
+                          )}
+                          {topWaitingPlayer && (
+                             <button
+                               onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'A')}
                               className="w-full p-4 bg-primary/10 border border-primary/30 rounded-2xl flex items-center justify-between text-left hover:bg-primary/20 hover:border-primary/50 transition-all group mt-2"
                             >
                               <div className="flex flex-col">
@@ -3218,8 +3359,8 @@ export default function LiveMatch() {
                      <div className="space-y-4">
                        <h4 className="text-xs font-black uppercase text-white tracking-widest">{edTeams.teamB}</h4>
                        <div className="space-y-2">
-                         {(editingGame.teamB_ids || []).map((id) => (
-                           <div key={id} className="flex items-center gap-2 group">
+                         {(editingGame.teamB_ids || []).map((id, idx) => (
+                            <div key={`${id}-${idx}`} className="flex items-center gap-2 group">
                              <button 
                                onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'B', replacedPlayerId: id, mode: 'SWAP' })}
                                className={`flex-1 p-4 bg-bg border rounded-2xl text-left flex items-center justify-between ${swapTarget?.replacedPlayerId === id && swapTarget?.teamSide === 'B' && swapTarget.mode === 'SWAP' ? 'border-white' : 'border-border'}`}
@@ -3235,7 +3376,13 @@ export default function LiveMatch() {
                                <Edit2 size={12} className="text-gray-500" />
                              </button>
                              <button 
-                               onClick={() => handleRemovePlayerFromTeam(id)}
+                               onClick={() => {
+                                  if (editingGame && editingGame.status === 'RUNNING') {
+                                    handleRemovePlayerFromRunningGame(id, 'B');
+                                  } else {
+                                    handleRemovePlayerFromTeam(id);
+                                  }
+                                }}
                                className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
                              >
                                <Trash2 size={16} />
@@ -3249,9 +3396,27 @@ export default function LiveMatch() {
                            <Plus size={16} />
                            <span className="text-xs font-bold uppercase tracking-widest">Adicionar Man.</span>
                          </button>
-                         {topWaitingPlayer && (
-                            <button
-                              onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'B')}
+                         {sequencePlayer && (
+                             <button
+                               onClick={() => handleQuickAddNext(sequencePlayer.player.id, 'B')}
+                               className="w-full p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-left hover:bg-amber-500/20 hover:border-amber-500/50 transition-all group mt-2"
+                             >
+                               <div className="flex flex-col">
+                                 <span className="text-xs text-amber-500 font-bold uppercase tracking-widest mb-1 flex items-center space-x-1">
+                                   <span>Sugestão da Sequência ({sequencePlayer.teamName})</span>
+                                 </span>
+                                 <span className="text-sm font-bold text-white truncate">
+                                   {sequencePlayer.player.displayName || sequencePlayer.player.name}
+                                 </span>
+                               </div>
+                               <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                 <Plus size={16} className="text-amber-500" />
+                               </div>
+                             </button>
+                          )}
+                          {topWaitingPlayer && (
+                             <button
+                               onClick={() => handleQuickAddNext(topWaitingPlayer.id, 'B')}
                               className="w-full p-4 bg-white/5 border border-white/20 rounded-2xl flex items-center justify-between text-left hover:bg-white/10 hover:border-white/40 transition-all group mt-2"
                             >
                               <div className="flex flex-col">
@@ -3275,8 +3440,8 @@ export default function LiveMatch() {
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-primary tracking-widest">Membros da Equipe</h4>
                   <div className="grid grid-cols-1 gap-2">
-                    {(activeMatch.teams?.[String(editingTeamIndex!)] || []).map((id) => (
-                      <div key={id} className="flex items-center gap-2 group">
+                    {(activeMatch.teams?.[String(editingTeamIndex!)] || []).map((id, idx) => (
+                            <div key={`${id}-${idx}`} className="flex items-center gap-2 group">
                         <button 
                           onClick={() => setSwapTarget({ type: 'PLAYER', teamSide: 'A', replacedPlayerId: id, mode: 'SWAP' })}
                           className={`flex-1 p-4 bg-bg border rounded-2xl text-left flex items-center justify-between ${swapTarget?.replacedPlayerId === id && swapTarget.mode === 'SWAP' ? 'border-primary' : 'border-border'}`}
@@ -3424,7 +3589,7 @@ export default function LiveMatch() {
 
                             return (
                               <button 
-                                key={p.id}
+                                key={`${type}-${p.id}-${queueIndex !== undefined ? queueIndex : ''}`}
                                 onClick={() => handleSelectPlayerForTeam(p.id)}
                                 className={`p-4 bg-white/5 border ${borderColor} rounded-2xl text-[10px] font-bold uppercase text-left hover:border-primary transition-all group relative overflow-hidden`}
                               >

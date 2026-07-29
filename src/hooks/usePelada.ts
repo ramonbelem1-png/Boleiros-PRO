@@ -829,15 +829,15 @@ export function usePelada() {
         if (event.teamSide === 'A') newScoreA++;
         else newScoreB++;
 
-        // Personal stats only for normal goals (NOT goalkeeper goals)
-        if (!event.isGoalkeeperGoal) {
+        // Personal stats only for normal goals (NOT goalkeeper goals and NOT anonymous/ninguem)
+        if (!event.isGoalkeeperGoal && event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro') {
           const pRef = doc(db, 'players', event.playerId);
           const pSnap = await getDoc(pRef);
           if (pSnap.exists()) {
             await updateDoc(pRef, { gols: (pSnap.data().gols || 0) + 1 });
           }
 
-          if (event.assistId) {
+          if (event.assistId && event.assistId !== 'ninguem' && event.assistId !== 'goleiro') {
             const aRef = doc(db, 'players', event.assistId);
             const aSnap = await getDoc(aRef);
             if (aSnap.exists()) {
@@ -851,7 +851,7 @@ export function usePelada() {
         else newScoreA++;
         
         // Own goal deducts personal player points via -1 in ranking, we save this stat in 'contra'
-        if (!event.isGoalkeeperOwnGoal) {
+        if (!event.isGoalkeeperOwnGoal && event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro') {
           const pRef = doc(db, 'players', event.playerId);
           const pSnap = await getDoc(pRef);
           if (pSnap.exists()) {
@@ -882,13 +882,13 @@ export function usePelada() {
 
       // 1. Revert old stats
       if (oldEvent.type === 'GOAL') {
-        if (!oldEvent.isGoalkeeperGoal) {
+        if (!oldEvent.isGoalkeeperGoal && oldEvent.playerId && oldEvent.playerId !== 'ninguem' && oldEvent.playerId !== 'goleiro') {
           const oldPRef = doc(db, 'players', oldEvent.playerId);
           const oldPSnap = await getDoc(oldPRef);
           if (oldPSnap.exists()) {
             await updateDoc(oldPRef, { gols: Math.max(0, (oldPSnap.data().gols || 0) - 1) });
           }
-          if (oldEvent.assistId) {
+          if (oldEvent.assistId && oldEvent.assistId !== 'ninguem' && oldEvent.assistId !== 'goleiro') {
             const oldARef = doc(db, 'players', oldEvent.assistId);
             const oldASnap = await getDoc(oldARef);
             if (oldASnap.exists()) {
@@ -897,7 +897,7 @@ export function usePelada() {
           }
         }
       } else if (oldEvent.type === 'OWN_GOAL') {
-        if (!oldEvent.isGoalkeeperOwnGoal) {
+        if (!oldEvent.isGoalkeeperOwnGoal && oldEvent.playerId && oldEvent.playerId !== 'ninguem' && oldEvent.playerId !== 'goleiro') {
           const oldPRef = doc(db, 'players', oldEvent.playerId);
           const oldPSnap = await getDoc(oldPRef);
           if (oldPSnap.exists()) {
@@ -915,13 +915,13 @@ export function usePelada() {
       }
 
       if (updatedEvent.type === 'GOAL') {
-        if (!updatedEvent.isGoalkeeperGoal) {
+        if (!updatedEvent.isGoalkeeperGoal && updatedEvent.playerId && updatedEvent.playerId !== 'ninguem' && updatedEvent.playerId !== 'goleiro') {
           const newPRef = doc(db, 'players', updatedEvent.playerId);
           const newPSnap = await getDoc(newPRef);
           if (newPSnap.exists()) {
             await updateDoc(newPRef, { gols: (newPSnap.data().gols || 0) + 1 });
           }
-          if (updatedEvent.assistId) {
+          if (updatedEvent.assistId && updatedEvent.assistId !== 'ninguem' && updatedEvent.assistId !== 'goleiro') {
             const newARef = doc(db, 'players', updatedEvent.assistId);
             const newASnap = await getDoc(newARef);
             if (newASnap.exists()) {
@@ -930,7 +930,7 @@ export function usePelada() {
           }
         }
       } else if (updatedEvent.type === 'OWN_GOAL') {
-        if (!updatedEvent.isGoalkeeperOwnGoal) {
+        if (!updatedEvent.isGoalkeeperOwnGoal && updatedEvent.playerId && updatedEvent.playerId !== 'ninguem' && updatedEvent.playerId !== 'goleiro') {
           const newPRef = doc(db, 'players', updatedEvent.playerId);
           const newPSnap = await getDoc(newPRef);
           if (newPSnap.exists()) {
@@ -978,13 +978,13 @@ export function usePelada() {
 
       // 1. Revert stats
       if (oldEvent.type === 'GOAL') {
-        if (!oldEvent.isGoalkeeperGoal) {
+        if (!oldEvent.isGoalkeeperGoal && oldEvent.playerId && oldEvent.playerId !== 'ninguem' && oldEvent.playerId !== 'goleiro') {
           const oldPRef = doc(db, 'players', oldEvent.playerId);
           const oldPSnap = await getDoc(oldPRef);
           if (oldPSnap.exists()) {
             await updateDoc(oldPRef, { gols: Math.max(0, (oldPSnap.data().gols || 0) - 1) });
           }
-          if (oldEvent.assistId) {
+          if (oldEvent.assistId && oldEvent.assistId !== 'ninguem' && oldEvent.assistId !== 'goleiro') {
             const oldARef = doc(db, 'players', oldEvent.assistId);
             const oldASnap = await getDoc(oldARef);
             if (oldASnap.exists()) {
@@ -993,7 +993,7 @@ export function usePelada() {
           }
         }
       } else if (oldEvent.type === 'OWN_GOAL') {
-        if (!oldEvent.isGoalkeeperOwnGoal) {
+        if (!oldEvent.isGoalkeeperOwnGoal && oldEvent.playerId && oldEvent.playerId !== 'ninguem' && oldEvent.playerId !== 'goleiro') {
           const oldPRef = doc(db, 'players', oldEvent.playerId);
           const oldPSnap = await getDoc(oldPRef);
           if (oldPSnap.exists()) {
@@ -1157,13 +1157,13 @@ export function usePelada() {
                 if (ev.type === 'GOAL') {
                   if (!ev.isGoalkeeperGoal) {
                     const pId = ev.playerId;
-                    if (pId && typeof pId === 'string') {
+                    if (pId && typeof pId === 'string' && pId !== 'ninguem' && pId !== 'goleiro') {
                       ensurePlayer(pId);
                       statsMap[pId].gols++;
                     }
                     
                     const aId = ev.assistId;
-                    if (aId && typeof aId === 'string') {
+                    if (aId && typeof aId === 'string' && aId !== 'ninguem' && aId !== 'goleiro') {
                       ensurePlayer(aId);
                       statsMap[aId].assistencias++;
                     }
@@ -1171,7 +1171,7 @@ export function usePelada() {
                 } else if (ev.type === 'OWN_GOAL') {
                   if (!ev.isGoalkeeperOwnGoal) {
                     const pId = ev.playerId;
-                    if (pId && typeof pId === 'string') {
+                    if (pId && typeof pId === 'string' && pId !== 'ninguem' && pId !== 'goleiro') {
                       ensurePlayer(pId);
                       statsMap[pId].contra++;
                     }
@@ -1259,17 +1259,17 @@ export function usePelada() {
         if (game.events && game.events.length > 0) {
           for (const event of game.events) {
             if (event.type === 'GOAL') {
-              if (existingPlayerIds.has(event.playerId)) {
+              if (event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro' && existingPlayerIds.has(event.playerId)) {
                 const pRef = doc(db, 'players', event.playerId);
                 batch.update(pRef, { gols: increment(-1) });
               }
 
-              if (event.assistId && existingPlayerIds.has(event.assistId)) {
+              if (event.assistId && event.assistId !== 'ninguem' && event.assistId !== 'goleiro' && existingPlayerIds.has(event.assistId)) {
                 const aRef = doc(db, 'players', event.assistId);
                 batch.update(aRef, { assistencias: increment(-1) });
               }
             } else if (event.type === 'OWN_GOAL') {
-              if (existingPlayerIds.has(event.playerId)) {
+              if (event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro' && existingPlayerIds.has(event.playerId)) {
                 const pRef = doc(db, 'players', event.playerId);
                 batch.update(pRef, { contra: increment(-1) });
               }

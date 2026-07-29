@@ -175,16 +175,20 @@ export default function SocialStats() {
           // Aggregating goals/assists
           game.events?.forEach(event => {
             if (event.type === 'GOAL') {
-              if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
-              stats[event.playerId].gols++;
+              if (event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro' && !event.isGoalkeeperGoal) {
+                if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
+                stats[event.playerId].gols++;
+              }
               
-              if (event.assistId) {
+              if (event.assistId && event.assistId !== 'ninguem' && event.assistId !== 'goleiro') {
                 if (!stats[event.assistId]) stats[event.assistId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
                 stats[event.assistId].assistencias++;
               }
             } else if (event.type === 'OWN_GOAL') {
-              if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
-              stats[event.playerId].contra++;
+              if (event.playerId && event.playerId !== 'ninguem' && event.playerId !== 'goleiro' && !event.isGoalkeeperOwnGoal) {
+                if (!stats[event.playerId]) stats[event.playerId] = { gols: 0, assistencias: 0, vitorias: 0, derrotas: 0, empates: 0, contra: 0 };
+                stats[event.playerId].contra++;
+              }
             }
           });
 

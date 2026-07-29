@@ -2689,7 +2689,7 @@ export default function LiveMatch() {
                               <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
                                 {(() => {
                                   const p = players.find(p => p.id === e.playerId);
-                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : 'Atleta');
+                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : (e.playerId === 'ninguem' ? '' : 'Atleta'));
                                   const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
                                   return `${name}${numStr}`;
                                 })()}
@@ -2697,7 +2697,7 @@ export default function LiveMatch() {
                                 {e.isGoalkeeperGoal && <span className="text-amber-500 ml-1 font-extrabold text-[8px] tracking-tight">(GOLEIRO)</span>}
                                 {e.isGoalkeeperOwnGoal && <span className="text-red-500 ml-1 font-extrabold text-[8px] tracking-tight">(GC GOLEIRO)</span>}
                               </p>
-                              {e.assistId && (
+                              {e.assistId && e.assistId !== 'ninguem' && (
                                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5 truncate">
                                   Assist: {(() => {
                                     const p = players.find(p => p.id === e.assistId);
@@ -2732,7 +2732,7 @@ export default function LiveMatch() {
                               <p className="font-extrabold uppercase text-[10px] tracking-tight truncate text-white">
                                 {(() => {
                                   const p = players.find(p => p.id === e.playerId);
-                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : 'Atleta');
+                                  const name = p ? (p.displayName || p.name) : (e.isGoalkeeperGoal || e.isGoalkeeperOwnGoal || e.playerId === 'goleiro' ? 'Goleiro' : (e.playerId === 'ninguem' ? '' : 'Atleta'));
                                   const numStr = p?.number !== undefined && p?.number !== null ? ` (Nº ${p.number})` : '';
                                   return `${name}${numStr}`;
                                 })()}
@@ -2740,7 +2740,7 @@ export default function LiveMatch() {
                                 {e.isGoalkeeperGoal && <span className="text-amber-500 ml-1 font-extrabold text-[8px] tracking-tight">(GOLEIRO)</span>}
                                 {e.isGoalkeeperOwnGoal && <span className="text-red-500 ml-1 font-extrabold text-[8px] tracking-tight">(GC GOLEIRO)</span>}
                               </p>
-                              {e.assistId && (
+                              {e.assistId && e.assistId !== 'ninguem' && (
                                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider leading-none mt-0.5 truncate">
                                   Assist: {(() => {
                                     const p = players.find(p => p.id === e.assistId);
@@ -3793,10 +3793,17 @@ export default function LiveMatch() {
                   </label>
                   <select 
                     value={selectedScorer}
-                    onChange={(e) => setSelectedScorer(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedScorer(val);
+                      if (val === 'ninguem') {
+                        setSelectedAssister('');
+                      }
+                    }}
                     className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-bold text-white"
                   >
                     <option value="" className="bg-bg">Selecione o jogador</option>
+                    <option value="ninguem" className="bg-bg text-amber-400 font-bold">Ninguém (sem registro no ranking)</option>
                     {(() => {
                       const availablePlayers = showEventModal.teamSide === 'A' ? teamAPlayers : teamBPlayers;
                       
@@ -3817,7 +3824,7 @@ export default function LiveMatch() {
                 </div>
               )}
 
-              {!isOwnGoal && !isGoalkeeperEvent && (
+              {!isOwnGoal && !isGoalkeeperEvent && selectedScorer !== 'ninguem' && (
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Assistência (Opcional)</label>
                   <select 

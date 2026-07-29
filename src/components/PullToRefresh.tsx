@@ -15,7 +15,47 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
   const touchActiveRef = useRef(false);
 
   useEffect(() => {
+    const isInsideModalOrScrollable = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+
+      // 1. Check if any modal overlay exists on the page
+      const openModal = document.querySelector('.fixed.inset-0, [role="dialog"], [data-modal]');
+      if (openModal) {
+        return true;
+      }
+
+      // 2. Check if the target or any parent element is fixed/absolute/scrollable
+      let curr: HTMLElement | null = target;
+      while (curr && curr !== document.body && curr !== document.documentElement) {
+        const style = window.getComputedStyle(curr);
+        if (
+          curr.getAttribute('role') === 'dialog' ||
+          curr.getAttribute('data-modal') !== null ||
+          curr.classList.contains('fixed') ||
+          curr.classList.contains('absolute')
+        ) {
+          return true;
+        }
+
+        // Check if element is scrollable internally
+        const overflowY = style.overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && curr.scrollHeight > curr.clientHeight) {
+          return true;
+        }
+
+        curr = curr.parentElement;
+      }
+
+      return false;
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
+      if (isInsideModalOrScrollable(e.target)) {
+        isAtTopRef.current = false;
+        touchActiveRef.current = false;
+        return;
+      }
+
       // Check if scroll is at top
       const scrollY = window.scrollY || document.documentElement.scrollTop;
       if (scrollY <= 5) {
@@ -33,6 +73,13 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!isAtTopRef.current || !touchActiveRef.current) return;
+
+      if (isInsideModalOrScrollable(e.target)) {
+        touchActiveRef.current = false;
+        setPullOffset(0);
+        setStatus('idle');
+        return;
+      }
 
       const currentY = e.touches[0].clientY;
       const currentX = e.touches[0].clientX;
@@ -80,8 +127,14 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
 
     // POINTER EVENTS for desktop mouse dragging
     const handlePointerDown = (e: PointerEvent) => {
-      // Only handle drag with left-button / primary pointer
+      // Ignore touch pointers to prevent duplicate event handling with touchstart
+      if (e.pointerType === 'touch') return;
       if (e.button !== 0) return;
+      if (isInsideModalOrScrollable(e.target)) {
+        isAtTopRef.current = false;
+        isDraggingRef.current = false;
+        return;
+      }
       
       const scrollY = window.scrollY || document.documentElement.scrollTop;
       if (scrollY <= 5) {
@@ -95,7 +148,15 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
     };
 
     const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
       if (!isAtTopRef.current || !isDraggingRef.current) return;
+
+      if (isInsideModalOrScrollable(e.target)) {
+        isDraggingRef.current = false;
+        setPullOffset(0);
+        setStatus('idle');
+        return;
+      }
 
       const currentY = e.clientY;
       const currentX = e.clientX;
@@ -126,7 +187,8 @@ export default function PullToRefresh({ children }: PullToRefreshProps) {
       }
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
 

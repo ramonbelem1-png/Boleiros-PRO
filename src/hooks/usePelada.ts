@@ -87,6 +87,8 @@ export interface Game {
   accumulatedTime?: number; // ms
   lastStartedAt?: any; // Timestamp
   bandeiras_ids?: string[];
+  drawStayTeam?: 'A' | 'B';
+  drawFirstTeam?: 'A' | 'B';
 }
 
 export interface Match {
@@ -1025,7 +1027,7 @@ export function usePelada() {
     }
   };
 
-  const finishGame = async (matchId: string, gameId: string, result: { scoreA: number, scoreB: number, teamA: string[], teamB: string[] }) => {
+  const finishGame = async (matchId: string, gameId: string, result: { scoreA: number, scoreB: number, teamA: string[], teamB: string[], drawStayTeam?: 'A' | 'B', drawFirstTeam?: 'A' | 'B' }) => {
     console.log("[usePelada] finishGame: Início do processamento", { matchId, gameId, scoreA: result.scoreA });
     
     if (!matchId || !gameId) {
@@ -1053,12 +1055,16 @@ export function usePelada() {
       const sA = Number(result.scoreA) || 0;
       const sB = Number(result.scoreB) || 0;
 
-      batch.update(gameRef, { 
+      const updatePayload: any = { 
         status: 'FINISHED',
         endTime: serverTimestamp(),
         scoreA: sA,
         scoreB: sB
-      });
+      };
+      if (result.drawStayTeam) updatePayload.drawStayTeam = result.drawStayTeam;
+      if (result.drawFirstTeam) updatePayload.drawFirstTeam = result.drawFirstTeam;
+
+      batch.update(gameRef, updatePayload);
 
       const isDraw = sA === sB;
       const winA = sA > sB;

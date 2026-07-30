@@ -75,6 +75,13 @@ export default function LiveMatch() {
   const [showConfirmFinish, setShowConfirmFinish] = useState(false);
   const [showConfirmFinishRound, setShowConfirmFinishRound] = useState(false);
   const [finishStatus, setFinishStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', text: string }>({ type: 'idle', text: '' });
+  const [drawModalState, setDrawModalState] = useState<{
+    open: boolean;
+    mode: 'FOUR_OR_MORE' | 'THREE';
+    nameA: string;
+    nameB: string;
+  } | null>(null);
+  const [drawSelectedOption, setDrawSelectedOption] = useState<'A' | 'B'>('A');
   
   const getTeamName = (teamIds: string[] | undefined, defaultLabel: string): string => {
     if (!teamIds || teamIds.length === 0) return defaultLabel;
@@ -456,7 +463,14 @@ export default function LiveMatch() {
     const gameTeams = finishedGames.map(game => {
       const teamA = getTeamIndexLocal(game.teamA_ids, game.teamA_name);
       const teamB = getTeamIndexLocal(game.teamB_ids, game.teamB_name);
-      return { teamA, teamB, scoreA: game.scoreA ?? 0, scoreB: game.scoreB ?? 0 };
+      return { 
+        teamA, 
+        teamB, 
+        scoreA: game.scoreA ?? 0, 
+        scoreB: game.scoreB ?? 0,
+        drawStayTeam: game.drawStayTeam,
+        drawFirstTeam: game.drawFirstTeam
+      };
     });
 
     // We compile a chronological list of events: team additions and game completions.
@@ -464,7 +478,14 @@ export default function LiveMatch() {
       type: 'TEAM_CREATED' | 'GAME_FINISHED';
       timestamp: number;
       teamKey?: number;
-      game?: { teamA: number; teamB: number; scoreA: number; scoreB: number };
+      game?: { 
+        teamA: number; 
+        teamB: number; 
+        scoreA: number; 
+        scoreB: number;
+        drawStayTeam?: 'A' | 'B';
+        drawFirstTeam?: 'A' | 'B';
+      };
     }
 
     const events: SimulationEvent[] = [];
@@ -511,7 +532,7 @@ export default function LiveMatch() {
         }
       } else if (evt.type === 'GAME_FINISHED') {
         const gt = evt.game!;
-        const { teamA, teamB, scoreA, scoreB } = gt;
+        const { teamA, teamB, scoreA, scoreB, drawStayTeam, drawFirstTeam } = gt;
         if (teamA === -1 || teamB === -1 || teamA === teamB) return;
 
         // Ensure both teams exist in our sequence
@@ -525,31 +546,49 @@ export default function LiveMatch() {
         const winA = scoreA > scoreB;
 
         if (isDraw) {
-          const playedA = gamesPlayedMap[teamA] || 0;
-          const playedB = gamesPlayedMap[teamB] || 0;
-
-          let firstToPush: number;
-          let lastToPush: number;
-
-          if (playedA > playedB) {
-            firstToPush = teamB;
-            lastToPush = teamA;
-          } else if (playedB > playedA) {
-            firstToPush = teamA;
-            lastToPush = teamB;
+          if (drawStayTeam === 'A') {
+            sequence = sequence.filter(x => x !== teamA && x !== teamB);
+            sequence.unshift(teamA); // stays on field
+            sequence.push(teamB);    // goes to wait list
+          } else if (drawStayTeam === 'B') {
+            sequence = sequence.filter(x => x !== teamA && x !== teamB);
+            sequence.unshift(teamB); // stays on field
+            sequence.push(teamA);    // goes to wait list
+          } else if (drawFirstTeam === 'A') {
+            sequence = sequence.filter(x => x !== teamA && x !== teamB);
+            sequence.push(teamA);    // first in wait list (sequência)
+            sequence.push(teamB);    // second in wait list (final)
+          } else if (drawFirstTeam === 'B') {
+            sequence = sequence.filter(x => x !== teamA && x !== teamB);
+            sequence.push(teamB);    // first in wait list (sequência)
+            sequence.push(teamA);    // second in wait list (final)
           } else {
-            if (teamA < teamB) {
+            const playedA = gamesPlayedMap[teamA] || 0;
+            const playedB = gamesPlayedMap[teamB] || 0;
+
+            let firstToPush: number;
+            let lastToPush: number;
+
+            if (playedA > playedB) {
+              firstToPush = teamB;
+              lastToPush = teamA;
+            } else if (playedB > playedA) {
               firstToPush = teamA;
               lastToPush = teamB;
             } else {
-              firstToPush = teamB;
-              lastToPush = teamA;
+              if (teamA < teamB) {
+                firstToPush = teamA;
+                lastToPush = teamB;
+              } else {
+                firstToPush = teamB;
+                lastToPush = teamA;
+              }
             }
-          }
 
-          sequence = sequence.filter(x => x !== teamA && x !== teamB);
-          sequence.push(firstToPush);
-          sequence.push(lastToPush);
+            sequence = sequence.filter(x => x !== teamA && x !== teamB);
+            sequence.push(firstToPush);
+            sequence.push(lastToPush);
+          }
         } else {
           const winner = winA ? teamA : teamB;
           const loser = winA ? teamB : teamA;
@@ -602,7 +641,14 @@ export default function LiveMatch() {
     const gameTeams = finishedGames.map(game => {
       const teamA = getTeamIndexLocal(game.teamA_ids, game.teamA_name);
       const teamB = getTeamIndexLocal(game.teamB_ids, game.teamB_name);
-      return { teamA, teamB, scoreA: game.scoreA ?? 0, scoreB: game.scoreB ?? 0 };
+      return { 
+        teamA, 
+        teamB, 
+        scoreA: game.scoreA ?? 0, 
+        scoreB: game.scoreB ?? 0,
+        drawStayTeam: game.drawStayTeam,
+        drawFirstTeam: game.drawFirstTeam
+      };
     });
 
     // Determine who is currently on the field
@@ -616,8 +662,14 @@ export default function LiveMatch() {
       const lastGame = gameTeams[gameTeams.length - 1];
       if (lastGame.teamA !== -1 && lastGame.teamB !== -1) {
         if (lastGame.scoreA === lastGame.scoreB) {
-          // Draw -> both left the field
-          currentOnField = [];
+          if (lastGame.drawStayTeam === 'A') {
+            currentOnField = [lastGame.teamA];
+          } else if (lastGame.drawStayTeam === 'B') {
+            currentOnField = [lastGame.teamB];
+          } else {
+            // Draw without stay team -> both left the field
+            currentOnField = [];
+          }
         } else {
           // Winner stays on field
           const winner = lastGame.scoreA > lastGame.scoreB ? lastGame.teamA : lastGame.teamB;
@@ -1257,7 +1309,7 @@ export default function LiveMatch() {
     });
   };
 
-  const handleFinish = async () => {
+  const handleFinish = async (drawOpts?: { drawStayTeam?: 'A' | 'B'; drawFirstTeam?: 'A' | 'B' }) => {
     setFinishStatus({ type: 'loading', text: 'Iniciando processo...' });
     console.log("[LiveMatch] Início da finalização da partida.");
     
@@ -1275,7 +1327,8 @@ export default function LiveMatch() {
       scoreA: liveGame.scoreA,
       scoreB: liveGame.scoreB,
       isAdmin,
-      userEmail: user?.email
+      userEmail: user?.email,
+      drawOpts
     });
 
     try {
@@ -1339,7 +1392,9 @@ export default function LiveMatch() {
         scoreA: Number(liveGame.scoreA) || 0,
         scoreB: Number(liveGame.scoreB) || 0,
         teamA: liveGame.teamA_ids || [],
-        teamB: liveGame.teamB_ids || []
+        teamB: liveGame.teamB_ids || [],
+        drawStayTeam: drawOpts?.drawStayTeam,
+        drawFirstTeam: drawOpts?.drawFirstTeam
       });
       console.log("[LiveMatch] Sucesso retornado da hook!");
       setFinishStatus({ type: 'success', text: 'PARTIDA FINALIZADA!\nEstatísticas atualizadas com sucesso.' });
@@ -1364,6 +1419,44 @@ export default function LiveMatch() {
     } finally {
       setIsFinishing(false);
     }
+  };
+
+  const handleRequestFinish = () => {
+    if (!liveGame) return;
+    const sA = Number(liveGame.scoreA) || 0;
+    const sB = Number(liveGame.scoreB) || 0;
+
+    const idxA = resolveTeamIndex(liveGame.teamA_ids, liveGame.teamA_name);
+    const idxB = resolveTeamIndex(liveGame.teamB_ids, liveGame.teamB_name);
+    const nameA = liveGame.teamA_name || `Time ${(idxA !== -1 ? idxA : 0) + 1}`;
+    const nameB = liveGame.teamB_name || `Time ${(idxB !== -1 ? idxB : 1) + 1}`;
+
+    if (sA === sB) {
+      if (teamsCount >= 4) {
+        setDrawModalState({
+          open: true,
+          mode: 'FOUR_OR_MORE',
+          nameA,
+          nameB
+        });
+        setDrawSelectedOption('A');
+        return;
+      } else if (teamsCount === 3) {
+        setDrawModalState({
+          open: true,
+          mode: 'THREE',
+          nameA,
+          nameB
+        });
+        setDrawSelectedOption('A');
+        return;
+      }
+    }
+
+    confirmAction(
+      `Deseja finalizar a partida atual com o placar de ${sA} x ${sB}?`,
+      () => handleFinish()
+    );
   };
 
   const handleRemovePlayerFromTeam = async (playerId: string) => {
@@ -2521,7 +2614,7 @@ export default function LiveMatch() {
                       )}
 
                       <button 
-                        onClick={() => confirmAction(`Deseja finalizar a partida atual com o placar de ${liveGame.scoreA} x ${liveGame.scoreB}?`, handleFinish)}
+                        onClick={handleRequestFinish}
                         className="flex flex-col items-center group"
                       >
                         <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-500 group-active:scale-95 transition-all">
@@ -3860,6 +3953,161 @@ export default function LiveMatch() {
                 ) : (
                   <span>{showEventModal.editIdx !== undefined ? 'Salvar Alteração' : `Confirmar Gol ${isOwnGoal ? 'Contra' : ''}`}</span>
                 )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal de Escolha de Empate (3 times ou 4+ times) */}
+      {drawModalState?.open && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-md bg-card border border-border rounded-[2.5rem] p-6 shadow-2xl relative space-y-6"
+          >
+            <div className="flex items-center space-x-3 text-amber-400">
+              <div className="w-10 h-10 rounded-2xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center">
+                <Trophy size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black uppercase tracking-tight text-white">Empate na Partida</h3>
+                <p className="text-xs text-gray-400 font-medium">
+                  {drawModalState.mode === 'FOUR_OR_MORE' ? '4 ou mais times na pelada' : '3 times na pelada'}
+                </p>
+              </div>
+            </div>
+
+            {drawModalState.mode === 'FOUR_OR_MORE' ? (
+              <div className="space-y-4">
+                <p className="text-xs text-gray-300 leading-relaxed font-medium">
+                  Com 4 ou mais times, <strong className="text-white">ambos os times saem de campo</strong>. Escolha qual time entra na sequência da fila de espera e qual vai para o final da lista:
+                </p>
+
+                <div className="space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDrawSelectedOption('A')}
+                    className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                      drawSelectedOption === 'A'
+                        ? 'bg-primary/10 border-primary text-white shadow-lg shadow-primary/10'
+                        : 'bg-white/5 border-border text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-extrabold text-xs uppercase tracking-wider text-primary">
+                        {drawModalState.nameA} na Sequência
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {drawModalState.nameA} fica na sequência da fila • {drawModalState.nameB} vai para o final da lista
+                      </p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${drawSelectedOption === 'A' ? 'border-primary bg-primary' : 'border-gray-500'}`}>
+                      {drawSelectedOption === 'A' && <div className="w-2 h-2 rounded-full bg-bg" />}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawSelectedOption('B')}
+                    className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                      drawSelectedOption === 'B'
+                        ? 'bg-primary/10 border-primary text-white shadow-lg shadow-primary/10'
+                        : 'bg-white/5 border-border text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-extrabold text-xs uppercase tracking-wider text-primary">
+                        {drawModalState.nameB} na Sequência
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {drawModalState.nameB} fica na sequência da fila • {drawModalState.nameA} vai para o final da lista
+                      </p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${drawSelectedOption === 'B' ? 'border-primary bg-primary' : 'border-gray-500'}`}>
+                      {drawSelectedOption === 'B' && <div className="w-2 h-2 rounded-full bg-bg" />}
+                    </div>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-gray-300 leading-relaxed font-medium">
+                  Com 3 times, escolha qual time <strong className="text-white">permanece em campo</strong> para jogar contra o time que estava de fora:
+                </p>
+
+                <div className="space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDrawSelectedOption('A')}
+                    className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                      drawSelectedOption === 'A'
+                        ? 'bg-primary/10 border-primary text-white shadow-lg shadow-primary/10'
+                        : 'bg-white/5 border-border text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-extrabold text-xs uppercase tracking-wider text-primary">
+                        {drawModalState.nameA} Permanece em Campo
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {drawModalState.nameA} continua em campo • {drawModalState.nameB} sai para a fila de espera
+                      </p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${drawSelectedOption === 'A' ? 'border-primary bg-primary' : 'border-gray-500'}`}>
+                      {drawSelectedOption === 'A' && <div className="w-2 h-2 rounded-full bg-bg" />}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawSelectedOption('B')}
+                    className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                      drawSelectedOption === 'B'
+                        ? 'bg-primary/10 border-primary text-white shadow-lg shadow-primary/10'
+                        : 'bg-white/5 border-border text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-extrabold text-xs uppercase tracking-wider text-primary">
+                        {drawModalState.nameB} Permanece em Campo
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {drawModalState.nameB} continua em campo • {drawModalState.nameA} sai para a fila de espera
+                      </p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${drawSelectedOption === 'B' ? 'border-primary bg-primary' : 'border-gray-500'}`}>
+                      {drawSelectedOption === 'B' && <div className="w-2 h-2 rounded-full bg-bg" />}
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDrawModalState(null)}
+                className="flex-1 py-3.5 bg-white/5 border border-border text-gray-300 rounded-2xl font-bold uppercase text-[10px] tracking-wider hover:bg-white/10 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const mode = drawModalState.mode;
+                  const choice = drawSelectedOption;
+                  setDrawModalState(null);
+                  if (mode === 'FOUR_OR_MORE') {
+                    handleFinish({ drawFirstTeam: choice });
+                  } else {
+                    handleFinish({ drawStayTeam: choice });
+                  }
+                }}
+                className="flex-1 py-3.5 bg-primary text-bg font-black uppercase text-[10px] tracking-wider rounded-2xl shadow-lg shadow-primary/20 hover:opacity-90 cursor-pointer"
+              >
+                Confirmar
               </button>
             </div>
           </motion.div>

@@ -657,11 +657,6 @@ export default function MatchList() {
                             </h4>
                             <div className="flex items-center gap-2">
                               <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest truncate">{formatPosition(player.position)}</span>
-                              {isAdmin && (
-                                <span className={`text-[10px] font-black shrink-0 ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
-                                  • R$ {(player.balance || 0).toFixed(2)}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -919,87 +914,90 @@ function PresenceSection({
                 </div>
               </div>
               <div className="flex items-center space-x-2 shrink-0">
-                {isAdmin && onToggleDrawPresence ? (
-                  <button
-                    onClick={() => onToggleDrawPresence(player.id)}
-                    className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
-                      (drawPresentIds ?? []).includes(player.id)
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
-                        : 'bg-white/5 text-gray-500 border border-white/10 hover:border-white/20'
-                    }`}
-                    title={
-                      (drawPresentIds ?? []).includes(player.id)
-                        ? 'Marcado como Presente (Clique para alterar)'
-                        : 'Marcado como Ausente (Clique para alterar)'
-                    }
-                  >
-                    <div className={`w-1.5 h-1.5 rounded-full ${
-                      (drawPresentIds ?? []).includes(player.id) ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
-                    }`} />
-                    <span>
-                      {(drawPresentIds ?? []).includes(player.id) ? 'Presente' : 'Ausente'}
-                    </span>
-                  </button>
-                ) : (
-                  (drawPresentIds ?? []).includes(player.id) && (
-                    <div className="px-2 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>Presente</span>
-                    </div>
-                  )
-                )}
-                {showPaidToggle ? (
-                  <div className="flex items-center">
-                    {(() => {
-                      const matchDateObj = matchDate ? matchDate.toDate() : new Date();
-                      const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
+                <div className="flex flex-col items-end gap-1">
+                  {showPaidToggle ? (
+                    <div className="flex items-center">
+                      {(() => {
+                        const matchDateObj = matchDate ? matchDate.toDate() : new Date();
+                        const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
 
-                      const hasPaidMonthly = player.type === 'MENSALISTA' && transactions.some(t => 
-                        t.playerId === player.id && 
-                        t.category === 'MONTHLY' && 
-                        t.type === 'INCOME' && 
-                        t.referenceMonth === matchMonthStr
-                      );
+                        const hasPaidMonthly = player.type === 'MENSALISTA' && transactions.some(t => 
+                          t.playerId === player.id && 
+                          t.category === 'MONTHLY' && 
+                          t.type === 'INCOME' && 
+                          t.referenceMonth === matchMonthStr
+                        );
 
-                      const isPaid = isPlayerPaidForMatch(player, matchDate, transactions, settings, paidIds);
+                        const isPaid = isPlayerPaidForMatch(player, matchDate, transactions, settings, paidIds);
 
-                      return (
-                        <button
-                          disabled={!isAdmin || player.type === 'MENSALISTA'}
-                          onClick={() => onTogglePaid && onTogglePaid(player.id)}
-                          className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${
-                            isPaid
-                              ? 'bg-primary border-primary text-bg shadow-[0_0_8px_rgba(234,179,8,0.25)]'
-                              : 'bg-white/5 border-white/10 text-transparent hover:border-primary/50'
-                          } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
-                          title={
-                            player.type === 'MENSALISTA'
-                              ? hasPaidMonthly
-                                ? 'Mensalista (Pago)'
+                        return (
+                          <button
+                            disabled={!isAdmin || player.type === 'MENSALISTA'}
+                            onClick={() => onTogglePaid && onTogglePaid(player.id)}
+                            className={`w-7 h-6 rounded-md border flex items-center justify-center transition-all ${
+                              isPaid
+                                ? 'bg-primary border-primary text-bg shadow-[0_0_8px_rgba(234,179,8,0.25)]'
+                                : 'bg-white/5 border-white/10 text-transparent hover:border-primary/50'
+                            } ${(!isAdmin || player.type === 'MENSALISTA') ? 'cursor-default' : 'cursor-pointer hover:scale-105'}`}
+                            title={
+                              player.type === 'MENSALISTA'
+                                ? hasPaidMonthly
+                                  ? 'Mensalista (Pago)'
+                                  : isPaid
+                                  ? 'Mensalista (Em Dia - Pago Mês Anterior)'
+                                  : 'Mensalista (Pendente)'
                                 : isPaid
-                                ? 'Mensalista (Em Dia - Pago Mês Anterior)'
-                                : 'Mensalista (Pendente)'
-                              : isPaid
-                              ? 'Pago'
-                              : 'Marcar como Pago'
-                          }
-                        >
-                          <span className={`font-mono text-[10px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
-                            PG
-                          </span>
-                        </button>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  isAdmin && (
-                    <div className="hidden sm:flex space-x-1">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
-                      ))}
+                                ? 'Pago'
+                                : 'Marcar como Pago'
+                            }
+                          >
+                            <span className={`font-mono text-[10px] font-black leading-none ${isPaid ? 'opacity-100' : 'opacity-0'}`}>
+                              PG
+                            </span>
+                          </button>
+                        );
+                      })()}
                     </div>
-                  )
-                )}
+                  ) : (
+                    isAdmin && (
+                      <div className="hidden sm:flex space-x-1 py-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < player.level ? 'bg-primary' : 'bg-gray-700'}`} />
+                        ))}
+                      </div>
+                    )
+                  )}
+
+                  {isAdmin && onToggleDrawPresence ? (
+                    <button
+                      onClick={() => onToggleDrawPresence(player.id)}
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                        (drawPresentIds ?? []).includes(player.id)
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
+                          : 'bg-white/5 text-gray-500 border border-white/10 hover:border-white/20'
+                      }`}
+                      title={
+                        (drawPresentIds ?? []).includes(player.id)
+                          ? 'Marcado como Presente (Clique para alterar)'
+                          : 'Marcado como Ausente (Clique para alterar)'
+                      }
+                    >
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        (drawPresentIds ?? []).includes(player.id) ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
+                      }`} />
+                      <span>
+                        {(drawPresentIds ?? []).includes(player.id) ? 'Presente' : 'Ausente'}
+                      </span>
+                    </button>
+                  ) : (
+                    (drawPresentIds ?? []).includes(player.id) && (
+                      <div className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Presente</span>
+                      </div>
+                    )
+                  )}
+                </div>
                 {isAdmin && onPromote && (
                   <button 
                     onClick={() => onPromote(player.id)}

@@ -98,6 +98,7 @@ export interface Match {
   confirmedIds: string[];
   absentIds: { userId: string; reason: string }[];
   waitingIds: string[];
+  drawPresentIds?: string[]; // UIDs of players checked-in / present for team draw
   result?: { scoreA: number; scoreB: number };
   teams?: Record<string, string[]>; // Map of team index to player UIDs
   teamCreatedTimes?: Record<string, number>; // Map of team index to creation timestamp
@@ -453,11 +454,15 @@ export function usePelada() {
       [playerId]: new Date().toISOString()
     };
 
+    // If drawPresentIds exists or not, keep drawPresentIds synced with newConfirmed
+    const currentDrawPresent = match.drawPresentIds ?? [];
+
     try {
       await updateDoc(doc(db, 'matches', matchId), {
         confirmedIds: newConfirmed,
         waitingIds: newWaiting,
         confirmations: newConfirmations,
+        drawPresentIds: currentDrawPresent,
         absentIds: match.absentIds.filter(a => a.userId !== playerId)
       });
     } catch (error) {
@@ -477,10 +482,13 @@ export function usePelada() {
       newConfirmed.push(playerId);
     }
 
+    const currentDrawPresent = match.drawPresentIds ?? [];
+
     try {
       await updateDoc(doc(db, 'matches', matchId), {
         confirmedIds: newConfirmed,
-        waitingIds: newWaiting
+        waitingIds: newWaiting,
+        drawPresentIds: currentDrawPresent
       });
     } catch (error) {
       console.error("Erro ao promover jogador:", error);
@@ -515,15 +523,41 @@ export function usePelada() {
       }
     }
 
+    const currentDrawPresent = (match.drawPresentIds ?? []).filter(id => newConfirmed.includes(id));
+
     try {
       await updateDoc(doc(db, 'matches', matchId), {
         absentIds: newAbsent,
         confirmedIds: newConfirmed,
         waitingIds: newWaiting,
-        confirmations: newConfirmations
+        confirmations: newConfirmations,
+        drawPresentIds: currentDrawPresent
       });
     } catch (error) {
       handleFirestoreError(error, 'update', `matches/${matchId}`);
+    }
+  };
+
+  const toggleDrawPresence = async (matchId: string, playerId: string) => {
+    if (!playerId) return;
+    const match = matches.find(m => m.id === matchId);
+    if (!match) return;
+
+    const currentDrawPresent = match.drawPresentIds ?? [];
+    const isNowPresent = !currentDrawPresent.includes(playerId);
+    let newDrawPresent: string[];
+    if (isNowPresent) {
+      newDrawPresent = [...currentDrawPresent, playerId];
+    } else {
+      newDrawPresent = currentDrawPresent.filter(id => id !== playerId);
+    }
+
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        drawPresentIds: newDrawPresent
+      });
+    } catch (error) {
+      console.error("Erro ao alterar presença no sorteio:", error);
     }
   };
 
@@ -1447,6 +1481,7 @@ export function usePelada() {
     confirmPresence,
     promotePlayer,
     markAbsent,
+    toggleDrawPresence,
     createMatch,
     createTransaction,
     updateTransaction,

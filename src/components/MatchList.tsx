@@ -59,7 +59,7 @@ const isPlayerPaidForMatch = (
 
 export default function MatchList() {
   const { user, role } = useAuth();
-  const { players, matches, settings, confirmPresence, promotePlayer, markAbsent, loading, updateMatch, transactions } = usePelada();
+  const { players, matches, settings, confirmPresence, promotePlayer, markAbsent, loading, updateMatch, transactions, toggleDrawPresence } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   
   const now = new Date();
@@ -286,6 +286,9 @@ export default function MatchList() {
   const confirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds.includes(p.id)) : [];
   const confirmedCount = confirmedPlayers.length;
 
+  const drawPresentIds = nextMatch?.drawPresentIds ?? [];
+  const drawPresentCount = confirmedPlayers.filter(p => drawPresentIds.includes(p.id)).length;
+
   const matchDateObj = nextMatch?.date ? nextMatch.date.toDate() : new Date();
   const matchMonthStr = `${matchDateObj.getFullYear()}-${String(matchDateObj.getMonth() + 1).padStart(2, '0')}`;
 
@@ -467,7 +470,7 @@ export default function MatchList() {
                   >
                     <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase flex items-center">
                       DENTRO 
-                      <span className="ml-2 text-gray-500">{confirmedCount} ({paidConfirmedCount} PG)</span>
+                      <span className="ml-2 text-gray-500">{confirmedCount} ({paidConfirmedCount} PG • {drawPresentCount} Presentes)</span>
                     </h3>
                     <div className="text-gray-600 group-hover:text-primary transition-colors">
                       {collapsedSections.confirmed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -491,6 +494,8 @@ export default function MatchList() {
                           paidIds={nextMatch.paidIds}
                           onTogglePaid={(pid) => handleTogglePaid(nextMatch.id, pid)}
                           matchDate={nextMatch.date}
+                          drawPresentIds={drawPresentIds}
+                          onToggleDrawPresence={(pid) => toggleDrawPresence(nextMatch.id, pid)}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -838,7 +843,9 @@ function PresenceSection({
   showPaidToggle = false,
   paidIds = [],
   onTogglePaid,
-  matchDate
+  matchDate,
+  drawPresentIds,
+  onToggleDrawPresence
 }: { 
   title?: string, 
   players: Player[], 
@@ -851,8 +858,11 @@ function PresenceSection({
   showPaidToggle?: boolean,
   paidIds?: string[],
   onTogglePaid?: (playerId: string) => void,
-  matchDate?: any
+  matchDate?: any,
+  drawPresentIds?: string[],
+  onToggleDrawPresence?: (playerId: string) => void
 }) {
+  const { user } = useAuth();
   const { transactions, settings } = usePelada();
 
   return (
@@ -908,7 +918,36 @@ function PresenceSection({
                   </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 shrink-0">
+              <div className="flex items-center space-x-2 shrink-0">
+                {isAdmin && onToggleDrawPresence ? (
+                  <button
+                    onClick={() => onToggleDrawPresence(player.id)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                      (drawPresentIds ?? []).includes(player.id)
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
+                        : 'bg-white/5 text-gray-500 border border-white/10 hover:border-white/20'
+                    }`}
+                    title={
+                      (drawPresentIds ?? []).includes(player.id)
+                        ? 'Marcado como Presente (Clique para alterar)'
+                        : 'Marcado como Ausente (Clique para alterar)'
+                    }
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full ${
+                      (drawPresentIds ?? []).includes(player.id) ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
+                    }`} />
+                    <span>
+                      {(drawPresentIds ?? []).includes(player.id) ? 'Presente' : 'Ausente'}
+                    </span>
+                  </button>
+                ) : (
+                  (drawPresentIds ?? []).includes(player.id) && (
+                    <div className="px-2 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Presente</span>
+                    </div>
+                  )
+                )}
                 {showPaidToggle ? (
                   <div className="flex items-center">
                     {(() => {

@@ -5,7 +5,7 @@ import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon, Trending
 import { motion } from 'motion/react';
 
 export default function TeamDraw() {
-  const { players, matches, setMatchTeams } = usePelada();
+  const { players, matches, setMatchTeams, toggleDrawPresence, updateMatch } = usePelada();
   const { user, role } = useAuth();
   const isAdmin = role === 'ADMIN' || 
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
@@ -26,7 +26,10 @@ export default function TeamDraw() {
     dayAfterMatch.setHours(0, 0, 0, 0);
     return now < dayAfterMatch;
   });
-  const confirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds?.includes(p.id)) : [];
+
+  const allConfirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds?.includes(p.id)) : [];
+  const drawPresentIds = nextMatch?.drawPresentIds ?? [];
+  const confirmedPlayers = allConfirmedPlayers.filter(p => drawPresentIds.includes(p.id));
 
   // Detectar duplicatas de número nos jogadores confirmados
   const duplicatedNumbers = confirmedPlayers.reduce((acc, p) => {
@@ -405,6 +408,98 @@ export default function TeamDraw() {
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {allConfirmedPlayers.length > 0 && (
+            <div className="bg-card border border-border/50 p-5 rounded-[2.5rem] space-y-4 shadow-xl mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                  <Users className="text-primary" size={18} />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                    Presentes no Sorteio
+                  </h3>
+                  <span className="bg-primary/20 text-primary text-[11px] font-black px-2.5 py-0.5 rounded-full">
+                    {confirmedPlayers.length} / {allConfirmedPlayers.length}
+                  </span>
+                </div>
+
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        if (nextMatch) {
+                          updateMatch(nextMatch.id, { drawPresentIds: allConfirmedPlayers.map(p => p.id) });
+                        }
+                      }}
+                      className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 hover:border-primary/50 text-gray-300 transition-all active:scale-95"
+                    >
+                      Marcar Todos
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (nextMatch) {
+                          updateMatch(nextMatch.id, { drawPresentIds: [] });
+                        }
+                      }}
+                      className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 hover:border-danger/50 text-gray-400 transition-all active:scale-95"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-gray-400 font-medium">
+                {isAdmin 
+                  ? "Selecione quem está presente no horário para participar do sorteio:" 
+                  : "Apenas os atletas presentes no horário entram no sorteio dos times:"}
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 max-h-[280px] overflow-y-auto pr-1">
+                {allConfirmedPlayers.map(player => {
+                  const isPresent = drawPresentIds.includes(player.id);
+                  const canToggle = isAdmin;
+
+                  return (
+                    <button
+                      key={player.id}
+                      disabled={!canToggle}
+                      onClick={() => nextMatch && toggleDrawPresence(nextMatch.id, player.id)}
+                      className={`p-2.5 rounded-2xl border text-left flex items-center space-x-2.5 transition-all ${
+                        isPresent 
+                          ? 'bg-emerald-500/10 border-emerald-500/40 text-white shadow-[0_0_10px_rgba(16,185,129,0.15)]' 
+                          : 'bg-bg/60 border-border/60 text-gray-500 hover:border-gray-600'
+                      } ${!canToggle ? 'cursor-default' : 'cursor-pointer active:scale-95'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border overflow-hidden ${
+                        isPresent ? 'border-emerald-500' : 'border-gray-700'
+                      }`}>
+                        {player.photoUrl ? (
+                          <img src={player.photoUrl} alt={player.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span className="text-xs font-bold text-gray-300">{(player.displayName || player.name).charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs truncate flex items-center justify-between">
+                          <span className={`truncate ${isPresent ? 'text-white' : 'text-gray-400'}`}>
+                            {player.displayName || player.name}
+                          </span>
+                        </div>
+                        <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-500">
+                          {formatPosition(player.position)}
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 text-xs font-black border transition-all ${
+                        isPresent ? 'bg-emerald-500 border-emerald-400 text-bg' : 'bg-white/5 border-gray-700 text-transparent'
+                      }`}>
+                        ✓
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

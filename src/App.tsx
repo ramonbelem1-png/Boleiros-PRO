@@ -125,7 +125,7 @@ export default function App() {
             setEditingTransaction(t);
             setModalType('finance');
           }}
-          onLaunchPayment={(p) => {
+          onLaunchPayment={(p, targetMonth) => {
             setEditingTransaction({
               id: '',
               amount: p.type === 'MENSALISTA' ? settings.monthlyFee : 0,
@@ -133,6 +133,7 @@ export default function App() {
               category: p.type === 'MENSALISTA' ? 'MONTHLY' : 'DAILY',
               playerId: p.id,
               description: p.type === 'MENSALISTA' ? 'Mensalidade' : 'Diarista',
+              referenceMonth: targetMonth || null,
               date: null
             } as any);
             setModalType('finance');

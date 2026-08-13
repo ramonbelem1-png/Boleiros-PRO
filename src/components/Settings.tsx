@@ -512,11 +512,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     >
                       {player.active ? 'ATIVO' : 'INATIVO'}
                     </button>
-                    {isAdmin && (
-                      <div className={`text-sm font-black ${player.balance >= 0 ? 'text-primary' : 'text-danger'}`}>
-                        R$ {(player.balance || 0).toFixed(2)}
-                      </div>
-                    )}
+
                     {isAdmin && (
                       <div className="flex gap-1 mt-1 justify-end">
                         {[1, 2, 3, 4, 5].map(l => (

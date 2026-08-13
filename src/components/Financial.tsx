@@ -6,7 +6,7 @@ type SubTab = 'resumo' | 'extrato' | 'jogadores';
 
 interface FinancialProps {
   onEditTransaction: (t: Transaction) => void;
-  onLaunchPayment?: (p: any) => void;
+  onLaunchPayment?: (p: any, targetMonth?: string) => void;
 }
 
 export default function Financial({ onEditTransaction, onLaunchPayment }: FinancialProps) {
@@ -80,6 +80,23 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
         }
       }
     }
+  };
+
+  const getPlayerMonthContribution = (player: any, targetMonthStr: string) => {
+    return transactions
+      .filter(t => {
+        if (t.playerId !== player.id) return false;
+        if (t.referenceMonth) {
+          return t.referenceMonth === targetMonthStr;
+        }
+        if (t.date) {
+          const tDate = t.date?.toDate ? t.date.toDate() : (t.date instanceof Date ? t.date : new Date(t.date));
+          const tMonthStr = `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}`;
+          return tMonthStr === targetMonthStr;
+        }
+        return false;
+      })
+      .reduce((acc, t) => acc + (t.type === 'INCOME' ? t.amount : -t.amount), 0);
   };
 
   // Filtered transactions for the selected month to show in the extrato
@@ -217,10 +234,11 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
         <div className="space-y-3">
           {players.map(player => {
             const status = getPlayerStatus(player, filterMonth);
+            const monthContribution = getPlayerMonthContribution(player, filterMonth);
             return (
               <div 
                 key={player.id} 
-                onClick={() => onLaunchPayment?.(player)}
+                onClick={() => onLaunchPayment?.(player, filterMonth)}
                 className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between cursor-pointer hover:bg-white/5 hover:border-primary/40 active:scale-[0.98] transition-all"
                 title="Lançar pagamento"
               >
@@ -258,8 +276,8 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
                     </div>
                   </div>
                 </div>
-                <div className={`font-black text-sm ${player.balance < 0 ? 'text-danger' : 'text-primary'}`}>
-                  R$ {player.balance.toFixed(2)}
+                <div className={`font-black text-sm ${monthContribution < 0 ? 'text-danger' : 'text-primary'}`}>
+                  R$ {monthContribution.toFixed(2)}
                 </div>
               </div>
             );

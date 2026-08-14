@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Transaction, usePelada } from '../hooks/usePelada';
-import { TrendingUp, TrendingDown, Wallet, Users, ArrowUpRight, ArrowDownRight, Edit2, Trash2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Users, ArrowUpRight, ArrowDownRight, Edit2, Trash2, FileSpreadsheet, Check } from 'lucide-react';
+import { exportFinancialToExcel } from '../lib/exportFinancialExcel';
 
 type SubTab = 'resumo' | 'extrato' | 'jogadores';
 
@@ -124,21 +125,58 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
   const totalMensalistas = players.filter(p => p.type === 'MENSALISTA').length;
   const expectedMonthlyFeeTotal = totalMensalistas * settings.monthlyFee;
 
+  const [exportSuccess, setExportSuccess] = useState(false);
+
+  const handleExport = () => {
+    try {
+      exportFinancialToExcel({
+        transactions,
+        players,
+        settings,
+        filterMonth,
+        getPlayerStatus,
+        getPlayerMonthContribution
+      });
+      setExportSuccess(true);
+      setTimeout(() => setExportSuccess(false), 3000);
+    } catch (err) {
+      console.error('Erro ao exportar para Excel:', err);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Title & Month Selector */}
-      <div className="flex items-center justify-between mb-2 px-1">
+    <div className="space-y-6 relative">
+      {/* Toast Feedback */}
+      {exportSuccess && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-2xl bg-emerald-500 text-bg shadow-2xl flex items-center space-x-2 animate-in fade-in zoom-in duration-300 font-bold text-xs uppercase tracking-wider">
+          <Check size={16} className="shrink-0" />
+          <span>Planilha Excel exportada com sucesso!</span>
+        </div>
+      )}
+
+      {/* Title & Actions Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
         <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">
           {activeSubTab === 'resumo' ? 'Resumo' : activeSubTab === 'extrato' ? 'Lançamentos' : 'Mensalidades'}
         </h3>
-        <div className="flex items-center gap-1.5 bg-card border border-border/50 rounded-lg px-2 py-1">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Mês:</span>
-          <input 
-            type="month" 
-            value={filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value)}
-            className="bg-transparent text-[10px] font-black text-primary outline-none cursor-pointer"
-          />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+            title="Exportar dados financeiros para planilha Excel (.xlsx)"
+          >
+            <FileSpreadsheet size={13} className="shrink-0" />
+            <span>Exportar Excel</span>
+          </button>
+          <div className="flex items-center gap-1.5 bg-card border border-border/50 rounded-lg px-2 py-1">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Mês:</span>
+            <input 
+              type="month" 
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="bg-transparent text-[10px] font-black text-primary outline-none cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 

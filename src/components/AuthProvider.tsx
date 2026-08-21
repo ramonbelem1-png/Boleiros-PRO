@@ -59,8 +59,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    // Verificar resultado de redirecionamento (caso o usuário tenha usado esse método)
-    getRedirectResult(auth).catch((error: any) => {
+    // Verificar resultado de redirecionamento (caso o usuário tenha usado esse método no mobile)
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        setUser(result.user);
+      }
+    }).catch((error: any) => {
       console.error("Erro no retorno do redirecionamento:", error);
       if (error.code === 'auth/unauthorized-domain') {
         const domain = window.location.hostname;
@@ -70,171 +74,206 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    const unsubAuth = onAuthStateChanged(auth, async (u) => {
-      try {
-        if (u) {
-          setAuthError(null);
-          // Obter papel do usuário
-          const roleRef = doc(db, 'user_roles', u.uid);
-          const roleDoc = await getDoc(roleRef);
-          let assignedRole: UserRole = 'USER';
-          let isApproved = false;
+    let unsubRoleListener: (() => void) | null = null;
 
-          if (roleDoc.exists()) {
-            const data = roleDoc.data();
-            assignedRole = data.role as UserRole;
-            isApproved = data.approved === true;
-            
-            // Garantir que o email solicitado seja ADMIN e APONTADO
-            const emailLower = u.email?.trim().toLowerCase();
-            const isAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
-            if (isAdminEmail) {
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      if (unsubRoleListener) {
+        unsubRoleListener();
+        unsubRoleListener = null;
+      }
+
+      if (!u) {
+        setUser(null);
+        setRole('USER');
+        setApproved(false);
+        setLoading(false);
+        return;
+      }
+
+      setAuthError(null);
+      setUser(u);
+
+      const emailLower = (u.email || '').trim().toLowerCase();
+      const isMainAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
+
+      // 1. Ouvir em tempo real as permissões (user_roles) do usuário
+      const roleRef = doc(db, 'user_roles', u.uid);
+      
+      unsubRoleListener = onSnapshot(roleRef, async (roleSnap) => {
+        try {
+          if (roleSnap.exists()) {
+            const data = roleSnap.data();
+            let assignedRole: UserRole = (data.role as UserRole) || 'USER';
+            let isApproved = data.approved === true;
+
+            if (isMainAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
               if (data.role !== 'ADMIN' || data.approved !== true) {
-                await setDoc(roleRef, { role: 'ADMIN', approved: true }, { merge: true });
-              }
-              // Demote ramoncarvalhoxavier@gmail.com if present in database as ADMIN
-              try {
-                const { getDocs, query, collection, where, updateDoc } = await import('firebase/firestore');
-                const q = query(collection(db, 'user_roles'), where('email', '==', 'ramoncarvalhoxavier@gmail.com'));
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach(async (docSnap) => {
-                  if (docSnap.data().role !== 'USER') {
-                    await updateDoc(docSnap.ref, { role: 'USER' });
-                    console.log('ramoncarvalhoxavier@gmail.com demoted to USER');
-                  }
-                });
-              } catch (e) {
-                console.error('Error demoting ramoncarvalhoxavier@gmail.com:', e);
-              }
-            } else if (emailLower === 'ramoncarvalhoxavier@gmail.com') {
-              assignedRole = 'USER';
-              if (data.role !== 'USER') {
-                await setDoc(roleRef, { role: 'USER' }, { merge: true });
+                await setDoc(roleRef, { role: 'ADMIN', approved: true }, { merge: true }).catch(() => {});
               }
             }
+
+            setRole(assignedRole);
+            setApproved(isApproved);
           } else {
-            // Se não houver configurações, o primeiro a logar vira admin (bootstrap)
-            const firstUserCheck = await getDoc(doc(db, 'groups', 'main'));
-            
-            const emailLower = u.email?.trim().toLowerCase();
-            const isAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
-            if (!firstUserCheck.exists() || isAdminEmail) {
+            // Documento de role ainda não existe, cria inicial
+            let isApproved = false;
+            let assignedRole: UserRole = 'USER';
+
+            if (isMainAdminEmail) {
               assignedRole = 'ADMIN';
               isApproved = true;
-            } else if (emailLower === 'ramoncarvalhoxavier@gmail.com') {
-              assignedRole = 'USER';
-              isApproved = firstUserCheck.data()?.autoApprove === true;
             } else {
-              assignedRole = 'USER';
-              isApproved = firstUserCheck.data()?.autoApprove === true;
+              try {
+                const groupDoc = await getDoc(doc(db, 'groups', 'main'));
+                if (!groupDoc.exists()) {
+                  // Primeiro usuário da aplicação se não existir grupo
+                  assignedRole = 'ADMIN';
+                  isApproved = true;
+                } else {
+                  isApproved = groupDoc.data()?.autoApprove === true;
+                }
+              } catch (e) {
+                console.warn("[AuthProvider] Aviso ao verificar autoApprove:", e);
+              }
             }
-            
-            await setDoc(roleRef, { 
+
+            const initialRoleData = {
               role: assignedRole,
               approved: isApproved,
-              email: u.email,
+              email: u.email || '',
               name: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
               displayName: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
               fullName: u.displayName || name || u.email?.split('@')[0] || 'Jogador',
               createdAt: new Date().toISOString()
+            };
+
+            await setDoc(roleRef, initialRoleData, { merge: true }).catch((err) => {
+              console.warn("[AuthProvider] Não foi possível criar user_roles:", err);
             });
+
+            setRole(assignedRole);
+            setApproved(isApproved);
           }
+        } catch (err) {
+          console.warn("[AuthProvider] Erro ao processar snapshot de role:", err);
+          if (isMainAdminEmail) {
+            setRole('ADMIN');
+            setApproved(true);
+          }
+        } finally {
+          setLoading(false);
+        }
+      }, (error) => {
+        console.warn("[AuthProvider] Erro no listener de user_roles:", error);
+        if (isMainAdminEmail) {
+          setRole('ADMIN');
+          setApproved(true);
+        }
+        setLoading(false);
+      });
 
-          // Garantir que o usuário exista na coleção 'players' para poder marcar presença
+      // 2. Garantir sincronização segura com a coleção 'players' em segundo plano (sem travar login)
+      (async () => {
+        try {
           const playerRef = doc(db, 'players', u.uid);
-          const playerDoc = await getDoc(playerRef);
-          
-          if (!playerDoc.exists()) {
-            // Se não existir pelo UID, tenta buscar por email (caso um admin tenha criado manualmente)
-            const { getDocs, query, collection, where, deleteDoc } = await import('firebase/firestore');
-            const emailQuery = query(collection(db, 'players'), where('email', '==', u.email));
-            const emailSnap = await getDocs(emailQuery);
+          const playerDoc = await getDoc(playerRef).catch(() => null);
 
-            if (!emailSnap.empty) {
-              const docToMigrate = emailSnap.docs[0];
-              const existingData = docToMigrate.data();
-              const oldId = docToMigrate.id;
-              console.log(`[AuthProvider] Migrando jogador do email ${u.email} (ID antigo: ${oldId}) para o UID: ${u.uid}`);
+          if (!playerDoc || !playerDoc.exists()) {
+            let existingData: any = null;
+            let oldId: string | null = null;
 
-              await setDoc(playerRef, {
-                level: 3,
-                position: 'MEIA',
-                secondaryPosition: 'NENHUMA',
-                type: 'DIARISTA',
-                balance: 0,
-                active: true,
-                gols: 0,
-                assistencias: 0,
-                vitorias: 0,
-                derrotas: 0,
-                empates: 0,
-                ...existingData,
-                name: (existingData.displayName || existingData.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-                displayName: (existingData.displayName || existingData.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-                fullName: existingData.fullName || existingData.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador',
-                photoUrl: existingData.photoUrl || u.photoURL || '',
-                email: u.email
-              });
-
-              if (oldId !== u.uid) {
-                console.log(`[AuthProvider] Deletando documento antigo: ${oldId}`);
-                await deleteDoc(doc(db, 'players', oldId));
+            if (u.email) {
+              try {
+                const { getDocs, query, collection, where } = await import('firebase/firestore');
+                const emailQuery = query(collection(db, 'players'), where('email', '==', u.email));
+                const emailSnap = await getDocs(emailQuery);
+                if (!emailSnap.empty) {
+                  const docToMigrate = emailSnap.docs[0];
+                  existingData = docToMigrate.data();
+                  oldId = docToMigrate.id;
+                }
+              } catch (qErr) {
+                console.warn("[AuthProvider] Não foi possível buscar jogador pré-existente por e-mail:", qErr);
               }
-            } else {
-              await setDoc(playerRef, {
-                name: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-                displayName: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-                fullName: u.displayName || name || u.email?.split('@')[0] || 'Jogador',
-                email: u.email,
-                photoUrl: u.photoURL || '',
-                level: 3,
-                position: 'MEIA',
-                secondaryPosition: 'NENHUMA',
-                type: 'DIARISTA',
-                balance: 0,
-                active: true,
-                gols: 0,
-                assistencias: 0,
-                vitorias: 0,
-                derrotas: 0,
-                empates: 0,
-                profileCompleted: false
-              });
+            }
+
+            const cleanDisplayName = ((existingData?.displayName || existingData?.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador') as string).substring(0, 15);
+            const cleanFullName = (existingData?.fullName || existingData?.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador') as string;
+
+            const playerData = {
+              name: cleanDisplayName,
+              displayName: cleanDisplayName,
+              fullName: cleanFullName,
+              email: u.email || '',
+              photoUrl: existingData?.photoUrl || u.photoURL || '',
+              level: existingData?.level || 3,
+              position: existingData?.position || 'MEIA',
+              secondaryPosition: existingData?.secondaryPosition || 'NENHUMA',
+              type: existingData?.type || 'DIARISTA',
+              balance: existingData?.balance || 0,
+              active: existingData?.active !== undefined ? existingData.active : true,
+              gols: existingData?.gols || 0,
+              assistencias: existingData?.assistencias || 0,
+              vitorias: existingData?.vitorias || 0,
+              derrotas: existingData?.derrotas || 0,
+              empates: existingData?.empates || 0,
+              profileCompleted: existingData?.profileCompleted !== undefined ? existingData.profileCompleted : false,
+              ...(existingData || {})
+            };
+
+            await setDoc(playerRef, playerData, { merge: true }).catch((setErr) => {
+              console.warn("[AuthProvider] Não foi possível salvar dados em players:", setErr);
+            });
+
+            if (oldId && oldId !== u.uid) {
+              try {
+                const { deleteDoc } = await import('firebase/firestore');
+                await deleteDoc(doc(db, 'players', oldId));
+              } catch (delErr) {
+                console.warn("[AuthProvider] Documento legado mantido (exclusão restrita):", delErr);
+              }
             }
           }
-          
-          setRole(assignedRole);
-          setApproved(isApproved);
-          setUser(u);
-        } else {
-          setUser(null);
-          setRole('USER');
-          setApproved(false);
+        } catch (playerSyncErr) {
+          console.warn("[AuthProvider] Sincronização secundária de jogador finalizada com aviso:", playerSyncErr);
         }
-      } catch (err: any) {
-        console.error("Erro na autenticação:", err);
-        setAuthError("Erro de conexão com o banco de dados.");
-      } finally {
-        setLoading(false);
-      }
+      })();
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      if (unsubRoleListener) unsubRoleListener();
+    };
   }, [name]);
 
   const signIn = async (useRedirect = false) => {
     setAuthError(null);
     setSuccessMsg(null);
+    setAuthLoading(true);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     
     try {
-      if (useRedirect) {
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      if (useRedirect || isMobile) {
         await signInWithRedirect(auth, provider);
       } else {
-        await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+        try {
+          await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+        } catch (popupError: any) {
+          if (
+            popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.code === 'auth/cancelled-popup-request'
+          ) {
+            console.log("[AuthProvider] Tentando login por redirecionamento...");
+            await signInWithRedirect(auth, provider);
+          } else {
+            throw popupError;
+          }
+        }
       }
     } catch (error: any) {
       console.error("Firebase Auth Error:", error);
@@ -252,6 +291,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       setAuthError(message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 

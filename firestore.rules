@@ -54,18 +54,19 @@ service cloud.firestore {
     }
 
     function isValidPlayer(data) {
-      return data.displayName is string && data.displayName.size() <= 15
-          && data.fullName is string && data.fullName.size() <= 100;
+      return (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 50))
+          && (!('fullName' in data) || (data.fullName is string && data.fullName.size() <= 100))
+          && (!('name' in data) || (data.name is string && data.name.size() <= 50));
     }
 
     match /players/{playerId} {
-      allow read: if isApproved() || isOwner(playerId) || (isSignedIn() && resource.data.email == request.auth.token.email);
+      allow read: if isApproved() || isOwner(playerId) || (isSignedIn() && (resource.data.email == request.auth.token.email || resource.data.email == request.auth.token.email.lower()));
       allow create: if (isApproved() || isOwner(playerId)) && isValidPlayer(incoming());
       allow update: if isAdmin() || (
-        isOwner(playerId) && isValidPlayer(incoming()) &&
+        (isOwner(playerId) || (isSignedIn() && resource.data.email == request.auth.token.email)) && isValidPlayer(incoming()) &&
         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active', 'number', 'profileCompleted'])
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && (resource.data.email == request.auth.token.email || playerId == request.auth.uid));
     }
 
     // Matches

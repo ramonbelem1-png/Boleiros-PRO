@@ -117,6 +117,7 @@ export const isMatchListClosed = (match?: Match | null): boolean => {
   if (!match) return false;
   if (match.status !== 'OPEN') return true;
   if (match.isListClosed === true) return true;
+  if (match.isListClosed === false && !match.autoCloseEnabled) return false;
   if (match.autoCloseEnabled && match.autoCloseTime) {
     const closeTime = new Date(match.autoCloseTime).getTime();
     if (!isNaN(closeTime) && Date.now() >= closeTime) {
@@ -655,9 +656,17 @@ export function usePelada() {
 
   const toggleMatchListClosed = async (matchId: string, isClosed: boolean) => {
     try {
-      await updateDoc(doc(db, 'matches', matchId), {
-        isListClosed: isClosed
-      });
+      if (isClosed) {
+        await updateDoc(doc(db, 'matches', matchId), {
+          isListClosed: true
+        });
+      } else {
+        await updateDoc(doc(db, 'matches', matchId), {
+          isListClosed: false,
+          autoCloseEnabled: false,
+          autoCloseTime: null
+        });
+      }
     } catch (error) {
       console.error("Erro ao alterar fechamento da lista:", error);
       handleFirestoreError(error, 'update', `matches/${matchId}`);
@@ -666,10 +675,17 @@ export function usePelada() {
 
   const setMatchAutoClose = async (matchId: string, enabled: boolean, autoCloseTime?: string | null) => {
     try {
-      await updateDoc(doc(db, 'matches', matchId), {
+      const payload: Record<string, any> = {
         autoCloseEnabled: enabled,
-        autoCloseTime: autoCloseTime || null
-      });
+        autoCloseTime: enabled && autoCloseTime ? autoCloseTime : null
+      };
+      if (enabled && autoCloseTime) {
+        const closeDate = new Date(autoCloseTime).getTime();
+        if (!isNaN(closeDate) && Date.now() < closeDate) {
+          payload.isListClosed = false;
+        }
+      }
+      await updateDoc(doc(db, 'matches', matchId), payload);
     } catch (error) {
       console.error("Erro ao configurar fechamento automático:", error);
       handleFirestoreError(error, 'update', `matches/${matchId}`);

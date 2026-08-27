@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { usePelada, Player, formatPosition } from '../hooks/usePelada';
+import { usePelada, Player, formatPosition, isMatchListClosed } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp } from 'lucide-react';
+import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp, ArrowDown, Lock, Unlock, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
 
@@ -59,7 +59,21 @@ const isPlayerPaidForMatch = (
 
 export default function MatchList() {
   const { user, role } = useAuth();
-  const { players, matches, settings, confirmPresence, promotePlayer, markAbsent, loading, updateMatch, transactions, toggleDrawPresence } = usePelada();
+  const { 
+    players, 
+    matches, 
+    settings, 
+    confirmPresence, 
+    promotePlayer, 
+    demotePlayer,
+    markAbsent, 
+    loading, 
+    updateMatch, 
+    transactions, 
+    toggleDrawPresence,
+    toggleMatchListClosed,
+    setMatchAutoClose
+  } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
   
   const now = new Date();
@@ -75,7 +89,10 @@ export default function MatchList() {
   const isAdmin = role === 'ADMIN' || 
     user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   
+  const isClosed = isMatchListClosed(nextMatch);
+
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
+  const [showAutoCloseModal, setShowAutoCloseModal] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [searchPlayer, setSearchPlayer] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -145,6 +162,18 @@ export default function MatchList() {
     }
   };
 
+  const handleDemote = async (matchId: string, playerId: string) => {
+    setSubmitting(true);
+    try {
+      await demotePlayer(matchId, playerId);
+      showFeedback('success', 'Jogador retornado para a lista de espera!');
+    } catch (e) {
+      showFeedback('error', 'Erro ao mover jogador para a lista de espera.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAdminAbsent = async (matchId: string, playerId: string) => {
     setSubmitting(true);
     try {
@@ -192,7 +221,26 @@ export default function MatchList() {
     const dateStr = `${weekday}, ${day} DE ${month}.`;
     const timeStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-    let text = `⚽ *CONFIRMADOS NA PELADA - ${dateStr} às ${timeStr}* ⚽\n\n`;
+    let text = `⚽ *CONFIRMADOS NA PELADA - ${dateStr} às ${timeStr}* ⚽\n`;
+
+    if (isClosed) {
+      text += `🔒 *[LISTA FECHADA]*\n⛔ *Atenção: A lista está FECHADA para novas confirmações.*\n\n`;
+    } else if (nextMatch.autoCloseEnabled && nextMatch.autoCloseTime) {
+      try {
+        const closeD = new Date(nextMatch.autoCloseTime);
+        if (!isNaN(closeD.getTime())) {
+          const closeTimeStr = closeD.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          const closeDayStr = `${String(closeD.getDate()).padStart(2, '0')}/${String(closeD.getMonth() + 1).padStart(2, '0')}`;
+          text += `⏳ *Fechamento automático: ${closeDayStr} às ${closeTimeStr}*\n\n`;
+        } else {
+          text += `\n`;
+        }
+      } catch (e) {
+        text += `\n`;
+      }
+    } else {
+      text += `\n`;
+    }
 
     const confirmedList = [...nextMatch.confirmedIds]
       .map(id => players.find(p => p.id === id))
@@ -355,50 +403,150 @@ export default function MatchList() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Status da Lista */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    {isClosed ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] font-black uppercase tracking-wider">
+                        <Lock size={12} className="text-red-400" />
+                        <span>Lista Fechada</span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-black uppercase tracking-wider">
+                        <Unlock size={12} className="text-emerald-400" />
+                        <span>Lista Aberta</span>
+                        {nextMatch.autoCloseEnabled && nextMatch.autoCloseTime && (
+                          <span className="text-gray-400 font-medium normal-case ml-1">
+                            • Fecha {formatAutoCloseTime(nextMatch.autoCloseTime)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Painel do Administrador para Controle da Lista */}
+                {isAdmin && (
+                  <div className="px-1 mb-6">
+                    <div className="bg-card border border-border/70 rounded-3xl p-4 shadow-md space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2.5">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                            isClosed ? 'bg-red-500/15 text-red-400 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {isClosed ? <Lock size={16} /> : <Unlock size={16} />}
+                          </div>
+                          <div>
+                            <span className="text-xs font-black uppercase tracking-wider text-white block">
+                              Status da Lista: {isClosed ? 'Fechada' : 'Aberta'}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block">
+                              {isClosed 
+                                ? 'Nenhum jogador pode confirmar presença.' 
+                                : nextMatch.autoCloseEnabled && nextMatch.autoCloseTime 
+                                ? `Fechamento automático: ${formatAutoCloseTime(nextMatch.autoCloseTime)}.`
+                                : 'Confirmações liberadas para os jogadores.'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            const target = !isClosed;
+                            confirmAction(
+                              target 
+                                ? 'Deseja fechar a lista agora? Ninguém mais poderá confirmar presença.' 
+                                : 'Deseja reabrir a lista para que novos jogadores possam confirmar?',
+                              async () => {
+                                await toggleMatchListClosed(nextMatch.id, target);
+                                showFeedback('success', target ? 'Lista fechada com sucesso!' : 'Lista reaberta com sucesso!');
+                              }
+                            );
+                          }}
+                          disabled={submitting}
+                          className={`flex-1 h-10 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md ${
+                            isClosed
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30'
+                          }`}
+                        >
+                          {isClosed ? <Unlock size={14} /> : <Lock size={14} />}
+                          <span>{isClosed ? 'Reabrir Lista' : 'Fechar Lista Agora'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => setShowAutoCloseModal(true)}
+                          className="h-10 px-3.5 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 text-gray-300 hover:text-white text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
+                          title="Configurar horário de fechamento automático"
+                        >
+                          <Clock size={14} className="text-primary" />
+                          <span>Agendar Horário</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Card de Minha Presença Compacto (Reduzido em 20%) */}
                 <div className="pb-6">
                   <div className="max-w-[320px] mx-auto bg-card border border-border/40 rounded-2xl p-3 shadow-md">
                     <label className="text-gray-500 text-[10px] font-extrabold uppercase tracking-widest px-2 block mb-2.5 text-center">Minha Presença</label>
-                    <div className="flex gap-3">
-                      {(() => {
-                        const isConfirmed = user && nextMatch.confirmedIds.includes(user.uid);
-                        const isWaiting = user && nextMatch.waitingIds.includes(user.uid);
-                        const isAbsent = user && nextMatch.absentIds.some(a => a.userId === user.uid);
+                    
+                    {isClosed && !isAdmin && !nextMatch.confirmedIds.includes(user?.uid || '') && !nextMatch.waitingIds.includes(user?.uid || '') ? (
+                      <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center space-y-1">
+                        <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs font-black uppercase tracking-wider">
+                          <Lock size={14} />
+                          <span>Lista Fechada</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-snug">
+                          A lista para esta pelada foi encerrada pelo organizador.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3">
+                        {(() => {
+                          const isConfirmed = user && nextMatch.confirmedIds.includes(user.uid);
+                          const isWaiting = user && nextMatch.waitingIds.includes(user.uid);
+                          const isAbsent = user && nextMatch.absentIds.some(a => a.userId === user.uid);
+                          const canConfirm = !isClosed || isAdmin || isConfirmed || isWaiting;
 
-                        return (
-                          <>
-                            <button 
-                              onClick={() => handleConfirm(nextMatch.id)}
-                              disabled={submitting}
-                              className={`flex-1 h-11 font-black rounded-xl flex items-center justify-center space-x-1.5 active:scale-95 transition-all ${
-                                isConfirmed || isWaiting 
-                                  ? 'bg-primary text-bg shadow-[0_0_12px_rgba(0,194,113,0.2)]' 
-                                  : 'bg-white/5 border border-white/5 text-gray-400 hover:border-primary/50'
-                              }`}
-                            >
-                              {submitting ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} strokeWidth={4} />}
-                              <span className="tracking-widest text-xs">
-                                {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : 'DENTRO'}
-                              </span>
-                            </button>
-                            <button 
-                              onClick={() => setShowReasonModal(nextMatch.id)}
-                              disabled={submitting}
-                              className={`flex-1 h-11 font-black rounded-xl flex items-center justify-center space-x-1.5 active:scale-95 transition-all ${
-                                isAbsent 
-                                  ? 'bg-danger text-white shadow-[0_0_12px_rgba(239,68,68,0.2)]' 
-                                  : 'bg-white/5 border border-white/5 text-gray-500 hover:border-danger/50'
-                              }`}
-                            >
-                              <X size={18} strokeWidth={4} />
-                              <span className="tracking-widest text-xs">FORA</span>
-                            </button>
-                          </>
-                        );
-                      })()}
-                    </div>
+                          return (
+                            <>
+                              <button 
+                                onClick={() => handleConfirm(nextMatch.id)}
+                                disabled={submitting || (!canConfirm && !isConfirmed)}
+                                className={`flex-1 h-11 font-black rounded-xl flex items-center justify-center space-x-1.5 active:scale-95 transition-all ${
+                                  isConfirmed || isWaiting 
+                                    ? 'bg-primary text-bg shadow-[0_0_12px_rgba(0,194,113,0.2)]' 
+                                    : !canConfirm
+                                    ? 'bg-white/5 border border-white/5 text-gray-600 cursor-not-allowed opacity-60'
+                                    : 'bg-white/5 border border-white/5 text-gray-400 hover:border-primary/50'
+                                }`}
+                              >
+                                {submitting ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} strokeWidth={4} />}
+                                <span className="tracking-widest text-xs">
+                                  {isConfirmed ? 'DENTRO' : isWaiting ? 'NA FILA' : isClosed ? 'FECHADA' : 'DENTRO'}
+                                </span>
+                              </button>
+                              <button 
+                                onClick={() => setShowReasonModal(nextMatch.id)}
+                                disabled={submitting}
+                                className={`flex-1 h-11 font-black rounded-xl flex items-center justify-center space-x-1.5 active:scale-95 transition-all ${
+                                  isAbsent 
+                                    ? 'bg-danger text-white shadow-[0_0_12px_rgba(239,68,68,0.2)]' 
+                                    : 'bg-white/5 border border-white/5 text-gray-500 hover:border-danger/50'
+                                }`}
+                              >
+                                <X size={18} strokeWidth={4} />
+                                <span className="tracking-widest text-xs">FORA</span>
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -496,6 +644,11 @@ export default function MatchList() {
                           matchDate={nextMatch.date}
                           drawPresentIds={drawPresentIds}
                           onToggleDrawPresence={(pid) => toggleDrawPresence(nextMatch.id, pid)}
+                          onDemote={(pid) => {
+                            confirmAction('Descer diarista de volta para a lista de espera (fila)?', () => {
+                              handleDemote(nextMatch.id, pid);
+                            });
+                          }}
                           onRemove={(pid) => {
                             confirmAction('Remover jogador da lista?', () => {
                               markAbsent(nextMatch.id, pid, 'Removido pelo Admin');
@@ -783,6 +936,18 @@ export default function MatchList() {
         </div>
       )}
 
+      {/* Modal de Configuração de Fechamento Automático */}
+      {showAutoCloseModal && nextMatch && (
+        <AutoCloseModal
+          match={nextMatch}
+          onClose={() => setShowAutoCloseModal(false)}
+          onSave={async (enabled, timeStr) => {
+            await setMatchAutoClose(nextMatch.id, enabled, timeStr);
+            showFeedback('success', enabled ? 'Fechamento automático programado!' : 'Fechamento automático desativado!');
+          }}
+        />
+      )}
+
       {/* Modal de Confirmação */}
       {confirmState && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -826,6 +991,191 @@ function formatConfirmDate(isoString?: string) {
   }
 }
 
+function formatAutoCloseTime(isoString?: string | null) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month} às ${hours}:${minutes}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function AutoCloseModal({
+  match,
+  onClose,
+  onSave
+}: {
+  match: any;
+  onClose: () => void;
+  onSave: (enabled: boolean, timeStr?: string | null) => Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(match.autoCloseEnabled ?? false);
+  const [preset, setPreset] = useState<'match_time' | '30m' | '1h' | '2h' | 'custom'>('1h');
+  const [customTime, setCustomTime] = useState(
+    match.autoCloseTime ? new Date(new Date(match.autoCloseTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  const matchDate = match.date ? (typeof match.date.toDate === 'function' ? match.date.toDate() : new Date(match.date)) : new Date();
+
+  const getCalculatedDate = (): Date | null => {
+    if (!matchDate || isNaN(matchDate.getTime())) return null;
+    if (preset === 'custom') {
+      if (!customTime) return null;
+      const d = new Date(customTime);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const target = new Date(matchDate);
+    if (preset === 'match_time') return target;
+    if (preset === '30m') {
+      target.setMinutes(target.getMinutes() - 30);
+      return target;
+    }
+    if (preset === '1h') {
+      target.setHours(target.getHours() - 1);
+      return target;
+    }
+    if (preset === '2h') {
+      target.setHours(target.getHours() - 2);
+      return target;
+    }
+    return target;
+  };
+
+  const calculated = getCalculatedDate();
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-card w-full max-w-sm rounded-[32px] p-6 border border-border/60 shadow-2xl space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock size={18} className="text-primary" />
+            <h3 className="text-lg font-black uppercase text-white tracking-tight">Fechamento Automático</h3>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white rounded-full">
+            <X size={18} />
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-400">
+          Defina se a lista deve fechar sozinha em um horário específico, impedindo novos jogadores de confirmar presença.
+        </p>
+
+        {/* Toggle switch */}
+        <div className="bg-bg/80 border border-border/80 rounded-2xl p-3.5 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-black uppercase text-white block">Ativar Fechamento Automático</span>
+            <span className="text-[10px] text-gray-400">Encerra a lista no horário</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEnabled(!enabled)}
+            className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 ${enabled ? 'bg-primary' : 'bg-gray-700'}`}
+          >
+            <div className={`w-4 h-4 rounded-full bg-white transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        {enabled && (
+          <div className="space-y-3 pt-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Horário de Fechamento</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: '1h', label: '1h antes' },
+                { id: '2h', label: '2h antes' },
+                { id: '30m', label: '30 min antes' },
+                { id: 'match_time', label: 'No início' },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPreset(p.id as any)}
+                  className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition-all ${
+                    preset === p.id
+                      ? 'bg-primary/20 border-primary text-primary'
+                      : 'bg-card border-border/60 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPreset('custom')}
+              className={`w-full py-2 px-2.5 rounded-xl text-[11px] font-bold border transition-all text-center ${
+                preset === 'custom'
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-card border-border/60 text-gray-400 hover:text-white'
+              }`}
+            >
+              🕒 Definir data/hora exata
+            </button>
+
+            {preset === 'custom' && (
+              <div className="space-y-1">
+                <input
+                  type="datetime-local"
+                  value={customTime}
+                  onChange={(e) => setCustomTime(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 text-xs focus:border-primary outline-none font-medium"
+                />
+              </div>
+            )}
+
+            {calculated && (
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-2.5 flex items-center gap-2">
+                <Lock size={13} className="text-primary shrink-0" />
+                <span className="text-[11px] text-primary/90 font-medium leading-tight">
+                  Fechamento programado para: <strong>{calculated.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {calculated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-gray-300 font-bold rounded-2xl text-xs uppercase tracking-wider transition-all"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={submitting || (enabled && !calculated)}
+            onClick={async () => {
+              setSubmitting(true);
+              try {
+                const finalIso = enabled && calculated ? calculated.toISOString() : null;
+                await onSave(enabled, finalIso);
+                onClose();
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+            className="flex-1 py-3 bg-primary text-bg font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            {submitting ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} strokeWidth={3} />}
+            <span>Salvar</span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function PresenceSection({ 
   title, 
   players, 
@@ -834,6 +1184,7 @@ function PresenceSection({
   isAdmin, 
   onRemove,
   onPromote,
+  onDemote,
   confirmations,
   showPaidToggle = false,
   paidIds = [],
@@ -849,6 +1200,7 @@ function PresenceSection({
   isAdmin?: boolean, 
   onRemove?: (id: string) => void,
   onPromote?: (id: string) => void,
+  onDemote?: (id: string) => void,
   confirmations?: Record<string, string>,
   showPaidToggle?: boolean,
   paidIds?: string[],
@@ -1007,10 +1359,20 @@ function PresenceSection({
                     <ArrowUp size={16} />
                   </button>
                 )}
+                {isAdmin && onDemote && player.type === 'DIARISTA' && (
+                  <button 
+                    onClick={() => onDemote(player.id)}
+                    className="p-2 text-gray-600 hover:text-yellow-400 hover:bg-yellow-400/10 rounded-xl transition-colors"
+                    title="Descer diarista para a lista de espera (fila)"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
+                )}
                 {isAdmin && onRemove && (
                   <button 
                     onClick={() => onRemove(player.id)}
                     className="p-2 text-gray-600 hover:text-danger hover:bg-danger/10 rounded-xl transition-colors"
+                    title="Remover da lista"
                   >
                     <X size={16} />
                   </button>

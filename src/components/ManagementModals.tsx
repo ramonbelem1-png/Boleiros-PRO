@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Player, Transaction, usePelada, formatPosition } from '../hooks/usePelada';
-import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check, Search } from 'lucide-react';
+import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check, Search, Lock, Clock } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthProvider';
@@ -106,26 +106,171 @@ function CreateEventModal({ onSave, onClose }: any) {
 
 function CreateMatchModal({ onSave, onClose }: any) {
   const [date, setDate] = useState('');
+  const [autoCloseEnabled, setAutoCloseEnabled] = useState(false);
+  const [autoClosePreset, setAutoClosePreset] = useState<'match_time' | '30m' | '1h' | '2h' | 'custom'>('1h');
+  const [customCloseTime, setCustomCloseTime] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Compute calculated close time whenever date or preset changes
+  const getCalculatedCloseDate = (): Date | null => {
+    if (!date) return null;
+    const matchD = new Date(date);
+    if (isNaN(matchD.getTime())) return null;
+
+    if (autoClosePreset === 'custom') {
+      if (!customCloseTime) return null;
+      const customD = new Date(customCloseTime);
+      return isNaN(customD.getTime()) ? null : customD;
+    }
+
+    const targetD = new Date(matchD);
+    if (autoClosePreset === 'match_time') {
+      return targetD;
+    } else if (autoClosePreset === '30m') {
+      targetD.setMinutes(targetD.getMinutes() - 30);
+      return targetD;
+    } else if (autoClosePreset === '1h') {
+      targetD.setHours(targetD.getHours() - 1);
+      return targetD;
+    } else if (autoClosePreset === '2h') {
+      targetD.setHours(targetD.getHours() - 2);
+      return targetD;
+    }
+    return targetD;
+  };
+
+  const calculatedCloseDate = getCalculatedCloseDate();
+
   return (
-    <div className="space-y-6">
-      <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 mb-8">Nova Pelada</h3>
-      <div className="space-y-2">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Data e Hora</label>
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 text-white">Nova Pelada</h3>
+        <p className="text-xs text-gray-400 mt-1">Defina a data e o fechamento da lista.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-1 flex items-center gap-1.5">
+          <Calendar size={13} className="text-primary" /> Data e Hora do Jogo
+        </label>
         <input 
           type="datetime-local"
-          className="w-full bg-bg border border-border rounded-2xl p-4 text-gray-100 focus:border-primary outline-none"
+          className="w-full bg-bg border border-border rounded-2xl p-3.5 text-gray-100 focus:border-primary outline-none text-sm font-medium"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            if (!customCloseTime && e.target.value) {
+              const d = new Date(e.target.value);
+              d.setHours(d.getHours() - 1);
+              const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+              setCustomCloseTime(iso);
+            }
+          }}
         />
       </div>
+
+      {/* Auto-Close Section */}
+      <div className="bg-bg/70 border border-border/80 rounded-2xl p-3.5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Clock size={16} className={autoCloseEnabled ? "text-primary" : "text-gray-500"} />
+            <div>
+              <span className="text-xs font-black uppercase text-white tracking-wider block">Fechar Lista Automaticamente</span>
+              <span className="text-[10px] text-gray-400 block">Encerra confirmações no horário</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoCloseEnabled(!autoCloseEnabled)}
+            className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 ${autoCloseEnabled ? 'bg-primary' : 'bg-gray-700'}`}
+          >
+            <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoCloseEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        {autoCloseEnabled && (
+          <div className="space-y-2.5 pt-2 border-t border-border/40">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Quando fechar a lista?</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: '1h', label: '1h antes' },
+                { id: '2h', label: '2h antes' },
+                { id: '30m', label: '30 min antes' },
+                { id: 'match_time', label: 'No início' },
+              ].map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setAutoClosePreset(preset.id as any)}
+                  className={`py-2 px-2 rounded-xl text-[11px] font-bold transition-all border ${
+                    autoClosePreset === preset.id
+                      ? 'bg-primary/20 border-primary text-primary'
+                      : 'bg-card border-border/60 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAutoClosePreset('custom')}
+              className={`w-full py-2 px-2.5 rounded-xl text-[11px] font-bold transition-all border text-center ${
+                autoClosePreset === 'custom'
+                  ? 'bg-primary/20 border-primary text-primary'
+                  : 'bg-card border-border/60 text-gray-400 hover:text-white'
+              }`}
+            >
+              🕒 Definir outro horário específico
+            </button>
+
+            {autoClosePreset === 'custom' && (
+              <div className="space-y-1 pt-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Horário de encerramento da lista</label>
+                <input
+                  type="datetime-local"
+                  value={customCloseTime}
+                  onChange={(e) => setCustomCloseTime(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 text-xs focus:border-primary outline-none font-medium"
+                />
+              </div>
+            )}
+
+            {calculatedCloseDate && (
+              <div className="bg-primary/10 border border-primary/20 rounded-xl p-2.5 flex items-center gap-2">
+                <Lock size={13} className="text-primary shrink-0" />
+                <span className="text-[11px] text-primary/90 font-medium leading-tight">
+                  Fechamento programado para: <strong>{calculatedCloseDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {calculatedCloseDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <button 
+        disabled={!date || saving}
         onClick={async () => {
           if(!date) return;
-          await onSave(new Date(date));
-          onClose();
+          setSaving(true);
+          try {
+            const matchDate = new Date(date);
+            const closeDate = autoCloseEnabled ? calculatedCloseDate : null;
+            await onSave({
+              date: matchDate,
+              autoCloseEnabled: autoCloseEnabled && !!closeDate,
+              autoCloseTime: closeDate ? closeDate.toISOString() : null
+            });
+            onClose();
+          } catch (err) {
+            console.error("Erro ao criar pelada:", err);
+          } finally {
+            setSaving(false);
+          }
         }}
-        className="w-full py-5 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-4 shadow-lg shadow-primary/20 transition-all active:scale-95"
+        className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-2 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
       >
+        {saving ? <Loader2 className="animate-spin" size={18} /> : null}
         Abrir Lista
       </button>
     </div>

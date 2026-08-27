@@ -108,7 +108,23 @@ export interface Match {
   confirmations?: Record<string, string>; // playerId -> ISO timestamp
   paidIds?: string[];
   drawOrder?: Record<string, number>; // playerId -> order number (1, 2, 3...)
+  isListClosed?: boolean; // Fechamento manual ou automático da lista
+  autoCloseEnabled?: boolean; // Se fechamento automático está configurado
+  autoCloseTime?: string | null; // ISO string ou horário de fechamento
 }
+
+export const isMatchListClosed = (match?: Match | null): boolean => {
+  if (!match) return false;
+  if (match.status !== 'OPEN') return true;
+  if (match.isListClosed === true) return true;
+  if (match.autoCloseEnabled && match.autoCloseTime) {
+    const closeTime = new Date(match.autoCloseTime).getTime();
+    if (!isNaN(closeTime) && Date.now() >= closeTime) {
+      return true;
+    }
+  }
+  return false;
+};
 
 export interface Transaction {
   id: string;
@@ -236,6 +252,32 @@ export function usePelada() {
       }
     });
   }, [matches, isAdmin]);
+
+  // Fechamento automático de listas quando atinge o horário configurado
+  useEffect(() => {
+    const checkAutoClose = async () => {
+      const now = Date.now();
+      for (const match of matches) {
+        if (match.status === 'OPEN' && !match.isListClosed && match.autoCloseEnabled && match.autoCloseTime) {
+          const closeTime = new Date(match.autoCloseTime).getTime();
+          if (!isNaN(closeTime) && now >= closeTime) {
+            console.log(`[Auto-Close] Horário atingido. Fechando lista da pelada ${match.id} automaticamente.`);
+            try {
+              await updateDoc(doc(db, 'matches', match.id), {
+                isListClosed: true
+              });
+            } catch (err) {
+              console.warn("[Auto-Close] Aviso ao persistir fechamento da lista:", err);
+            }
+          }
+        }
+      }
+    };
+
+    checkAutoClose();
+    const interval = setInterval(checkAutoClose, 15000); // Checa a cada 15 segundos
+    return () => clearInterval(interval);
+  }, [matches]);
 
   // Auto-promote waiting players has been disabled as per new rules:
   // Diaristas stay in the waiting list until an admin manually promotes them,
@@ -424,6 +466,11 @@ export function usePelada() {
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
 
+    if (isMatchListClosed(match) && !isAdmin) {
+      console.warn("[usePelada] Tentativa de confirmação em lista já fechada.");
+      throw new Error("A lista de presença está fechada para novas confirmações.");
+    }
+
     if (match.confirmedIds.includes(playerId)) return;
     
     const newConfirmed = [...match.confirmedIds];
@@ -492,6 +539,33 @@ export function usePelada() {
       });
     } catch (error) {
       console.error("Erro ao promover jogador:", error);
+      handleFirestoreError(error, 'update', `matches/${matchId}`);
+    }
+  };
+
+  const demotePlayer = async (matchId: string, playerId: string) => {
+    if (!playerId) return;
+    const match = matches.find(m => m.id === matchId);
+    if (!match) return;
+
+    const newConfirmed = match.confirmedIds.filter(id => id !== playerId);
+    const newWaiting = [...match.waitingIds];
+
+    if (!newWaiting.includes(playerId)) {
+      newWaiting.push(playerId);
+    }
+
+    const currentDrawPresent = (match.drawPresentIds ?? []).filter(id => id !== playerId);
+
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        confirmedIds: newConfirmed,
+        waitingIds: newWaiting,
+        drawPresentIds: currentDrawPresent
+      });
+    } catch (error) {
+      console.error("Erro ao mover jogador para a lista de espera:", error);
+      handleFirestoreError(error, 'update', `matches/${matchId}`);
     }
   };
 
@@ -561,15 +635,45 @@ export function usePelada() {
     }
   };
 
-  const createMatch = async (date: Date) => {
+  const createMatch = async (data: Date | { date: Date; autoCloseEnabled?: boolean; autoCloseTime?: string | null }) => {
+    const matchDate = data instanceof Date ? data : data.date;
+    const autoCloseEnabled = data instanceof Date ? false : (data.autoCloseEnabled ?? false);
+    const autoCloseTime = data instanceof Date ? null : (data.autoCloseTime ?? null);
+
     await addDoc(collection(db, 'matches'), {
-      date: Timestamp.fromDate(date),
+      date: Timestamp.fromDate(matchDate),
       status: 'OPEN',
       confirmedIds: [],
       absentIds: [],
       waitingIds: [],
-      confirmations: {}
+      confirmations: {},
+      isListClosed: false,
+      autoCloseEnabled: autoCloseEnabled,
+      autoCloseTime: autoCloseTime
     });
+  };
+
+  const toggleMatchListClosed = async (matchId: string, isClosed: boolean) => {
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        isListClosed: isClosed
+      });
+    } catch (error) {
+      console.error("Erro ao alterar fechamento da lista:", error);
+      handleFirestoreError(error, 'update', `matches/${matchId}`);
+    }
+  };
+
+  const setMatchAutoClose = async (matchId: string, enabled: boolean, autoCloseTime?: string | null) => {
+    try {
+      await updateDoc(doc(db, 'matches', matchId), {
+        autoCloseEnabled: enabled,
+        autoCloseTime: autoCloseTime || null
+      });
+    } catch (error) {
+      console.error("Erro ao configurar fechamento automático:", error);
+      handleFirestoreError(error, 'update', `matches/${matchId}`);
+    }
   };
 
   const createTransaction = async (data: Omit<Transaction, 'id'>) => {
@@ -1480,8 +1584,11 @@ export function usePelada() {
     activeGames,
     confirmPresence,
     promotePlayer,
+    demotePlayer,
     markAbsent,
     toggleDrawPresence,
+    toggleMatchListClosed,
+    setMatchAutoClose,
     createMatch,
     createTransaction,
     updateTransaction,

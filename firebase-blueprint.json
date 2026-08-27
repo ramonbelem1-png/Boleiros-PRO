@@ -80,7 +80,10 @@
         "status": { "type": "string", "enum": ["OPEN", "FINISHED", "CANCELLED"] },
         "confirmedIds": { "type": "array", "items": { "type": "string" } },
         "absentIds": { "type": "array", "items": { "type": "object", "properties": { "userId": { "type": "string" }, "reason": { "type": "string" } } } },
-        "waitingIds": { "type": "array", "items": { "type": "string" } }
+        "waitingIds": { "type": "array", "items": { "type": "string" } },
+        "isListClosed": { "type": "boolean", "description": "Indica se a lista de confirmação foi fechada" },
+        "autoCloseEnabled": { "type": "boolean", "description": "Indica se o fechamento automático está ativado" },
+        "autoCloseTime": { "type": "string", "description": "Data/hora para fechamento automático da lista" }
       },
       "required": ["date", "status"]
     },

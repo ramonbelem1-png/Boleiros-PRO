@@ -29,9 +29,7 @@ export default function LiveMatch() {
     resumeGame,
     deleteMatch
   } = usePelada();
-  const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+  const { role, user, isAdmin } = useAuth();
 
   const [confirmState, setConfirmState] = useState<{
     message: string;

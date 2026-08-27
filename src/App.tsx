@@ -13,7 +13,8 @@ import {
   Plus,
   Activity,
   LogOut,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from './lib/firebase';
@@ -37,7 +38,7 @@ type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 
 export default function App() {
   const { players, updatePlayer, settings, updateSettings, loading } = usePelada();
-  const { role, user, logout } = useAuth();
+  const { role, user, logout, isAdmin, isCreator } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const saved = localStorage.getItem('boleiros_active_tab');
     const validTabs: Tab[] = ['list', 'finance', 'play', 'live', 'social', 'settings'];
@@ -54,9 +55,6 @@ export default function App() {
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
 
   const currentUserPlayer = user ? players.find(p => p.id === user.uid) : null;
   const isProfileIncomplete = user && currentUserPlayer && currentUserPlayer.profileCompleted === false;
@@ -204,8 +202,9 @@ export default function App() {
               {activeTab === 'settings' && 'Ajustes'}
             </h1>
             {isAdmin && (
-              <span className="bg-primary/20 text-primary text-[10px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter">
-                ADMIN
+              <span className="bg-primary/20 text-primary text-[10px] font-black px-2 py-0.5 rounded-lg border border-primary/30 uppercase tracking-tight flex items-center gap-1 shadow-sm shadow-primary/10">
+                <ShieldCheck size={12} className="stroke-[2.5]" />
+                {isCreator ? 'ADMIN MASTER' : 'ADMIN'}
               </span>
             )}
           </div>

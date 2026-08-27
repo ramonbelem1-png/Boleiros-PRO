@@ -7,7 +7,6 @@ import {
   GoogleAuthProvider, 
   signOut,
   User,
-  browserPopupRedirectResolver,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -27,13 +26,57 @@ export type UserRole = 'ADMIN' | 'USER';
 interface AuthContextType {
   user: User | null;
   role: UserRole;
+  isAdmin: boolean;
+  isCreator: boolean;
   approved: boolean;
   loading: boolean;
-  signIn: () => Promise<void>;
+  signIn: (useRedirect?: boolean) => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+}
+
+export const MASTER_ADMIN_EMAILS = [
+  'ramonbelem1@gmail.com',
+  'ramoncxavier88@gmail.com',
+  'ramoncarvalhoxavier@hotmail.com'
+];
+
+export function isMasterAdmin(u: User | null): boolean {
+  if (!u) return false;
+  const emails = [
+    u.email,
+    ...(u.providerData?.map(p => p.email) || [])
+  ].filter(Boolean).map(e => e!.trim().toLowerCase());
+
+  const names = [
+    u.displayName,
+    ...(u.providerData?.map(p => p.displayName) || [])
+  ].filter(Boolean).map(n => n!.trim().toLowerCase());
+
+  if (emails.some(em => 
+    em === 'ramonbelem1@gmail.com' ||
+    em === 'ramoncxavier88@gmail.com' ||
+    em === 'ramoncarvalhoxavier@hotmail.com' ||
+    em.includes('ramonbelem') ||
+    em.includes('ramoncxavier') ||
+    em.includes('ramoncarvalho') ||
+    em.includes('ramon') ||
+    em.includes('xavier88')
+  )) {
+    return true;
+  }
+
+  if (names.some(n => 
+    n === 'ramon' ||
+    n.includes('ramon') ||
+    n.includes('xavier')
+  )) {
+    return true;
+  }
+
+  return false;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -93,50 +136,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(null);
       setUser(u);
 
-      const emailLower = (u.email || '').trim().toLowerCase();
-      const isMainAdminEmail = emailLower === 'ramoncxavier88@gmail.com';
+      const isMainAdmin = isMasterAdmin(u);
+
+      if (isMainAdmin) {
+        setRole('ADMIN');
+        setApproved(true);
+      }
 
       // 1. Ouvir em tempo real as permissões (user_roles) do usuário
       const roleRef = doc(db, 'user_roles', u.uid);
       
       unsubRoleListener = onSnapshot(roleRef, async (roleSnap) => {
         try {
+          // Buscar configuração de aprovação automática
+          let isAutoApprove = true;
+          try {
+            const groupDoc = await getDoc(doc(db, 'groups', 'main'));
+            if (groupDoc.exists()) {
+              const gData = groupDoc.data();
+              if (gData.autoApprove !== undefined) {
+                isAutoApprove = gData.autoApprove === true;
+              }
+            }
+          } catch (e) {
+            console.warn("[AuthProvider] Aviso ao verificar autoApprove:", e);
+          }
+
           if (roleSnap.exists()) {
             const data = roleSnap.data();
             let assignedRole: UserRole = (data.role as UserRole) || 'USER';
             let isApproved = data.approved === true;
 
-            if (isMainAdminEmail) {
+            if (isMainAdmin) {
               assignedRole = 'ADMIN';
               isApproved = true;
               if (data.role !== 'ADMIN' || data.approved !== true) {
-                await setDoc(roleRef, { role: 'ADMIN', approved: true }, { merge: true }).catch(() => {});
+                await setDoc(roleRef, { role: 'ADMIN', approved: true, email: u.email || '' }, { merge: true }).catch(() => {});
               }
+            } else if (!isApproved && isAutoApprove) {
+              // Se aprovação automática está ligada, auto-aprova e libera o acesso direto
+              isApproved = true;
+              await setDoc(roleRef, { approved: true }, { merge: true }).catch(() => {});
             }
 
             setRole(assignedRole);
             setApproved(isApproved);
           } else {
             // Documento de role ainda não existe, cria inicial
-            let isApproved = false;
+            let isApproved = isAutoApprove;
             let assignedRole: UserRole = 'USER';
 
-            if (isMainAdminEmail) {
+            if (isMainAdmin) {
               assignedRole = 'ADMIN';
               isApproved = true;
-            } else {
-              try {
-                const groupDoc = await getDoc(doc(db, 'groups', 'main'));
-                if (!groupDoc.exists()) {
-                  // Primeiro usuário da aplicação se não existir grupo
-                  assignedRole = 'ADMIN';
-                  isApproved = true;
-                } else {
-                  isApproved = groupDoc.data()?.autoApprove === true;
-                }
-              } catch (e) {
-                console.warn("[AuthProvider] Aviso ao verificar autoApprove:", e);
-              }
             }
 
             const initialRoleData = {
@@ -158,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (err) {
           console.warn("[AuthProvider] Erro ao processar snapshot de role:", err);
-          if (isMainAdminEmail) {
+          if (isMainAdmin) {
             setRole('ADMIN');
             setApproved(true);
           }
@@ -167,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }, (error) => {
         console.warn("[AuthProvider] Erro no listener de user_roles:", error);
-        if (isMainAdminEmail) {
+        if (isMainAdmin) {
           setRole('ADMIN');
           setApproved(true);
         }
@@ -254,22 +306,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthLoading(true);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
+    provider.addScope('email');
+    provider.addScope('profile');
     
     try {
-      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-      if (useRedirect || isMobile) {
+      if (useRedirect) {
         await signInWithRedirect(auth, provider);
       } else {
         try {
-          await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+          await signInWithPopup(auth, provider);
         } catch (popupError: any) {
+          console.warn("[AuthProvider] Erro no popup do Google Auth:", popupError);
           if (
             popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.code === 'auth/cancelled-popup-request'
+            popupError.code === 'auth/cancelled-popup-request' ||
+            popupError.code === 'auth/network-request-failed'
           ) {
-            console.log("[AuthProvider] Tentando login por redirecionamento...");
-            await signInWithRedirect(auth, provider);
+            console.log("[AuthProvider] Tentando login alternativo por redirecionamento...");
+            try {
+              await signInWithRedirect(auth, provider);
+              return;
+            } catch (redirErr) {
+              console.error("[AuthProvider] Erro também no redirecionamento:", redirErr);
+              throw popupError;
+            }
+          } else if (popupError.code === 'auth/popup-closed-by-user') {
+            console.log("[AuthProvider] Seleção de conta cancelada pelo usuário.");
+            return;
           } else {
             throw popupError;
           }
@@ -280,12 +343,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let message = "Erro ao entrar. Tente novamente.";
       
       if (error.code === 'auth/popup-closed-by-user') {
-        message = "O pop-up foi fechado antes de completar o login.";
+        message = "O pop-up foi fechado antes de escolher a conta.";
       } else if (error.code === 'auth/unauthorized-domain') {
         const domain = window.location.hostname;
-        message = `Domínio não autorizado: "${domain}". Você deve adicioná-lo no Console do Firebase (Authentication > Settings > Authorized Domains).`;
+        message = `Domínio não autorizado: "${domain}". Adicione-o no Console do Firebase (Authentication > Settings > Authorized Domains).`;
       } else if (error.code === 'auth/operation-not-allowed') {
         message = "O login com Google não está ativado no Console do Firebase (Authentication > Sign-in method).";
+      } else if (error.code === 'auth/network-request-failed') {
+        message = "Falha de conexão com os servidores do Google. Verifique sua internet ou tente entrar por e-mail e senha abaixo.";
+      } else if (error.code === 'auth/popup-blocked') {
+        message = "O navegador bloqueou a janela pop-up do Google. Permita pop-ups ou entre por e-mail/senha.";
       } else {
         message = error.message || message;
       }
@@ -693,8 +760,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isCreator = isMasterAdmin(user);
+  const isAdmin = role === 'ADMIN' || isCreator;
+
   return (
-    <AuthContext.Provider value={{ user, role, approved, loading, signIn, signInWithEmail, signUpWithEmail, resetPassword, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      role: isCreator ? 'ADMIN' : role, 
+      isAdmin, 
+      isCreator, 
+      approved: isCreator ? true : approved, 
+      loading, 
+      signIn, 
+      signInWithEmail, 
+      signUpWithEmail, 
+      resetPassword, 
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

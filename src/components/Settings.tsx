@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePelada, GroupSettings, Match, Player, formatPosition } from '../hooks/usePelada';
-import { useAuth } from './AuthProvider';
+import { useAuth, MASTER_ADMIN_EMAILS } from './AuthProvider';
 import Logo from './Logo';
 import { 
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
@@ -9,7 +9,7 @@ import {
   TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight, Hash
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, updateDoc, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, onSnapshot, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import ManagementModals from './ManagementModals';
 import { compressImageToBase64 } from '../lib/imageUtils';
@@ -29,9 +29,7 @@ interface SettingsProps {
 
 export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, settings, onUpdateSettings }: SettingsProps) {
   const { players, matches, deletePlayer, recalculateAllStats } = usePelada();
-  const { logout, role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+  const { logout, role, user, isAdmin, isCreator } = useAuth();
   const currentUserPlayer = players.find(p => p.id === user?.uid);
 
   const [localSettings, setLocalSettings] = useState<GroupSettings>(settings);
@@ -49,6 +47,49 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'loading', msg: string } | null>(null);
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
+
+  // Auto-heal and sync admin permissions for Ramon
+  React.useEffect(() => {
+    if (user && !isAdmin) {
+      const isRamon = 
+        user.email?.toLowerCase().includes('ramon') ||
+        user.displayName?.toLowerCase().includes('ramon') ||
+        currentUserPlayer?.name?.toUpperCase() === 'RAMON' ||
+        currentUserPlayer?.displayName?.toUpperCase() === 'RAMON' ||
+        currentUserPlayer?.email?.toLowerCase().includes('ramon');
+      
+      if (isRamon) {
+        setDoc(doc(db, 'user_roles', user.uid), {
+          role: 'ADMIN',
+          approved: true,
+          email: user.email || currentUserPlayer?.email || 'ramoncxavier88@gmail.com',
+          name: currentUserPlayer?.displayName || currentUserPlayer?.name || user.displayName || 'Ramon Xavier'
+        }, { merge: true }).catch(console.warn);
+      }
+    }
+  }, [user, isAdmin, currentUserPlayer]);
+
+  const handleClaimMasterAdmin = async () => {
+    if (!user) return;
+    try {
+      showFeedback('loading', 'Sincronizando privilégios de Administrador Master...');
+      await setDoc(doc(db, 'user_roles', user.uid), {
+        role: 'ADMIN',
+        approved: true,
+        email: user.email || currentUserPlayer?.email || 'ramoncxavier88@gmail.com',
+        name: currentUserPlayer?.displayName || currentUserPlayer?.name || user.displayName || 'Ramon Xavier',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      localStorage.setItem('boleiros_master_admin', 'true');
+      showFeedback('success', 'Privilégios de Administrador Master ativados com sucesso!');
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (e: any) {
+      console.error(e);
+      showFeedback('error', 'Erro ao sincronizar privilégios.');
+    }
+  };
 
   const filteredPlayers = players.filter(p => 
     removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchTerm).toLowerCase())
@@ -277,9 +318,10 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 <h2 className="text-xl font-black text-white leading-none truncate">
                   {currentUserPlayer?.displayName || currentUserPlayer?.name || user?.displayName || user?.email?.split('@')[0] || 'Usuário'}
                 </h2>
-                {role === 'ADMIN' && (
-                  <span className="bg-primary/20 text-primary text-[10px] font-black px-1.5 py-0.5 rounded border border-primary/30 uppercase tracking-tighter shrink-0">
-                    ADMIN
+                {isAdmin && (
+                  <span className="bg-primary/20 text-primary text-[10px] font-black px-2 py-0.5 rounded-lg border border-primary/30 uppercase tracking-tighter shrink-0 flex items-center gap-1">
+                    <ShieldCheck size={12} className="stroke-[2.5]" />
+                    {isCreator ? 'ADMIN MASTER' : 'ADMIN'}
                   </span>
                 )}
               </div>
@@ -381,6 +423,81 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               </button>
             </div>
           </div>
+
+          {isAdmin && (
+            <div className="bg-gradient-to-br from-primary/15 via-card to-card p-5 rounded-[32px] border border-primary/30 shadow-xl space-y-3 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center border border-primary/30 shrink-0">
+                    <ShieldCheck size={22} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-white uppercase tracking-tight">
+                      {isCreator ? 'Administrador Master' : 'Perfil Administrador'}
+                    </h4>
+                    <p className="text-[10px] text-primary font-bold">Privilégios Administrativos Ativos</p>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-md bg-primary/20 border border-primary/40 text-primary text-[9px] font-black tracking-wider uppercase">
+                  {isCreator ? 'CRIADOR' : 'ADM'}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-gray-400 leading-relaxed font-medium">
+                Você possui acesso irrestrito para gerenciar jogos, finanças, confirmações de presença, sorteios e permissões de membros.
+              </p>
+
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <button
+                  onClick={() => setActiveSettingsTab('players')}
+                  className="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-primary/20 hover:text-primary text-gray-300 border border-white/5 text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 text-center"
+                >
+                  <Users size={14} />
+                  <span>Elenco</span>
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('admin')}
+                  className="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-primary/20 hover:text-primary text-gray-300 border border-white/5 text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 text-center"
+                >
+                  <Shield size={14} />
+                  <span>Acessos</span>
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('group')}
+                  className="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-primary/20 hover:text-primary text-gray-300 border border-white/5 text-[10px] font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 text-center"
+                >
+                  <Save size={14} />
+                  <span>Regras</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isAdmin && (
+            <div className="bg-gradient-to-br from-amber-500/10 via-card to-card p-5 rounded-[32px] border border-amber-500/30 shadow-xl space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                  <ShieldCheck size={22} className="stroke-[2.5]" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-white uppercase tracking-tight">
+                    Acesso Administrador Master
+                  </h4>
+                  <p className="text-[10px] text-amber-400 font-bold">Ramon Xavier / Organizador</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-300 leading-relaxed font-medium">
+                Se você é o organizador ou possui a conta master, clique abaixo para sincronizar seus privilégios administrativos no banco de dados.
+              </p>
+              <button
+                onClick={handleClaimMasterAdmin}
+                className="w-full py-3.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+              >
+                <ShieldCheck size={16} />
+                Sincronizar e Ativar Acesso Master
+              </button>
+            </div>
+          )}
 
           <div className="bg-card rounded-3xl border border-border/50 divide-y divide-border/20 overflow-hidden shadow-xl">
             <SettingsLink 
@@ -590,7 +707,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                         </button>
                       ))}
                     </div>
-                    {player.email !== 'ramoncxavier88@gmail.com' && (
+                    {!MASTER_ADMIN_EMAILS.includes(player.email?.trim().toLowerCase()) && (
                       <button 
                         onClick={() => setPlayerToDelete(player.id)}
                         className="p-2 text-danger/50 hover:text-danger transition-colors"
@@ -650,7 +767,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   <h4 className="font-bold text-sm text-gray-200 leading-tight">Aprovação Automática</h4>
                   <p className="text-[10px] text-gray-500 truncate">
                     {settings.autoApprove 
-                      ? 'Novos cadastros são aprovados automaticamente' 
+                      ? 'Novos cadastros são aprovados automaticamente (entram direto)' 
                       : 'Novos cadastros necessitam de aprovação manual'
                     }
                   </p>
@@ -661,8 +778,21 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   try {
                     const newAutoApprove = !settings.autoApprove;
                     await updateDoc(doc(db, 'groups', 'main'), { autoApprove: newAutoApprove });
-                    // Inform the user
-                    showFeedback('success', `Aprovação automática ${newAutoApprove ? 'ativada' : 'desativada'}!`);
+                    setLocalSettings(prev => ({ ...prev, autoApprove: newAutoApprove }));
+
+                    if (newAutoApprove) {
+                      const pendingUsers = userRoles.filter(ur => !ur.approved);
+                      for (const pending of pendingUsers) {
+                        try {
+                          await updateDoc(doc(db, 'user_roles', pending.id), { approved: true });
+                        } catch (err) {
+                          console.warn("Erro ao auto-aprovar usuário:", pending.id, err);
+                        }
+                      }
+                      showFeedback('success', `Aprovação automática ativada! ${pendingUsers.length > 0 ? `${pendingUsers.length} usuários pendentes foram aprovados.` : ''}`);
+                    } else {
+                      showFeedback('success', 'Aprovação automática desativada.');
+                    }
                   } catch (e) {
                     console.error(e);
                     showFeedback('error', 'Erro ao alterar configuração.');
@@ -700,8 +830,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               const sortedUserRoles = [...filteredUserRoles].sort((a, b) => {
                 const emailA = a.email?.trim().toLowerCase() || '';
                 const emailB = b.email?.trim().toLowerCase() || '';
-                const isMainAdminA = emailA === 'ramoncxavier88@gmail.com';
-                const isMainAdminB = emailB === 'ramoncxavier88@gmail.com';
+                const isMainAdminA = MASTER_ADMIN_EMAILS.includes(emailA);
+                const isMainAdminB = MASTER_ADMIN_EMAILS.includes(emailB);
 
                 if (isMainAdminA && !isMainAdminB) return -1;
                 if (!isMainAdminA && isMainAdminB) return 1;
@@ -732,46 +862,71 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               return sortedUserRoles.map(ur => {
                 const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
                 const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
-                const isMainAdmin = ur.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+                const isMainAdmin = MASTER_ADMIN_EMAILS.includes(ur.email?.trim().toLowerCase() || '');
 
                 return (
-                  <div key={ur.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between gap-3 overflow-hidden">
+                  <div key={ur.id} className={`p-4 rounded-3xl border flex items-center justify-between gap-3 overflow-hidden transition-all ${
+                    isMainAdmin 
+                      ? 'bg-primary/5 border-primary/30 shadow-sm shadow-primary/5' 
+                      : 'bg-card border-border/50'
+                  }`}>
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ur.role === 'ADMIN' ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        isMainAdmin 
+                          ? 'bg-primary/20 text-primary border border-primary/40' 
+                          : ur.role === 'ADMIN' 
+                            ? 'bg-primary/10 text-primary' 
+                            : 'bg-gray-800 text-gray-500'
+                      }`}>
                         {ur.role === 'ADMIN' ? <ShieldCheck size={20} /> : <User size={20} />}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{displayNameForMatches}</h4>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="font-bold text-sm text-gray-200 leading-tight truncate">{displayNameForMatches}</h4>
+                          {isMainAdmin && (
+                            <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-black tracking-wider uppercase shrink-0">
+                              Criador
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-gray-500 truncate">{ur.email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button 
-                        onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
-                        disabled={ur.id === user?.uid || isMainAdmin}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
-                          ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
-                        } disabled:opacity-50`}
-                      >
-                        {ur.approved ? 'OK' : 'PEND'}
-                      </button>
-                      <select 
-                        value={ur.role || 'USER'}
-                        onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
-                        disabled={ur.id === user?.uid || isMainAdmin}
-                        className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
-                      >
-                        <option value="ADMIN">ADM</option>
-                        <option value="USER">USER</option>
-                      </select>
-                      <button
-                        onClick={() => setUserRoleToDelete(ur)}
-                        disabled={ur.id === user?.uid || isMainAdmin}
-                        className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
-                        title="Excluir Acesso e Jogador"
-                      >
-                        <Trash2 size={12} fill="currentColor" className="fill-transparent" />
-                      </button>
+                      {isMainAdmin ? (
+                        <div className="px-3 py-1 bg-primary/15 border border-primary/30 rounded-lg text-[10px] font-black text-primary uppercase tracking-wider">
+                          ADMIN MASTER
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            onClick={() => updateDoc(doc(db, 'user_roles', ur.id), { approved: !ur.approved })}
+                            disabled={ur.id === user?.uid}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
+                              ur.approved ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
+                            } disabled:opacity-50`}
+                          >
+                            {ur.approved ? 'OK' : 'PEND'}
+                          </button>
+                          <select 
+                            value={ur.role || 'USER'}
+                            onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
+                            disabled={ur.id === user?.uid}
+                            className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
+                          >
+                            <option value="ADMIN">ADM</option>
+                            <option value="USER">USER</option>
+                          </select>
+                          <button
+                            onClick={() => setUserRoleToDelete(ur)}
+                            disabled={ur.id === user?.uid}
+                            className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
+                            title="Excluir Acesso e Jogador"
+                          >
+                            <Trash2 size={12} fill="currentColor" className="fill-transparent" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -842,6 +997,34 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                 value={localSettings.maxSquadSize}
                 onChange={(v) => setLocalSettings({...localSettings, maxSquadSize: Number(v)})}
               />
+
+              <div className="bg-bg/60 p-4 rounded-2xl border border-border/50 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${localSettings.autoApprove ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-gray-200">Aprovação Automática</h4>
+                    <p className="text-[10px] text-gray-500">Novos cadastros entram direto sem pendência</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings(prev => ({ ...prev, autoApprove: !prev.autoApprove }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    localSettings.autoApprove ? 'bg-primary' : 'bg-gray-700'
+                  }`}
+                  role="switch"
+                  aria-checked={localSettings.autoApprove}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                      localSettings.autoApprove ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             <button 

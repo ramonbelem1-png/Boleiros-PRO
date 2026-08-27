@@ -65,9 +65,7 @@ const getParticipants = (match: Match, playersList: Player[], matchParticipants?
 
 export default function CalendarView() {
   const { matches, players, deleteMatch, deleteGame, getMatchGames } = usePelada();
-  const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+  const { role, user, isAdmin } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
@@ -422,9 +420,7 @@ export default function CalendarView() {
 
 function MatchModal({ match, players, onClose, onDeleteMatch, onDeleteGame, matchParticipants }: { match: Match, players: Player[], onClose: () => void, onDeleteMatch: (id: string) => void, onDeleteGame: (mId: string, gId: string) => void, matchParticipants?: Record<string, string[]> }) {
   const { getMatchGames } = usePelada();
-  const { role, user } = useAuth();
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+  const { role, user, isAdmin } = useAuth();
   const [matchGames, setMatchGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
 

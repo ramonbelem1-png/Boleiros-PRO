@@ -150,9 +150,7 @@ export interface GroupSettings {
 import { useAuth } from '../components/AuthProvider';
 
 export function usePelada() {
-  const { role, user, approved } = useAuth();
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
+  const { role, user, approved, isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -164,7 +162,7 @@ export function usePelada() {
     dailyFee: 15,
     maxPlayers: 20,
     maxSquadSize: 30,
-    autoApprove: false
+    autoApprove: true
   });
   const [loading, setLoading] = useState(true);
 

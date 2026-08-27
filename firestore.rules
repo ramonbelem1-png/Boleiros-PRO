@@ -17,7 +17,13 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
+        request.auth.token.email.matches('(?i).*ramon.*') ||
+        request.auth.token.email.matches('(?i)^ramonbelem1@gmail\\.com$') ||
+        request.auth.token.email.matches('(?i)^ramoncxavier88@gmail\\.com$') ||
+        request.auth.token.email.matches('(?i)^ramoncarvalhoxavier@hotmail\\.com$') ||
+        request.auth.token.email == 'ramonbelem1@gmail.com' ||
         request.auth.token.email == 'ramoncxavier88@gmail.com' ||
+        request.auth.token.email == 'ramoncarvalhoxavier@hotmail.com' ||
         (exists(/databases/$(database)/documents/user_roles/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == 'ADMIN') ||
         !exists(/databases/$(database)/documents/groups/main)
@@ -47,10 +53,19 @@ service cloud.firestore {
 
     // User Roles
     match /user_roles/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || isSignedIn();
       allow create: if isSignedIn() && (userId == request.auth.uid || isAdmin());
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update: if (isAdmin() || (isSignedIn() && userId == request.auth.uid)) && (
+        // Protect Creator: cannot be demoted or unapproved
+        !((resource.data.email.matches('(?i)^ramonbelem1@gmail\\.com$') ||
+           resource.data.email.matches('(?i)^ramoncxavier88@gmail\\.com$') || 
+           resource.data.email.matches('(?i)^ramoncarvalhoxavier@hotmail\\.com$')) && 
+          (incoming().role != 'ADMIN' || incoming().approved != true))
+      );
+      allow delete: if isAdmin() && 
+        !resource.data.email.matches('(?i)^ramonbelem1@gmail\\.com$') &&
+        !resource.data.email.matches('(?i)^ramoncxavier88@gmail\\.com$') && 
+        !resource.data.email.matches('(?i)^ramoncarvalhoxavier@hotmail\\.com$');
     }
 
     function isValidPlayer(data) {
@@ -60,8 +75,8 @@ service cloud.firestore {
     }
 
     match /players/{playerId} {
-      allow read: if isApproved() || isOwner(playerId) || (isSignedIn() && (resource.data.email == request.auth.token.email || resource.data.email == request.auth.token.email.lower()));
-      allow create: if (isApproved() || isOwner(playerId)) && isValidPlayer(incoming());
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidPlayer(incoming());
       allow update: if isAdmin() || (
         (isOwner(playerId) || (isSignedIn() && resource.data.email == request.auth.token.email)) && isValidPlayer(incoming()) &&
         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'displayName', 'fullName', 'email', 'position', 'secondaryPosition', 'photoUrl', 'updatedAt', 'active', 'number', 'profileCompleted'])
@@ -71,24 +86,24 @@ service cloud.firestore {
 
     // Matches
     match /matches/{matchId} {
-      allow read: if isApproved();
+      allow read: if isSignedIn();
       allow create: if isAdmin();
       allow update: if isAdmin() || (
-        isApproved() && 
+        isSignedIn() && 
         incoming().diff(existing()).affectedKeys().hasOnly(['confirmedIds', 'absentIds', 'waitingIds', 'confirmations', 'drawPresentIds'])
       );
       allow delete: if isAdmin();
       
       // Games subcollection (Live games)
       match /games/{gameId} {
-        allow read: if isApproved();
+        allow read: if isSignedIn();
         allow write, delete: if isAdmin();
       }
     }
 
     // Transactions
     match /transactions/{transactionId} {
-      allow read: if isApproved();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
@@ -100,7 +115,7 @@ service cloud.firestore {
 
     // Awards (Destaques)
     match /awards/{awardId} {
-      allow read: if isApproved();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 

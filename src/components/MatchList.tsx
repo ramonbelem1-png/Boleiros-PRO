@@ -58,7 +58,7 @@ const isPlayerPaidForMatch = (
 };
 
 export default function MatchList() {
-  const { user, role } = useAuth();
+  const { user, role, isAdmin } = useAuth();
   const { 
     players, 
     matches, 
@@ -85,9 +85,6 @@ export default function MatchList() {
     dayAfterMatch.setHours(0, 0, 0, 0);
     return now < dayAfterMatch;
   });
-
-  const isAdmin = role === 'ADMIN' || 
-    user?.email?.trim().toLowerCase() === 'ramoncxavier88@gmail.com';
   
   const isClosed = isMatchListClosed(nextMatch);
 

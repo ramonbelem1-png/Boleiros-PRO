@@ -278,50 +278,6 @@ export function usePelada() {
     return () => clearInterval(interval);
   }, [matches]);
 
-  // Auto-promote waiting players has been disabled as per new rules:
-  // Diaristas stay in the waiting list until an admin manually promotes them,
-  // and Mensalistas go straight to the confirmed list anyway.
-  /*
-  useEffect(() => {
-    if (!user || matches.length === 0 || !settings.maxPlayers) return;
-
-    matches.forEach(async (match) => {
-      if (match.status === 'OPEN' && match.waitingIds && match.waitingIds.length > 0) {
-        const availableSlots = settings.maxPlayers - match.confirmedIds.length;
-        if (availableSlots > 0) {
-          console.log(`[Auto-Promotion] Slots open: ${availableSlots}. Waiting list size: ${match.waitingIds.length}`);
-          
-          const newConfirmed = [...match.confirmedIds];
-          let newWaiting = [...match.waitingIds];
-
-          // Sort waiting list by confirmation date
-          const confirmations = match.confirmations || {};
-          newWaiting.sort((a, b) => {
-            const timeA = confirmations[a] ? new Date(confirmations[a]).getTime() : Infinity;
-            const timeB = confirmations[b] ? new Date(confirmations[b]).getTime() : Infinity;
-            return timeA - timeB;
-          });
-
-          // Promote up to availableSlots
-          const toPromote = newWaiting.slice(0, availableSlots);
-          newWaiting = newWaiting.slice(availableSlots);
-          newConfirmed.push(...toPromote);
-
-          try {
-            await updateDoc(doc(db, 'matches', match.id), {
-              confirmedIds: newConfirmed,
-              waitingIds: newWaiting
-            });
-            console.log(`[Auto-Promotion] Successfully promoted players to match ${match.id}:`, toPromote);
-          } catch (error) {
-            console.error("Error during auto-promotion:", error);
-          }
-        }
-      }
-    });
-  }, [matches, settings.maxPlayers, user]);
-  */
-
   // Effect specifically for handling the live game listener
   useEffect(() => {
     if (!user) return;
@@ -517,6 +473,9 @@ export function usePelada() {
   };
 
   const promotePlayer = async (matchId: string, playerId: string) => {
+    if (!isAdmin) {
+      throw new Error("Apenas administradores podem promover jogadores para a lista dentro.");
+    }
     if (!playerId) return;
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -543,6 +502,9 @@ export function usePelada() {
   };
 
   const demotePlayer = async (matchId: string, playerId: string) => {
+    if (!isAdmin) {
+      throw new Error("Apenas administradores podem descer jogadores para a lista de espera.");
+    }
     if (!playerId) return;
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
@@ -581,20 +543,7 @@ export function usePelada() {
     const newConfirmations = { ...currentConfirmations };
     delete newConfirmations[playerId];
 
-    // Se alguém sair dos confirmados e houver fila, o primeiro da fila (por ordem de confirmação) entra
-    if (match.confirmedIds.includes(playerId) && newWaiting.length > 0) {
-      // Ordenar fila pelo menor tempo de confirmação (quem confirmou primeiro)
-      newWaiting.sort((a, b) => {
-        const timeA = newConfirmations[a] ? new Date(newConfirmations[a]).getTime() : Infinity;
-        const timeB = newConfirmations[b] ? new Date(newConfirmations[b]).getTime() : Infinity;
-        return timeA - timeB;
-      });
-
-      const nextInLine = newWaiting.shift();
-      if (nextInLine) {
-        newConfirmed.push(nextInLine);
-      }
-    }
+    // Diaristas NÃO sobem automaticamente: a promoção da fila de espera é estritamente manual por um Administrador.
 
     const currentDrawPresent = (match.drawPresentIds ?? []).filter(id => newConfirmed.includes(id));
 

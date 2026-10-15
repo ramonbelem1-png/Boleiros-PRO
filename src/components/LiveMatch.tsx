@@ -2540,7 +2540,9 @@ export default function LiveMatch() {
                 </div>
                 <div>
                   <h2 className="text-sm font-black uppercase italic tracking-tighter text-white">Ao Vivo</h2>
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">{activeMatch.name}</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none">
+                    {activeMatch.date ? (activeMatch.date.toDate ? activeMatch.date.toDate().toLocaleDateString('pt-BR') : new Date(activeMatch.date).toLocaleDateString('pt-BR')) : 'Pelada'}
+                  </p>
                 </div>
               </div>
               {isAdmin && (

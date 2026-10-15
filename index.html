@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" style="background-color: #0F172A; color: #f8fafc;">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <meta name="theme-color" content="#0F172A" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -10,10 +13,154 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="https://img.icons8.com/ios-glyphs/32/FAB005/trophy.png" />
     <title>Boleiros PRO</title>
+    <style>
+      /* Immediate dark background to prevent white flashes */
+      html, body {
+        background-color: #0F172A;
+        color: #f8fafc;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        min-height: 100dvh;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #initial-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 1.5rem;
+        background-color: #0F172A;
+        text-align: center;
+      }
+      .trophy-badge {
+        width: 80px;
+        height: 80px;
+        border-radius: 9999px;
+        background: linear-gradient(135deg, #FBBF24, #D97706);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.3);
+        margin-bottom: 1.5rem;
+        animation: pulseSlow 2s ease-in-out infinite;
+      }
+      .brand-title {
+        font-size: 1.5rem;
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        font-style: italic;
+        margin: 0;
+        color: #ffffff;
+      }
+      .brand-title span {
+        color: #00FFBB;
+        margin-left: 0.25rem;
+      }
+      .loading-bar {
+        width: 120px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 9999px;
+        margin-top: 1.5rem;
+        overflow: hidden;
+        position: relative;
+      }
+      .loading-bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 40%;
+        background: #00FFBB;
+        border-radius: 9999px;
+        animation: loadingSlide 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      @keyframes loadingSlide {
+        0% { left: -40%; }
+        100% { left: 100%; }
+      }
+      @keyframes pulseSlow {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+    </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: #0F172A;">
+    <div id="root">
+      <!-- Immediate placeholder while JS loads (prevents white screen) -->
+      <div id="initial-loader">
+        <div class="trophy-badge">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+            <path d="M4 22h16"/>
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+          </svg>
+        </div>
+        <h1 class="brand-title">BOLEIROS<span>PRO</span></h1>
+        <div class="loading-bar"></div>
+        <div id="recovery-prompt" style="display: none; margin-top: 2rem; max-width: 280px;">
+          <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.75rem;">
+            Demorando para iniciar?
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <button onclick="window.location.reload(true)" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 0.5rem 1rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; cursor: pointer;">
+              Recarregar Página
+            </button>
+            <button onclick="localStorage.clear(); sessionStorage.clear(); window.location.href = window.location.pathname + '?v=' + Date.now();" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; padding: 0.5rem 1rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; cursor: pointer;">
+              Limpar Cache e Recarregar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 1. Auto unregister any stale/legacy service workers from previous builds
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        }).catch(function() {});
+      }
+
+      // 2. Auto clear legacy browser cache storage
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          for (var i = 0; i < keys.length; i++) {
+            caches.delete(keys[i]);
+          }
+        }).catch(function() {});
+      }
+
+      // 3. Catch dynamic import / chunk loading errors due to deployment updates
+      window.addEventListener('error', function(e) {
+        var msg = (e && (e.message || (e.error && e.error.message)) || '').toLowerCase();
+        if (msg.indexOf('failed to fetch dynamically imported module') !== -1 ||
+            msg.indexOf('loading chunk') !== -1 ||
+            msg.indexOf('error loading dynamically imported module') !== -1) {
+          var reloaded = sessionStorage.getItem('auto_chunk_reload');
+          if (!reloaded) {
+            sessionStorage.setItem('auto_chunk_reload', 'true');
+            window.location.href = window.location.pathname + '?t=' + Date.now();
+          }
+        }
+      });
+
+      // 4. If after 7s React has not mounted, reveal recovery prompt
+      setTimeout(function() {
+        var el = document.getElementById('recovery-prompt');
+        if (el) el.style.display = 'block';
+      }, 7000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

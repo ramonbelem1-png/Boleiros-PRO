@@ -117,6 +117,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Safety fallback timeout: ensure loading never hangs indefinitely
+    const safetyTimeout = setTimeout(() => {
+      setLoading(prevLoading => {
+        if (prevLoading) {
+          console.warn("[AuthProvider] Timeout ao carregar estado de autenticação. Liberando tela.");
+          return false;
+        }
+        return false;
+      });
+    }, 7000);
+
     let unsubRoleListener: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
@@ -295,6 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
+      clearTimeout(safetyTimeout);
       unsubAuth();
       if (unsubRoleListener) unsubRoleListener();
     };

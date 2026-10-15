@@ -33,6 +33,7 @@ import Logo from './components/Logo';
 import { useAuth } from './components/AuthProvider';
 import OnboardingProfile from './components/OnboardingProfile';
 import PullToRefresh from './components/PullToRefresh';
+import { safeStorage } from './lib/storage';
 
 type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
 
@@ -40,7 +41,7 @@ export default function App() {
   const { players, updatePlayer, settings, updateSettings, loading } = usePelada();
   const { role, user, logout, isAdmin, isCreator } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
-    const saved = localStorage.getItem('boleiros_active_tab');
+    const saved = safeStorage.getItem('boleiros_active_tab');
     const validTabs: Tab[] = ['list', 'finance', 'play', 'live', 'social', 'settings'];
     if (saved && validTabs.includes(saved as Tab)) {
       return saved as Tab;
@@ -49,7 +50,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem('boleiros_active_tab', activeTab);
+    safeStorage.setItem('boleiros_active_tab', activeTab);
   }, [activeTab]);
 
   const [modalType, setModalType] = useState<'match' | 'finance' | 'player' | null>(null);

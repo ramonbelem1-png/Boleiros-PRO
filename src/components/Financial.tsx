@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, usePelada } from '../hooks/usePelada';
 import { TrendingUp, TrendingDown, Wallet, Users, ArrowUpRight, ArrowDownRight, Edit2, Trash2, FileSpreadsheet, Check } from 'lucide-react';
-import { exportFinancialToExcel } from '../lib/exportFinancialExcel';
 
 type SubTab = 'resumo' | 'extrato' | 'jogadores';
 
@@ -127,8 +126,9 @@ export default function Financial({ onEditTransaction, onLaunchPayment }: Financ
 
   const [exportSuccess, setExportSuccess] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
+      const { exportFinancialToExcel } = await import('../lib/exportFinancialExcel');
       exportFinancialToExcel({
         transactions,
         players,

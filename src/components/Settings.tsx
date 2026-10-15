@@ -14,6 +14,7 @@ import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import ManagementModals from './ManagementModals';
 import { compressImageToBase64 } from '../lib/imageUtils';
 import ImageCropper from './ImageCropper';
+import { safeStorage } from '../lib/storage';
 
 const removeAccents = (str: string): string => {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -80,7 +81,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         name: currentUserPlayer?.displayName || currentUserPlayer?.name || user.displayName || 'Ramon Xavier',
         updatedAt: new Date().toISOString()
       }, { merge: true });
-      localStorage.setItem('boleiros_master_admin', 'true');
+      safeStorage.setItem('boleiros_master_admin', 'true');
       showFeedback('success', 'Privilégios de Administrador Master ativados com sucesso!');
       setTimeout(() => {
         window.location.reload();

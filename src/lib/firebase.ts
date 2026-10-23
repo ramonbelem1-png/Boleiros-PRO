@@ -1,5 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { 
+  getAuth, 
+  initializeAuth, 
+  indexedDBLocalPersistence, 
+  browserLocalPersistence, 
+  browserPopupRedirectResolver 
+} from 'firebase/auth';
 import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -18,7 +24,18 @@ export const db = (() => {
   }
 })();
 
-export const auth = getAuth(app);
+// Robust Auth initialization with IndexedDB & LocalStorage fallback
+export const auth = (() => {
+  try {
+    return initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver
+    });
+  } catch (err) {
+    console.warn("[Firebase] initializeAuth já configurado ou fallback para getAuth:", err);
+    return getAuth(app);
+  }
+})();
 export const storage = getStorage(app);
 
 console.log("[Firebase] Inicializado com databaseId:", firebaseConfig.firestoreDatabaseId);

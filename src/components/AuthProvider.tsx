@@ -13,13 +13,17 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { LogIn, Mail, Lock, User as UserIcon, ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { LogIn, Mail, Lock, User as UserIcon, ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2, Smartphone, AlertCircle, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
 import Splash from './Splash';
 
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+
+const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+const isInAppBrowser = typeof navigator !== 'undefined' && /WhatsApp|FBAN|FBAV|Instagram|Line|Twitter|Snapchat/i.test(navigator.userAgent || '');
+
 
 export type UserRole = 'ADMIN' | 'USER';
 
@@ -112,8 +116,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error.code === 'auth/unauthorized-domain') {
         const domain = window.location.hostname;
         setAuthError(`Domínio não autorizado: "${domain}". Adicione-o no Console do Firebase.`);
+      } else if (error.code === 'auth/missing-initial-state') {
+        setAuthError("O Safari ou WhatsApp bloqueou o redirecionamento por segurança de privacidade (ITP). Por favor, use 'Entrar com Email e Senha' ou abra diretamente no Safari.");
       } else {
-        setAuthError("Erro ao processar login por redirecionamento.");
+        setAuthError("Erro ao processar retorno do login. Tente usar 'Entrar com Email e Senha'.");
+      }
+    }).finally(() => {
+      // Limpar parâmetros de redirecionamento da URL se houver resíduos
+      try {
+        if (typeof window !== 'undefined' && (window.location.search.includes('apiKey=') || window.location.hash.includes('access_token='))) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {
+        // Ignora erro de history em iframes restritos
       }
     });
 
@@ -323,18 +338,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     try {
       if (useRedirect) {
+        if (isIOS || isInAppBrowser) {
+          throw new Error("No iPhone ou WhatsApp, o redirecionamento pode falhar por proteção do iOS. Por favor, use 'Entrar com Email e Senha' abaixo ou abra diretamente no Safari.");
+        }
         await signInWithRedirect(auth, provider);
       } else {
         try {
           await signInWithPopup(auth, provider);
         } catch (popupError: any) {
           console.warn("[AuthProvider] Erro no popup do Google Auth:", popupError);
+          
+          if (popupError.code === 'auth/popup-closed-by-user') {
+            console.log("[AuthProvider] Seleção de conta cancelada pelo usuário.");
+            return;
+          }
+
+          // No iOS (Safari) ou navegadores embutidos (WhatsApp/Instagram), NUNCA fazer fallback automático para signInWithRedirect!
+          // Isso causa a tela de erro 'missing initial state' na URL do firebaseapp.com
+          if (isIOS || isInAppBrowser) {
+            if (isInAppBrowser) {
+              setAuthError("Você está no navegador do WhatsApp. Para evitar bloqueios do Google, toque em ⋮ ou compartilhar e selecione 'Abrir no Safari', ou use 'Entrar com Email e Senha' abaixo!");
+            } else {
+              setAuthError("A janela do Google foi bloqueada pelo Safari. Toque em 'Entrar com Email e Senha' abaixo para acessar diretamente sem bloqueios!");
+            }
+            return;
+          }
+
+          // Apenas em desktop ou navegadores onde não há restrição de ITP/particionamento
           if (
             popupError.code === 'auth/popup-blocked' || 
             popupError.code === 'auth/cancelled-popup-request' ||
             popupError.code === 'auth/network-request-failed'
           ) {
-            console.log("[AuthProvider] Tentando login alternativo por redirecionamento...");
+            console.log("[AuthProvider] Tentando login alternativo por redirecionamento no desktop...");
             try {
               await signInWithRedirect(auth, provider);
               return;
@@ -342,9 +378,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.error("[AuthProvider] Erro também no redirecionamento:", redirErr);
               throw popupError;
             }
-          } else if (popupError.code === 'auth/popup-closed-by-user') {
-            console.log("[AuthProvider] Seleção de conta cancelada pelo usuário.");
-            return;
           } else {
             throw popupError;
           }
@@ -365,6 +398,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message = "Falha de conexão com os servidores do Google. Verifique sua internet ou tente entrar por e-mail e senha abaixo.";
       } else if (error.code === 'auth/popup-blocked') {
         message = "O navegador bloqueou a janela pop-up do Google. Permita pop-ups ou entre por e-mail/senha.";
+      } else if (error.code === 'auth/missing-initial-state') {
+        message = "O Safari / WhatsApp bloqueou o redirecionamento. Use 'Entrar com Email e Senha' abaixo para entrar sem bloqueios.";
       } else {
         message = error.message || message;
       }
@@ -497,14 +532,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 exit={{ opacity: 0, x: 20 }}
                 className="space-y-4"
               >
+                {(isIOS || isInAppBrowser) && (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start space-x-2.5 text-left mb-2">
+                    <Smartphone size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-[11px] text-amber-200/90 leading-relaxed font-medium">
+                      <span className="font-bold text-amber-300">Dica iPhone / WhatsApp:</span>{' '}
+                      {isInAppBrowser 
+                        ? "Se estiver no WhatsApp, toque nos 3 pontinhos (...) para abrir no Safari, ou use Email e Senha abaixo sem bloqueios." 
+                        : "Se a janela do Google não abrir, use Email e Senha abaixo para entrar direto sem restrições."}
+                    </div>
+                  </div>
+                )}
+
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
+                  disabled={authLoading}
                   onClick={() => signIn(false)}
-                  className="w-full py-3.5 bg-white text-bg rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg hover:shadow-white/10 transition-all active:scale-95"
+                  className="w-full py-3.5 bg-white text-bg rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg hover:shadow-white/10 transition-all active:scale-95 disabled:opacity-60"
                 >
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-                  <span>Entrar com Google</span>
+                  {authLoading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin text-bg" />
+                      <span>Conectando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+                      <span>Entrar com Google</span>
+                    </>
+                  )}
                 </motion.button>
 
                 <motion.button 
@@ -687,9 +744,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mt-6 p-4 bg-danger/10 border border-danger/20 rounded-2xl text-danger text-[11px] font-bold text-center"
+              className="mt-6 p-4 bg-danger/10 border border-danger/20 rounded-2xl text-danger text-[11px] font-bold text-center space-y-2.5"
             >
-              {authError}
+              <div className="leading-relaxed">{authError}</div>
+              {!isEmailMode && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEmailMode(true);
+                      setAuthError(null);
+                    }}
+                    className="inline-flex items-center space-x-2 px-3.5 py-2 bg-primary text-bg rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    <Mail size={13} />
+                    <span>Entrar com Email e Senha</span>
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 

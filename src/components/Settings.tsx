@@ -6,7 +6,7 @@ import {
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
   History, Calendar, Users, Camera, Upload, Loader2, Trash2, Edit, 
   CheckCircle2, AlertCircle, ArrowUpDown, Filter, Star, Type, Target,
-  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight, Hash
+  TrendingUp, Edit2, ShieldCheck, Plus, DollarSign, Search, ArrowRight, Hash, Lock, Clock
 } from 'lucide-react';
 import { db, storage } from '../lib/firebase';
 import { collection, addDoc, updateDoc, onSnapshot, doc, deleteDoc, setDoc } from 'firebase/firestore';
@@ -128,9 +128,34 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
     return () => unsub();
   }, [isAdmin]);
 
+  const handleRoleChange = async (targetUserRole: any, newRole: string) => {
+    if (!isCreator) {
+      showFeedback('error', 'Somente o Administrador Master pode escolher ou mudar o perfil de qualquer usuário.');
+      return;
+    }
+    const isTargetMaster = MASTER_ADMIN_EMAILS.includes(targetUserRole.email?.trim().toLowerCase() || '') ||
+                           targetUserRole.email?.toLowerCase().includes('ramon');
+    if (isTargetMaster) {
+      showFeedback('error', 'Não é permitido alterar o perfil de um Administrador Master.');
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'user_roles', targetUserRole.id), { role: newRole });
+      showFeedback('success', `Perfil de ${targetUserRole.displayName || targetUserRole.name || 'usuário'} alterado para ${newRole === 'ADMIN' ? 'Administrador' : 'Usuário Comum'}.`);
+    } catch (e) {
+      console.error(e);
+      showFeedback('error', 'Erro ao alterar perfil de acesso.');
+    }
+  };
+
   const handleAddAdmin = async () => {
-    if (!adminEmail) return;
-    const userToPromote = userRoles.find(ur => ur.email === adminEmail);
+    if (!isCreator) {
+      showFeedback('error', 'Somente o Administrador Master pode nomear novos administradores.');
+      return;
+    }
+    if (!adminEmail.trim()) return;
+    const normalizedEmail = adminEmail.trim().toLowerCase();
+    const userToPromote = userRoles.find(ur => ur.email?.trim().toLowerCase() === normalizedEmail);
     if (userToPromote) {
       try {
         await updateDoc(doc(db, 'user_roles', userToPromote.id), { role: 'ADMIN' });
@@ -140,20 +165,24 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
         showFeedback('error', 'Erro ao promover usuário.');
       }
     } else {
-      showFeedback('error', 'Usuário não encontrado. Ele precisa logar pelo menos uma vez.');
+      showFeedback('error', 'Usuário não encontrado. Ele precisa fazer login pelo menos uma vez.');
     }
   };
 
   const handleRemoveAdmin = async (uid: string) => {
+    if (!isCreator) {
+      showFeedback('error', 'Somente o Administrador Master pode alterar o perfil de administradores.');
+      return;
+    }
     if (uid === user?.uid) {
       showFeedback('error', 'Você não pode remover seu próprio acesso admin.');
       return;
     }
     try {
       await updateDoc(doc(db, 'user_roles', uid), { role: 'USER' });
-      showFeedback('success', 'Acesso administrativo removido.');
+      showFeedback('success', 'Acesso administrativo alterado para usuário comum.');
     } catch (e) {
-      showFeedback('error', 'Erro ao remover acesso.');
+      showFeedback('error', 'Erro ao alterar acesso.');
     }
   };
 
@@ -726,23 +755,43 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
 
       {activeSettingsTab === 'admin' && isAdmin && (
         <div className="space-y-6">
-          <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-6 shadow-xl">
-            <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Adicionar Administrador</h3>
-            <div className="flex gap-2">
-              <input 
-                className="flex-1 bg-bg border border-border rounded-xl px-4 py-3 text-sm focus:border-primary outline-none text-white"
-                placeholder="E-mail do novo admin"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-              />
-              <button 
-                onClick={handleAddAdmin}
-                className="bg-primary text-bg p-3 rounded-xl hover:opacity-90 transition-all active:scale-95"
-              >
-                <Plus size={20} />
-              </button>
+          {isCreator ? (
+            <div className="bg-card p-6 rounded-[32px] border border-border/50 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[11px] font-bold tracking-[0.2em] text-primary uppercase">Adicionar Administrador</h3>
+                <span className="text-[9px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/25 px-2 py-0.5 rounded-md">
+                  Exclusivo Master
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <input 
+                  className="flex-1 bg-bg border border-border rounded-xl px-4 py-3 text-sm focus:border-primary outline-none text-white placeholder:text-gray-500 font-medium"
+                  placeholder="E-mail do usuário para torná-lo ADM"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                />
+                <button 
+                  onClick={handleAddAdmin}
+                  className="bg-primary text-bg p-3 rounded-xl hover:opacity-90 transition-all active:scale-95"
+                  title="Promover a Administrador"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-card p-4 rounded-2xl border border-border/50 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <ShieldCheck size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-gray-200">Gerenciamento de Perfis</h4>
+                <p className="text-[11px] text-gray-400">
+                  Somente <strong className="text-primary font-bold">Administradores Master</strong> podem definir ou mudar o perfil de qualquer pessoa (Administrador ou Usuário Comum).
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-3">
             <h3 className="text-[11px] font-bold tracking-[0.2em] text-gray-500 uppercase px-2">Lista de Acessos</h3>
@@ -863,7 +912,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               return sortedUserRoles.map(ur => {
                 const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
                 const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
-                const isMainAdmin = MASTER_ADMIN_EMAILS.includes(ur.email?.trim().toLowerCase() || '');
+                const isMainAdmin = MASTER_ADMIN_EMAILS.includes(ur.email?.trim().toLowerCase() || '') || 
+                                    (ur.email ? ur.email.toLowerCase().includes('ramon') : false);
 
                 return (
                   <div key={ur.id} className={`p-4 rounded-3xl border flex items-center justify-between gap-3 overflow-hidden transition-all ${
@@ -909,20 +959,31 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                           >
                             {ur.approved ? 'OK' : 'PEND'}
                           </button>
-                          <select 
-                            value={ur.role || 'USER'}
-                            onChange={(e) => updateDoc(doc(db, 'user_roles', ur.id), { role: e.target.value })}
-                            disabled={ur.id === user?.uid}
-                            className="bg-bg border border-border rounded-lg pl-1 pr-0 py-1 text-[10px] font-bold text-gray-400 outline-none focus:border-primary disabled:opacity-50 w-16"
-                          >
-                            <option value="ADMIN">ADM</option>
-                            <option value="USER">USER</option>
-                          </select>
+                          {isCreator ? (
+                            <select 
+                              value={ur.role || 'USER'}
+                              onChange={(e) => handleRoleChange(ur, e.target.value)}
+                              disabled={ur.id === user?.uid}
+                              className="bg-bg border border-primary/40 rounded-lg pl-1.5 pr-0.5 py-1 text-[10px] font-bold text-primary outline-none focus:border-primary disabled:opacity-50 w-16 cursor-pointer"
+                              title="Alterar perfil (Exclusivo Admin Master)"
+                            >
+                              <option value="ADMIN">ADM</option>
+                              <option value="USER">USER</option>
+                            </select>
+                          ) : (
+                            <div 
+                              className="px-2.5 py-1 rounded-lg bg-bg border border-border/60 text-[10px] font-bold text-gray-400 flex items-center gap-1 cursor-not-allowed opacity-75"
+                              title="Somente Administradores Master podem alterar o perfil deste usuário"
+                            >
+                              <Lock size={10} className="text-gray-500" />
+                              <span>{ur.role === 'ADMIN' ? 'ADM' : 'USER'}</span>
+                            </div>
+                          )}
                           <button
                             onClick={() => setUserRoleToDelete(ur)}
-                            disabled={ur.id === user?.uid}
+                            disabled={ur.id === user?.uid || (!isCreator && ur.role === 'ADMIN')}
                             className="p-1.5 bg-red-500/15 hover:bg-red-500/30 text-red-400 rounded-lg transition-all disabled:opacity-50"
-                            title="Excluir Acesso e Jogador"
+                            title={!isCreator && ur.role === 'ADMIN' ? 'Apenas o Admin Master pode remover administradores' : 'Excluir Acesso e Jogador'}
                           >
                             <Trash2 size={12} fill="currentColor" className="fill-transparent" />
                           </button>
@@ -1022,6 +1083,43 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                     aria-hidden="true"
                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
                       localSettings.autoApprove ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Fila de Espera (Diaristas) */}
+              <div className="bg-bg/60 p-4 rounded-2xl border border-border/50 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${localSettings.waitingListEnabled !== false ? 'bg-yellow-400/10 text-yellow-400' : 'bg-gray-800 text-gray-500'}`}>
+                    <Clock size={16} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-gray-200">Fila de Espera (Diaristas)</h4>
+                    <p className="text-[10px] text-gray-500">
+                      {localSettings.waitingListEnabled !== false 
+                        ? 'Ativada: diaristas entram na fila de espera (subida manual)' 
+                        : 'Desativada: diaristas entram direto na lista "DENTRO"'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLocalSettings(prev => ({ 
+                    ...prev, 
+                    waitingListEnabled: prev.waitingListEnabled === false ? true : false 
+                  }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    localSettings.waitingListEnabled !== false ? 'bg-primary' : 'bg-gray-700'
+                  }`}
+                  role="switch"
+                  aria-checked={localSettings.waitingListEnabled !== false}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                      localSettings.waitingListEnabled !== false ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>

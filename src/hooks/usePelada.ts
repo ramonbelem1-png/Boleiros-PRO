@@ -145,6 +145,7 @@ export interface GroupSettings {
   maxPlayers: number;
   maxSquadSize: number;
   autoApprove?: boolean;
+  waitingListEnabled?: boolean;
 }
 
 import { useAuth } from '../components/AuthProvider';
@@ -162,7 +163,8 @@ export function usePelada() {
     dailyFee: 15,
     maxPlayers: 20,
     maxSquadSize: 30,
-    autoApprove: true
+    autoApprove: true,
+    waitingListEnabled: true
   });
   const [loading, setLoading] = useState(true);
 
@@ -411,6 +413,29 @@ export function usePelada() {
 
   const updateSettings = async (newSettings: GroupSettings) => {
     await setDoc(doc(db, 'groups', 'main'), newSettings, { merge: true });
+
+    // Se a fila de espera foi desativada, a fila não existirá e todos os diaristas sobem para "DENTRO" automaticamente
+    if (newSettings.waitingListEnabled === false) {
+      for (const m of matches) {
+        if (m.waitingIds && m.waitingIds.length > 0) {
+          const combinedConfirmed = [...m.confirmedIds];
+          for (const wid of m.waitingIds) {
+            if (!combinedConfirmed.includes(wid)) {
+              combinedConfirmed.push(wid);
+            }
+          }
+          try {
+            await updateDoc(doc(db, 'matches', m.id), {
+              confirmedIds: combinedConfirmed,
+              waitingIds: [],
+              drawPresentIds: m.drawPresentIds ?? []
+            });
+          } catch (err) {
+            console.error("Erro ao migrar jogadores da fila de espera:", err);
+          }
+        }
+      }
+    }
   };
 
   const confirmPresence = async (matchId: string, playerId: string) => {
@@ -433,18 +458,20 @@ export function usePelada() {
 
     const player = players.find(p => p.id === playerId);
     const isMensalista = player ? player.type === 'MENSALISTA' : false;
+    const isWaitingListOn = settings.waitingListEnabled !== false;
 
-    if (isMensalista) {
+    if (isMensalista || !isWaitingListOn) {
+      // Mensalistas ou quando a fila de espera está desativada: entram na lista 'DENTRO' automaticamente
       if (!newConfirmed.includes(playerId)) {
         newConfirmed.push(playerId);
       }
-      // Remove from waiting list just in case
+      // Remove da fila de espera por garantia
       const waitingIdx = newWaiting.indexOf(playerId);
       if (waitingIdx !== -1) {
         newWaiting.splice(waitingIdx, 1);
       }
     } else {
-      // Diarista: always placed on the waiting list by default as per new requirements
+      // Diarista com a fila de espera ativada: vai para a fila de espera
       if (!newWaiting.includes(playerId)) {
         newWaiting.push(playerId);
       }

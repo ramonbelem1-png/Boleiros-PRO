@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePelada, GroupSettings, Match, Player, formatPosition } from '../hooks/usePelada';
 import { useAuth, MASTER_ADMIN_EMAILS } from './AuthProvider';
+import MasterAI from './MasterAI';
 import Logo from './Logo';
 import { 
   UserPlus, UserCircle, User, ChevronRight, LogOut, Bell, Shield, Info, Save, 
@@ -45,7 +46,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [searchTerm, setSearchTerm] = useState('');
   const [searchAccess, setSearchAccess] = useState('');
   const [sortBy, setSortBy] = useState<'number' | 'level' | 'name' | 'position'>('number');
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile'>(isAdmin ? 'players' : 'profile');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'players' | 'admin' | 'group' | 'profile' | 'ai'>(isAdmin ? 'players' : 'profile');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'loading', msg: string } | null>(null);
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
 
@@ -378,7 +379,8 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
           ...(isAdmin ? [
             { id: 'admin', label: 'Acesso' },
             { id: 'group', label: 'Config' }
-          ] : [])
+          ] : []),
+          ...(isCreator ? [{ id: 'ai', label: '✨ IA' }] : [])
         ].map(tab => (
           <button
             key={tab.id}
@@ -1124,6 +1126,219 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   />
                 </button>
               </div>
+
+              {/* Programação Automática da Pelada e Abertura de Lista */}
+              <div className="bg-bg/60 p-4 rounded-2xl border border-border/50 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${localSettings.autoScheduleEnabled ? 'bg-primary/10 text-primary' : 'bg-gray-800 text-gray-500'}`}>
+                      <Calendar size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-gray-200">Abertura e Fechamento Automático</h4>
+                      <p className="text-[10px] text-gray-500">Programar dia/horário da pelada e abertura automática da lista</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalSettings(prev => ({ 
+                      ...prev, 
+                      autoScheduleEnabled: !prev.autoScheduleEnabled 
+                    }))}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      localSettings.autoScheduleEnabled ? 'bg-primary' : 'bg-gray-700'
+                    }`}
+                    role="switch"
+                    aria-checked={localSettings.autoScheduleEnabled}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                        localSettings.autoScheduleEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {localSettings.autoScheduleEnabled && (
+                  <div className="space-y-3.5 pt-2 border-t border-border/40">
+                    {/* 1. Dia e Horário da Pelada */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+                        ⚽ Dia e Horário da Pelada
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] font-bold text-gray-400 block mb-1">Dia da Semana</span>
+                          <select
+                            value={localSettings.matchDayOfWeek ?? 4}
+                            onChange={(e) => setLocalSettings(prev => ({ ...prev, matchDayOfWeek: Number(e.target.value) }))}
+                            className="w-full bg-card border border-border/80 rounded-xl px-3 py-2 text-xs text-white font-bold outline-none focus:border-primary"
+                          >
+                            <option value={0}>Domingo</option>
+                            <option value={1}>Segunda-feira</option>
+                            <option value={2}>Terça-feira</option>
+                            <option value={3}>Quarta-feira</option>
+                            <option value={4}>Quinta-feira</option>
+                            <option value={5}>Sexta-feira</option>
+                            <option value={6}>Sábado</option>
+                          </select>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-gray-400 block mb-1">Horário de Início</span>
+                          <input
+                            type="time"
+                            value={localSettings.matchTime || '19:00'}
+                            onChange={(e) => setLocalSettings(prev => ({ ...prev, matchTime: e.target.value }))}
+                            className="w-full bg-card border border-border/80 rounded-xl px-3 py-1.5 text-xs text-white font-bold outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Abertura Automática da Lista */}
+                    <div className="space-y-2 pt-2 border-t border-border/30">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+                          🔓 Abertura Automática da Lista
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setLocalSettings(prev => ({ ...prev, autoOpenEnabled: prev.autoOpenEnabled === false ? true : false }))}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            localSettings.autoOpenEnabled !== false ? 'bg-primary' : 'bg-gray-700'
+                          }`}
+                          role="switch"
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                              localSettings.autoOpenEnabled !== false ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {localSettings.autoOpenEnabled !== false ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-400 block mb-1">Dia de Abertura</span>
+                            <select
+                              value={localSettings.openDayOfWeek ?? 3}
+                              onChange={(e) => setLocalSettings(prev => ({ ...prev, openDayOfWeek: Number(e.target.value) }))}
+                              className="w-full bg-card border border-border/80 rounded-xl px-3 py-2 text-xs text-white font-bold outline-none focus:border-primary"
+                            >
+                              <option value={0}>Domingo</option>
+                              <option value={1}>Segunda-feira</option>
+                              <option value={2}>Terça-feira</option>
+                              <option value={3}>Quarta-feira</option>
+                              <option value={4}>Quinta-feira</option>
+                              <option value={5}>Sexta-feira</option>
+                              <option value={6}>Sábado</option>
+                            </select>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-gray-400 block mb-1">Horário de Abertura</span>
+                            <input
+                              type="time"
+                              value={localSettings.openTime || '12:00'}
+                              onChange={(e) => setLocalSettings(prev => ({ ...prev, openTime: e.target.value }))}
+                              className="w-full bg-card border border-border/80 rounded-xl px-3 py-1.5 text-xs text-white font-bold outline-none focus:border-primary"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-gray-500 italic">
+                          A lista abrirá imediatamente quando a pelada for criada.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 3. Fechamento Automático da Lista */}
+                    <div className="space-y-2 pt-2 border-t border-border/30">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+                          🔒 Fechamento Automático da Lista
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setLocalSettings(prev => ({ ...prev, autoCloseEnabled: !prev.autoCloseEnabled }))}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            localSettings.autoCloseEnabled ? 'bg-primary' : 'bg-gray-700'
+                          }`}
+                          role="switch"
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-bg shadow ring-0 transition duration-200 ease-in-out ${
+                              localSettings.autoCloseEnabled ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {localSettings.autoCloseEnabled ? (
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 block">Quando encerrar a lista?</span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {[
+                              { id: 'match_time', label: 'No horário do jogo' },
+                              { id: '1h', label: '1 hora antes' },
+                              { id: '2h', label: '2 horas antes' },
+                              { id: '30m', label: '30 min antes' },
+                            ].map(opt => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setLocalSettings(prev => ({ ...prev, autoClosePreset: opt.id as any }))}
+                                className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border ${
+                                  (localSettings.autoClosePreset || 'match_time') === opt.id
+                                    ? 'bg-primary/20 border-primary text-primary'
+                                    : 'bg-card border-border/60 text-gray-400'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-gray-500 italic">
+                          A lista não fechará automaticamente. O encerramento será manual pelo organizador.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Resumo formatado */}
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-primary shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-gray-300 leading-snug">
+                        {(() => {
+                          const days = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+                          const matchDay = days[localSettings.matchDayOfWeek ?? 4];
+                          const openDay = days[localSettings.openDayOfWeek ?? 3];
+                          const mTime = localSettings.matchTime || '19:00';
+                          const oTime = localSettings.openTime || '12:00';
+
+                          return (
+                            <>
+                              Pelada toda <strong className="text-white">{matchDay}</strong> às <strong className="text-white">{mTime}</strong>.
+                              {localSettings.autoOpenEnabled !== false ? (
+                                <> Lista programada para abrir toda <strong className="text-primary">{openDay}</strong> às <strong className="text-primary">{oTime}</strong>.</>
+                              ) : (
+                                <> Lista aberta direto ao ser gerada.</>
+                              )}
+                              {localSettings.autoCloseEnabled ? (
+                                <> Fechamento automático ativado.</>
+                              ) : (
+                                <> Sem fechamento automático.</>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <button 
@@ -1196,6 +1411,10 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
             <span>Sair (Logout)</span>
           </button>
         </div>
+      )}
+
+      {activeSettingsTab === 'ai' && isCreator && (
+        <MasterAI />
       )}
 
       {/* Delete Confirmation Modal */}

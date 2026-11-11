@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePelada, Player, formatPosition, isMatchListClosed } from '../hooks/usePelada';
+import { usePelada, Player, formatPosition, isMatchListClosed, isMatchAwaitingOpen } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp, ArrowDown, Lock, Unlock, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -87,6 +87,7 @@ export default function MatchList() {
   });
   
   const isClosed = isMatchListClosed(nextMatch);
+  const isAwaitingOpen = isMatchAwaitingOpen(nextMatch);
 
   const [showReasonModal, setShowReasonModal] = useState<string | null>(null);
   const [showAutoCloseModal, setShowAutoCloseModal] = useState(false);
@@ -220,7 +221,9 @@ export default function MatchList() {
 
     let text = `⚽ *CONFIRMADOS NA PELADA - ${dateStr} às ${timeStr}* ⚽\n`;
 
-    if (isClosed) {
+    if (isAwaitingOpen && nextMatch.autoOpenTime) {
+      text += `⏳ *[LISTA PROGRAMADA]*\n🔓 *Abertura automática: ${formatAutoOpenTime(nextMatch.autoOpenTime)}*\n\n`;
+    } else if (isClosed) {
       text += `🔒 *[LISTA FECHADA]*\n⛔ *Atenção: A lista está FECHADA para novas confirmações.*\n\n`;
     } else if (nextMatch.autoCloseEnabled && nextMatch.autoCloseTime) {
       try {
@@ -403,7 +406,12 @@ export default function MatchList() {
 
                   {/* Status da Lista */}
                   <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    {isClosed ? (
+                    {isAwaitingOpen ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-black uppercase tracking-wider">
+                        <Clock size={12} className="text-amber-400" />
+                        <span>Abre {formatAutoOpenTime(nextMatch.autoOpenTime)}</span>
+                      </div>
+                    ) : isClosed ? (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] font-black uppercase tracking-wider">
                         <Lock size={12} className="text-red-400" />
                         <span>Lista Fechada</span>
@@ -429,16 +437,22 @@ export default function MatchList() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2.5">
                           <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                            isClosed ? 'bg-red-500/15 text-red-400 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            isAwaitingOpen 
+                              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                              : isClosed 
+                              ? 'bg-red-500/15 text-red-400 border border-red-500/30' 
+                              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                           }`}>
-                            {isClosed ? <Lock size={16} /> : <Unlock size={16} />}
+                            {isAwaitingOpen ? <Clock size={16} /> : isClosed ? <Lock size={16} /> : <Unlock size={16} />}
                           </div>
                           <div>
                             <span className="text-xs font-black uppercase tracking-wider text-white block">
-                              Status da Lista: {isClosed ? 'Fechada' : 'Aberta'}
+                              Status da Lista: {isAwaitingOpen ? 'Aguardando Abertura' : isClosed ? 'Fechada' : 'Aberta'}
                             </span>
                             <span className="text-[10px] text-gray-400 block">
-                              {isClosed 
+                              {isAwaitingOpen
+                                ? `Programada para abrir automaticamente em ${formatAutoOpenTime(nextMatch.autoOpenTime)}.`
+                                : isClosed 
                                 ? 'Nenhum jogador pode confirmar presença.' 
                                 : nextMatch.autoCloseEnabled && nextMatch.autoCloseTime 
                                 ? `Fechamento automático: ${formatAutoCloseTime(nextMatch.autoCloseTime)}.`
@@ -453,24 +467,28 @@ export default function MatchList() {
                           onClick={() => {
                             const target = !isClosed;
                             confirmAction(
-                              target 
+                              isAwaitingOpen 
+                                ? 'Deseja antecipar e abrir a lista agora para todos os jogadores?' 
+                                : target 
                                 ? 'Deseja fechar a lista agora? Ninguém mais poderá confirmar presença.' 
                                 : 'Deseja reabrir a lista para que novos jogadores possam confirmar?',
                               async () => {
                                 await toggleMatchListClosed(nextMatch.id, target);
-                                showFeedback('success', target ? 'Lista fechada com sucesso!' : 'Lista reaberta com sucesso!');
+                                showFeedback('success', isAwaitingOpen ? 'Lista aberta com sucesso!' : target ? 'Lista fechada com sucesso!' : 'Lista reaberta com sucesso!');
                               }
                             );
                           }}
                           disabled={submitting}
                           className={`flex-1 h-10 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md ${
-                            isClosed
+                            isAwaitingOpen
+                              ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30'
+                              : isClosed
                               ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30'
                               : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30'
                           }`}
                         >
-                          {isClosed ? <Unlock size={14} /> : <Lock size={14} />}
-                          <span>{isClosed ? 'Reabrir Lista' : 'Fechar Lista Agora'}</span>
+                          {isAwaitingOpen ? <Unlock size={14} /> : isClosed ? <Unlock size={14} /> : <Lock size={14} />}
+                          <span>{isAwaitingOpen ? 'Abrir Lista Agora' : isClosed ? 'Reabrir Lista' : 'Fechar Lista Agora'}</span>
                         </button>
 
                         <button
@@ -491,7 +509,17 @@ export default function MatchList() {
                   <div className="max-w-[320px] mx-auto bg-card border border-border/40 rounded-2xl p-3 shadow-md">
                     <label className="text-gray-500 text-[10px] font-extrabold uppercase tracking-widest px-2 block mb-2.5 text-center">Minha Presença</label>
                     
-                    {isClosed && !isAdmin && !nextMatch.confirmedIds.includes(user?.uid || '') && !nextMatch.waitingIds.includes(user?.uid || '') ? (
+                    {isAwaitingOpen && !isAdmin ? (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-center space-y-1">
+                        <div className="flex items-center justify-center gap-1.5 text-amber-400 text-xs font-black uppercase tracking-wider">
+                          <Clock size={14} />
+                          <span>Lista Programada</span>
+                        </div>
+                        <p className="text-[10px] text-gray-300 leading-snug">
+                          A lista desta pelada abrirá automaticamente na <strong className="text-white">{formatAutoOpenTime(nextMatch.autoOpenTime)}</strong>. As confirmações serão liberadas neste horário.
+                        </p>
+                      </div>
+                    ) : isClosed && !isAdmin && !nextMatch.confirmedIds.includes(user?.uid || '') && !nextMatch.waitingIds.includes(user?.uid || '') ? (
                       <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center space-y-1">
                         <div className="flex items-center justify-center gap-1.5 text-red-400 text-xs font-black uppercase tracking-wider">
                           <Lock size={14} />
@@ -997,6 +1025,22 @@ function formatAutoCloseTime(isoString?: string | null) {
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     return `${day}/${month} às ${hours}:${minutes}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function formatAutoOpenTime(isoString?: string | null) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const wd = weekdays[d.getDay()];
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${wd}, ${day}/${month} às ${hours}:${minutes}`;
   } catch (e) {
     return '';
   }

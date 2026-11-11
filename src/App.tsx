@@ -14,7 +14,9 @@ import {
   Activity,
   LogOut,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles,
+  Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from './lib/firebase';
@@ -27,6 +29,7 @@ import TeamDraw from './components/TeamDraw';
 import LiveMatch from './components/LiveMatch';
 import SocialStats from './components/SocialStats';
 import Settings from './components/Settings';
+import MasterAI from './components/MasterAI';
 import ManagementModals from './components/ManagementModals';
 import { usePelada, Player, Transaction } from './hooks/usePelada';
 import Logo from './components/Logo';
@@ -35,14 +38,14 @@ import OnboardingProfile from './components/OnboardingProfile';
 import PullToRefresh from './components/PullToRefresh';
 import { safeStorage } from './lib/storage';
 
-type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings';
+type Tab = 'list' | 'finance' | 'play' | 'live' | 'social' | 'settings' | 'ai';
 
 export default function App() {
   const { players, updatePlayer, settings, updateSettings, loading } = usePelada();
   const { role, user, logout, isAdmin, isCreator } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const saved = safeStorage.getItem('boleiros_active_tab');
-    const validTabs: Tab[] = ['list', 'finance', 'play', 'live', 'social', 'settings'];
+    const validTabs: Tab[] = ['list', 'finance', 'play', 'live', 'social', 'settings', 'ai'];
     if (saved && validTabs.includes(saved as Tab)) {
       return saved as Tab;
     }
@@ -159,6 +162,7 @@ export default function App() {
           onUpdateSettings={updateSettings}
         />
       );
+      case 'ai': return isCreator ? <MasterAI /> : <MatchList />;
       default: return <MatchList />;
     }
   };
@@ -170,7 +174,24 @@ export default function App() {
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-start">
             <Logo />
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2.5">
+              {isCreator && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setActiveTab(activeTab === 'ai' ? 'list' : 'ai')}
+                  className={`h-10 px-3 rounded-xl flex items-center gap-1.5 font-black text-xs uppercase tracking-wider transition-all border ${
+                    activeTab === 'ai'
+                      ? 'bg-primary text-bg border-primary shadow-lg shadow-primary/25'
+                      : 'bg-card border-primary/40 text-primary hover:bg-primary/10'
+                  }`}
+                  title="Inteligência Artificial Master"
+                >
+                  <Sparkles size={15} className={activeTab === 'ai' ? '' : 'animate-pulse'} />
+                  <span className="hidden sm:inline">IA Master</span>
+                  <span className="sm:hidden">IA</span>
+                </motion.button>
+              )}
               {isAdmin && ['list', 'finance', 'settings'].includes(activeTab) && (
                 <motion.button 
                   whileHover={{ scale: 1.05 }}
@@ -201,6 +222,7 @@ export default function App() {
               {activeTab === 'live' && 'Jogo ao Vivo'}
               {activeTab === 'social' && 'Rankings'}
               {activeTab === 'settings' && 'Ajustes'}
+              {activeTab === 'ai' && 'IA Master'}
             </h1>
             {isAdmin && (
               <span className="bg-primary/20 text-primary text-[10px] font-black px-2 py-0.5 rounded-lg border border-primary/30 uppercase tracking-tight flex items-center gap-1 shadow-sm shadow-primary/10">

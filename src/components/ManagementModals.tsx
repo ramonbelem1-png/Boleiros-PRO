@@ -106,6 +106,8 @@ function CreateEventModal({ onSave, onClose }: any) {
 
 function CreateMatchModal({ onSave, onClose }: any) {
   const [date, setDate] = useState('');
+  const [autoOpenEnabled, setAutoOpenEnabled] = useState(false);
+  const [autoOpenTime, setAutoOpenTime] = useState('');
   const [autoCloseEnabled, setAutoCloseEnabled] = useState(false);
   const [autoClosePreset, setAutoClosePreset] = useState<'match_time' | '30m' | '1h' | '2h' | 'custom'>('1h');
   const [customCloseTime, setCustomCloseTime] = useState('');
@@ -145,7 +147,7 @@ function CreateMatchModal({ onSave, onClose }: any) {
     <div className="space-y-5">
       <div>
         <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 text-white">Nova Pelada</h3>
-        <p className="text-xs text-gray-400 mt-1">Defina a data e o fechamento da lista.</p>
+        <p className="text-xs text-gray-400 mt-1">Defina a data e a programação de abertura/fechamento.</p>
       </div>
 
       <div className="space-y-1.5">
@@ -164,15 +166,64 @@ function CreateMatchModal({ onSave, onClose }: any) {
               const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
               setCustomCloseTime(iso);
             }
+            if (!autoOpenTime && e.target.value) {
+              // Default open time: 24h prior to match
+              const openD = new Date(e.target.value);
+              openD.setHours(openD.getHours() - 24);
+              const isoOpen = new Date(openD.getTime() - openD.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+              setAutoOpenTime(isoOpen);
+            }
           }}
         />
+      </div>
+
+      {/* Auto-Open Section */}
+      <div className="bg-bg/70 border border-border/80 rounded-2xl p-3.5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Clock size={16} className={autoOpenEnabled ? "text-amber-400" : "text-gray-500"} />
+            <div>
+              <span className="text-xs font-black uppercase text-white tracking-wider block">Agendar Abertura da Lista</span>
+              <span className="text-[10px] text-gray-400 block">
+                {autoOpenEnabled ? 'Lista abrirá no horário programado' : 'Abrir lista imediatamente ao criar'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoOpenEnabled(!autoOpenEnabled)}
+            className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 ${autoOpenEnabled ? 'bg-amber-400' : 'bg-gray-700'}`}
+          >
+            <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoOpenEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        {autoOpenEnabled && (
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-amber-400 block">Quando abrir a lista?</label>
+            <input
+              type="datetime-local"
+              value={autoOpenTime}
+              onChange={(e) => setAutoOpenTime(e.target.value)}
+              className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 text-xs focus:border-amber-400 outline-none font-medium"
+            />
+            {autoOpenTime && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 flex items-center gap-2">
+                <Clock size={13} className="text-amber-400 shrink-0" />
+                <span className="text-[11px] text-amber-300 font-medium leading-tight">
+                  Abertura programada: <strong>{new Date(autoOpenTime).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {new Date(autoOpenTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Auto-Close Section */}
       <div className="bg-bg/70 border border-border/80 rounded-2xl p-3.5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Clock size={16} className={autoCloseEnabled ? "text-primary" : "text-gray-500"} />
+            <Lock size={16} className={autoCloseEnabled ? "text-primary" : "text-gray-500"} />
             <div>
               <span className="text-xs font-black uppercase text-white tracking-wider block">Fechar Lista Automaticamente</span>
               <span className="text-[10px] text-gray-400 block">Encerra confirmações no horário</span>
@@ -256,8 +307,11 @@ function CreateMatchModal({ onSave, onClose }: any) {
           try {
             const matchDate = new Date(date);
             const closeDate = autoCloseEnabled ? calculatedCloseDate : null;
+            const openDate = autoOpenEnabled && autoOpenTime ? new Date(autoOpenTime) : null;
             await onSave({
               date: matchDate,
+              autoOpenEnabled: autoOpenEnabled && !!openDate,
+              autoOpenTime: openDate ? openDate.toISOString() : null,
               autoCloseEnabled: autoCloseEnabled && !!closeDate,
               autoCloseTime: closeDate ? closeDate.toISOString() : null
             });
@@ -271,7 +325,7 @@ function CreateMatchModal({ onSave, onClose }: any) {
         className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-2 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 className="animate-spin" size={18} /> : null}
-        Abrir Lista
+        {autoOpenEnabled ? 'Agendar Pelada' : 'Abrir Lista'}
       </button>
     </div>
   );

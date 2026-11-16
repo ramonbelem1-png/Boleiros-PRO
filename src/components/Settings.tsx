@@ -50,48 +50,25 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'loading', msg: string } | null>(null);
   const [showRecalculateConfirm, setShowRecalculateConfirm] = useState(false);
 
-  // Auto-heal and sync admin permissions for Ramon
+  // Auto-heal and sync admin permissions strictly for Ramon verified email accounts
   React.useEffect(() => {
     if (user && !isAdmin) {
-      const isRamon = 
-        user.email?.toLowerCase().includes('ramon') ||
-        user.displayName?.toLowerCase().includes('ramon') ||
-        currentUserPlayer?.name?.toUpperCase() === 'RAMON' ||
-        currentUserPlayer?.displayName?.toUpperCase() === 'RAMON' ||
-        currentUserPlayer?.email?.toLowerCase().includes('ramon');
+      const emailLower = (user.email || '').toLowerCase().trim();
+      const isMasterEmail = 
+        emailLower === 'ramoncxavier88@gmail.com' ||
+        emailLower === 'ramonbelem1@gmail.com' ||
+        emailLower === 'ramoncarvalhoxavier@hotmail.com';
       
-      if (isRamon) {
+      if (isMasterEmail) {
         setDoc(doc(db, 'user_roles', user.uid), {
           role: 'ADMIN',
           approved: true,
-          email: user.email || currentUserPlayer?.email || 'ramoncxavier88@gmail.com',
+          email: user.email,
           name: currentUserPlayer?.displayName || currentUserPlayer?.name || user.displayName || 'Ramon Xavier'
         }, { merge: true }).catch(console.warn);
       }
     }
   }, [user, isAdmin, currentUserPlayer]);
-
-  const handleClaimMasterAdmin = async () => {
-    if (!user) return;
-    try {
-      showFeedback('loading', 'Sincronizando privilégios de Administrador Master...');
-      await setDoc(doc(db, 'user_roles', user.uid), {
-        role: 'ADMIN',
-        approved: true,
-        email: user.email || currentUserPlayer?.email || 'ramoncxavier88@gmail.com',
-        name: currentUserPlayer?.displayName || currentUserPlayer?.name || user.displayName || 'Ramon Xavier',
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      safeStorage.setItem('boleiros_master_admin', 'true');
-      showFeedback('success', 'Privilégios de Administrador Master ativados com sucesso!');
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    } catch (e: any) {
-      console.error(e);
-      showFeedback('error', 'Erro ao sincronizar privilégios.');
-    }
-  };
 
   const filteredPlayers = players.filter(p => 
     removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchTerm).toLowerCase())
@@ -134,8 +111,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
       showFeedback('error', 'Somente o Administrador Master pode escolher ou mudar o perfil de qualquer usuário.');
       return;
     }
-    const isTargetMaster = MASTER_ADMIN_EMAILS.includes(targetUserRole.email?.trim().toLowerCase() || '') ||
-                           targetUserRole.email?.toLowerCase().includes('ramon');
+    const isTargetMaster = MASTER_ADMIN_EMAILS.includes(targetUserRole.email?.trim().toLowerCase() || '');
     if (isTargetMaster) {
       showFeedback('error', 'Não é permitido alterar o perfil de um Administrador Master.');
       return;
@@ -502,32 +478,6 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
                   <span>Regras</span>
                 </button>
               </div>
-            </div>
-          )}
-
-          {!isAdmin && (
-            <div className="bg-gradient-to-br from-amber-500/10 via-card to-card p-5 rounded-[32px] border border-amber-500/30 shadow-xl space-y-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
-                  <ShieldCheck size={22} className="stroke-[2.5]" />
-                </div>
-                <div>
-                  <h4 className="font-black text-sm text-white uppercase tracking-tight">
-                    Acesso Administrador Master
-                  </h4>
-                  <p className="text-[10px] text-amber-400 font-bold">Ramon Xavier / Organizador</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-gray-300 leading-relaxed font-medium">
-                Se você é o organizador ou possui a conta master, clique abaixo para sincronizar seus privilégios administrativos no banco de dados.
-              </p>
-              <button
-                onClick={handleClaimMasterAdmin}
-                className="w-full py-3.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2"
-              >
-                <ShieldCheck size={16} />
-                Sincronizar e Ativar Acesso Master
-              </button>
             </div>
           )}
 
@@ -914,8 +864,7 @@ export default function Settings({ onAddPlayer, onEditPlayer, updatePlayer, sett
               return sortedUserRoles.map(ur => {
                 const matchedPlayer = players.find(p => p.id === ur.id) || (ur.email ? players.find(p => p.email?.trim().toLowerCase() === ur.email.trim().toLowerCase()) : null);
                 const displayNameForMatches = matchedPlayer ? (matchedPlayer.displayName || matchedPlayer.name) : (ur.displayName || ur.name || 'Usuário');
-                const isMainAdmin = MASTER_ADMIN_EMAILS.includes(ur.email?.trim().toLowerCase() || '') || 
-                                    (ur.email ? ur.email.toLowerCase().includes('ramon') : false);
+                const isMainAdmin = MASTER_ADMIN_EMAILS.includes(ur.email?.trim().toLowerCase() || '');
 
                 return (
                   <div key={ur.id} className={`p-4 rounded-3xl border flex items-center justify-between gap-3 overflow-hidden transition-all ${

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { usePelada, Player, Game, formatPosition } from '../hooks/usePelada';
+import { usePelada, Player, Game, formatPosition, getActiveOrNextMatch } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Play, Pause, Square, Timer, Trophy, User, Plus, History, Circle, Edit, Edit2, Trash2, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -52,15 +52,7 @@ export default function LiveMatch() {
   };
 
   console.log(`[LiveMatch] isAdmin: ${isAdmin}, role: ${role}, email: ${user?.email}`);
-  const now = new Date();
-  const activeMatch = matches.find(m => {
-    if (m.status !== 'OPEN') return false;
-    const matchDate = m.date?.toDate?.() || new Date();
-    const dayAfterMatch = new Date(matchDate);
-    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
-    dayAfterMatch.setHours(0, 0, 0, 0);
-    return now < dayAfterMatch;
-  }) || matches.find(m => m.status === 'OPEN');
+  const activeMatch = getActiveOrNextMatch(matches);
   
   const [elapsed, setElapsed] = useState(0);
   const [showEventModal, setShowEventModal] = useState<{ type: 'GOAL'; teamSide: 'A' | 'B'; editIdx?: number } | null>(null);

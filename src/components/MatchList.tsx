@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { usePelada, Player, formatPosition, isMatchListClosed, isMatchAwaitingOpen } from '../hooks/usePelada';
+import React, { useState, useEffect } from 'react';
+import { usePelada, Player, formatPosition, isMatchListClosed, isMatchAwaitingOpen, getActiveOrNextMatch } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
-import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp, ArrowDown, Lock, Unlock, Settings2 } from 'lucide-react';
+import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp, ArrowDown, Lock, Unlock, Settings2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
 
@@ -72,19 +72,24 @@ export default function MatchList() {
     transactions, 
     toggleDrawPresence,
     toggleMatchListClosed,
-    setMatchAutoClose
+    setMatchAutoClose,
+    deleteMatch
   } = usePelada();
   const [view, setView] = useState<'current' | 'history'>('current');
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [, setTimeTick] = useState(0);
   
-  const now = new Date();
-  const nextMatch = matches.find(m => {
-    if (m.status !== 'OPEN') return false;
-    const matchDate = m.date.toDate();
-    const dayAfterMatch = new Date(matchDate);
-    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
-    dayAfterMatch.setHours(0, 0, 0, 0);
-    return now < dayAfterMatch;
-  });
+  const nextMatch = getActiveOrNextMatch(matches, selectedMatchId);
+  const openMatches = matches.filter(m => m.status === 'OPEN');
+
+  useEffect(() => {
+    if (!nextMatch) return;
+    if (!nextMatch.autoOpenEnabled && !nextMatch.autoCloseEnabled) return;
+    const interval = setInterval(() => {
+      setTimeTick(t => t + 1);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [nextMatch?.id, nextMatch?.autoOpenEnabled, nextMatch?.autoCloseEnabled]);
   
   const isClosed = isMatchListClosed(nextMatch);
   const isAwaitingOpen = isMatchAwaitingOpen(nextMatch);
@@ -365,6 +370,50 @@ export default function MatchList() {
         </button>
       </div>
 
+      {openMatches.length > 1 && (
+        <div className="bg-card/90 border border-primary/30 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-lg">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">Peladas:</span>
+            {openMatches.map(m => {
+              const mDate = m.date?.toDate ? m.date.toDate() : new Date(m.date);
+              const isSelected = nextMatch?.id === m.id;
+              const count = (m.confirmedIds?.length || 0) + (m.waitingIds?.length || 0);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedMatchId(m.id)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition-all flex items-center gap-1.5 shrink-0 ${
+                    isSelected
+                      ? 'bg-primary text-bg shadow-sm'
+                      : 'bg-bg/80 text-gray-300 hover:text-white border border-border/50'
+                  }`}
+                >
+                  <span>{mDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}</span>
+                  <span className={`text-[9px] px-1 py-0.5 rounded-md font-bold ${isSelected ? 'bg-bg/25 text-bg' : 'bg-primary/20 text-primary'}`}>
+                    {count} {count === 1 ? 'atleta' : 'atletas'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {isAdmin && nextMatch && (nextMatch.confirmedIds?.length || 0) === 0 && (
+            <button
+              onClick={async () => {
+                if (window.confirm("Deseja excluir esta pelada vazia extra?")) {
+                  await deleteMatch(nextMatch.id);
+                  setSelectedMatchId(null);
+                }
+              }}
+              className="p-1.5 text-danger hover:bg-danger/10 rounded-lg text-xs shrink-0 flex items-center gap-1"
+              title="Excluir pelada vazia extra"
+            >
+              <Trash2 size={14} />
+              <span className="text-[10px] font-bold uppercase hidden sm:inline">Excluir vazia</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {view === 'current' ? (
           <motion.div
@@ -509,14 +558,14 @@ export default function MatchList() {
                   <div className="max-w-[320px] mx-auto bg-card border border-border/40 rounded-2xl p-3 shadow-md">
                     <label className="text-gray-500 text-[10px] font-extrabold uppercase tracking-widest px-2 block mb-2.5 text-center">Minha Presença</label>
                     
-                    {isAwaitingOpen && !isAdmin ? (
+                    {isAwaitingOpen ? (
                       <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-center space-y-1">
                         <div className="flex items-center justify-center gap-1.5 text-amber-400 text-xs font-black uppercase tracking-wider">
                           <Clock size={14} />
                           <span>Lista Programada</span>
                         </div>
                         <p className="text-[10px] text-gray-300 leading-snug">
-                          A lista desta pelada abrirá automaticamente na <strong className="text-white">{formatAutoOpenTime(nextMatch.autoOpenTime)}</strong>. As confirmações serão liberadas neste horário.
+                          A lista desta pelada abrirá automaticamente em <strong className="text-white">{formatAutoOpenTime(nextMatch.autoOpenTime)}</strong>. As confirmações serão liberadas neste horário.
                         </p>
                       </div>
                     ) : isClosed && !isAdmin && !nextMatch.confirmedIds.includes(user?.uid || '') && !nextMatch.waitingIds.includes(user?.uid || '') ? (
@@ -575,16 +624,26 @@ export default function MatchList() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-card p-4 rounded-3xl border border-border/50">
-                    <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Confirmados</span>
-                    <div className="text-2xl font-bold text-primary">{confirmedCount} / {settings.maxPlayers}</div>
+                {isAwaitingOpen && confirmedCount === 0 && nextMatch.waitingIds.length === 0 && nextMatch.absentIds.length === 0 ? (
+                  <div className="bg-card/60 border border-amber-500/20 rounded-3xl p-6 text-center space-y-2 mb-4">
+                    <Clock size={28} className="text-amber-400 mx-auto" />
+                    <h4 className="text-white text-xs font-black uppercase tracking-wider">Aguardando Horário de Abertura</h4>
+                    <p className="text-[11px] text-gray-400 leading-relaxed max-w-xs mx-auto">
+                      A lista de presença ainda não foi aberta. Ela será liberada automaticamente em <strong className="text-amber-400">{formatAutoOpenTime(nextMatch.autoOpenTime)}</strong>.
+                    </p>
                   </div>
-                  <div className="bg-card p-4 rounded-3xl border border-border/50">
-                    <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Ausentes</span>
-                    <div className="text-2xl font-bold text-danger">{nextMatch.absentIds.length}</div>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-card p-4 rounded-3xl border border-border/50">
+                        <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Confirmados</span>
+                        <div className="text-2xl font-bold text-primary">{confirmedCount} / {settings.maxPlayers}</div>
+                      </div>
+                      <div className="bg-card p-4 rounded-3xl border border-border/50">
+                        <span className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">Ausentes</span>
+                        <div className="text-2xl font-bold text-danger">{nextMatch.absentIds.length}</div>
+                      </div>
+                    </div>
 
                 {/* Compartilhar Lista no WhatsApp */}
                 <div className="px-1 mb-4">
@@ -801,6 +860,8 @@ export default function MatchList() {
                     )}
                   </AnimatePresence>
                 </div>
+                  </>
+                )}
 
                 <div className="pt-8 space-y-4">
                   <div className="flex items-center justify-between px-2">
@@ -839,7 +900,7 @@ export default function MatchList() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-3 shrink-0">
-                          {isAdmin && nextMatch && (
+                          {isAdmin && nextMatch && !isAwaitingOpen && (
                             <div className="flex items-center space-x-1 pr-2 border-r border-border/30 mr-1">
                               {(() => {
                                 const isConfirmed = nextMatch.confirmedIds.includes(player.id);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { usePelada, Player, formatPosition } from '../hooks/usePelada';
+import { usePelada, Player, formatPosition, getActiveOrNextMatch } from '../hooks/usePelada';
 import { useAuth } from './AuthProvider';
 import { Shuffle, Users, Trophy, AlertCircle, Settings as SettingsIcon, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -15,15 +15,7 @@ export default function TeamDraw() {
     return Math.max(1, Math.min(5, Math.round(lvl)));
   };
 
-  const now = new Date();
-  const nextMatch = matches.find(m => {
-    if (m.status !== 'OPEN') return false;
-    const matchDate = m.date?.toDate?.() || new Date();
-    const dayAfterMatch = new Date(matchDate);
-    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
-    dayAfterMatch.setHours(0, 0, 0, 0);
-    return now < dayAfterMatch;
-  });
+  const nextMatch = getActiveOrNextMatch(matches);
 
   const allConfirmedPlayers = nextMatch ? players.filter(p => nextMatch.confirmedIds?.includes(p.id)) : [];
   const drawPresentIds = nextMatch?.drawPresentIds ?? [];

@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Player, Transaction, usePelada, formatPosition } from '../hooks/usePelada';
+import { 
+  Player, 
+  Transaction, 
+  usePelada, 
+  formatPosition,
+  getNextDateForDayAndTime,
+  getOpenDatePriorToMatch
+} from '../hooks/usePelada';
 import { X, Calendar, DollarSign, Tag, UserPlus, Camera, Upload, Loader2, Edit, Trash2, AlertCircle, User, Check, Search, Lock, Clock } from 'lucide-react';
 import { storage } from '../lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -105,148 +112,219 @@ function CreateEventModal({ onSave, onClose }: any) {
 }
 
 function CreateMatchModal({ onSave, onClose }: any) {
-  const [date, setDate] = useState('');
-  const [autoOpenEnabled, setAutoOpenEnabled] = useState(false);
-  const [autoOpenTime, setAutoOpenTime] = useState('');
-  const [autoCloseEnabled, setAutoCloseEnabled] = useState(false);
-  const [autoClosePreset, setAutoClosePreset] = useState<'match_time' | '30m' | '1h' | '2h' | 'custom'>('1h');
-  const [customCloseTime, setCustomCloseTime] = useState('');
+  const { settings, updateSettings } = usePelada();
+
+  const DAYS_OF_WEEK = [
+    { value: 0, label: 'Domingo', short: 'Dom' },
+    { value: 1, label: 'Segunda-feira', short: 'Seg' },
+    { value: 2, label: 'Terça-feira', short: 'Ter' },
+    { value: 3, label: 'Quarta-feira', short: 'Qua' },
+    { value: 4, label: 'Quinta-feira', short: 'Qui' },
+    { value: 5, label: 'Sexta-feira', short: 'Sex' },
+    { value: 6, label: 'Sábado', short: 'Sáb' },
+  ];
+
+  const [matchDayOfWeek, setMatchDayOfWeek] = useState<number>(settings.matchDayOfWeek ?? 4);
+  const [matchTime, setMatchTime] = useState<string>(settings.matchTime || '19:00');
+
+  const [autoOpenEnabled, setAutoOpenEnabled] = useState<boolean>(settings.autoOpenEnabled !== false);
+  const [openDayOfWeek, setOpenDayOfWeek] = useState<number>(settings.openDayOfWeek ?? 3);
+  const [openTime, setOpenTime] = useState<string>(settings.openTime || '12:00');
+
+  const [autoCloseEnabled, setAutoCloseEnabled] = useState<boolean>(settings.autoCloseEnabled !== false);
+  const [autoClosePreset, setAutoClosePreset] = useState<'30m' | '1h' | '2h' | 'match_time'>(
+    settings.autoClosePreset === 'custom' ? '1h' : (settings.autoClosePreset || '1h')
+  );
+
+  const [saveAsWeeklyRoutine, setSaveAsWeeklyRoutine] = useState<boolean>(true);
   const [saving, setSaving] = useState(false);
 
-  // Compute calculated close time whenever date or preset changes
+  // Calcula a data da próxima pelada
+  const calculatedMatchDate = getNextDateForDayAndTime(matchDayOfWeek, matchTime);
+
+  // Calcula a data de abertura da lista
+  const calculatedOpenDate = autoOpenEnabled 
+    ? getOpenDatePriorToMatch(calculatedMatchDate, openDayOfWeek, openTime) 
+    : null;
+
+  // Calcula o fechamento
   const getCalculatedCloseDate = (): Date | null => {
-    if (!date) return null;
-    const matchD = new Date(date);
-    if (isNaN(matchD.getTime())) return null;
-
-    if (autoClosePreset === 'custom') {
-      if (!customCloseTime) return null;
-      const customD = new Date(customCloseTime);
-      return isNaN(customD.getTime()) ? null : customD;
-    }
-
-    const targetD = new Date(matchD);
-    if (autoClosePreset === 'match_time') {
-      return targetD;
-    } else if (autoClosePreset === '30m') {
-      targetD.setMinutes(targetD.getMinutes() - 30);
-      return targetD;
+    if (!autoCloseEnabled) return null;
+    const target = new Date(calculatedMatchDate);
+    if (autoClosePreset === '30m') {
+      target.setMinutes(target.getMinutes() - 30);
     } else if (autoClosePreset === '1h') {
-      targetD.setHours(targetD.getHours() - 1);
-      return targetD;
+      target.setHours(target.getHours() - 1);
     } else if (autoClosePreset === '2h') {
-      targetD.setHours(targetD.getHours() - 2);
-      return targetD;
+      target.setHours(target.getHours() - 2);
     }
-    return targetD;
+    return target;
   };
 
   const calculatedCloseDate = getCalculatedCloseDate();
 
+  const handleConfirm = async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        date: calculatedMatchDate,
+        autoOpenEnabled: autoOpenEnabled && !!calculatedOpenDate,
+        autoOpenTime: calculatedOpenDate ? calculatedOpenDate.toISOString() : null,
+        autoCloseEnabled: autoCloseEnabled && !!calculatedCloseDate,
+        autoCloseTime: calculatedCloseDate ? calculatedCloseDate.toISOString() : null
+      });
+
+      if (saveAsWeeklyRoutine) {
+        await updateSettings({
+          ...settings,
+          autoScheduleEnabled: true,
+          matchDayOfWeek,
+          matchTime,
+          autoOpenEnabled,
+          openDayOfWeek,
+          openTime,
+          autoCloseEnabled,
+          autoClosePreset
+        });
+      }
+
+      onClose();
+    } catch (err) {
+      console.error("Erro ao programar pelada:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const matchDayLabel = DAYS_OF_WEEK.find(d => d.value === matchDayOfWeek)?.label || 'Quinta-feira';
+  const openDayLabel = DAYS_OF_WEEK.find(d => d.value === openDayOfWeek)?.label || 'Quarta-feira';
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
-        <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 text-white">Nova Pelada</h3>
-        <p className="text-xs text-gray-400 mt-1">Defina a data e a programação de abertura/fechamento.</p>
+        <h3 className="text-2xl font-black italic tracking-tighter uppercase underline decoration-primary decoration-4 underline-offset-4 text-white">
+          Programar Pelada
+        </h3>
+        <p className="text-xs text-gray-400 mt-1">
+          Escolha o dia e horário da pelada e da abertura automática da lista.
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-1 flex items-center gap-1.5">
-          <Calendar size={13} className="text-primary" /> Data e Hora do Jogo
+      {/* 1. Dia e Horário da Pelada */}
+      <div className="bg-bg/80 border border-border/80 rounded-2xl p-3.5 space-y-2.5">
+        <label className="text-[10px] font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+          <Calendar size={14} className="text-primary" /> 1. Dia e Horário da Pelada
         </label>
-        <input 
-          type="datetime-local"
-          className="w-full bg-bg border border-border rounded-2xl p-3.5 text-gray-100 focus:border-primary outline-none text-sm font-medium"
-          value={date}
-          onChange={(e) => {
-            setDate(e.target.value);
-            if (!customCloseTime && e.target.value) {
-              const d = new Date(e.target.value);
-              d.setHours(d.getHours() - 1);
-              const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-              setCustomCloseTime(iso);
-            }
-            if (!autoOpenTime && e.target.value) {
-              // Default open time: 24h prior to match
-              const openD = new Date(e.target.value);
-              openD.setHours(openD.getHours() - 24);
-              const isoOpen = new Date(openD.getTime() - openD.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-              setAutoOpenTime(isoOpen);
-            }
-          }}
-        />
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <span className="text-[9px] font-bold text-gray-400 block mb-1">Dia da Semana</span>
+            <select
+              value={matchDayOfWeek}
+              onChange={(e) => setMatchDayOfWeek(Number(e.target.value))}
+              className="w-full bg-card border border-border/80 rounded-xl px-3 py-2 text-xs text-white font-bold outline-none focus:border-primary"
+            >
+              {DAYS_OF_WEEK.map(d => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span className="text-[9px] font-bold text-gray-400 block mb-1">Horário do Jogo</span>
+            <input
+              type="time"
+              value={matchTime}
+              onChange={(e) => setMatchTime(e.target.value)}
+              className="w-full bg-card border border-border/80 rounded-xl px-3 py-1.5 text-xs text-white font-bold outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="text-[11px] text-gray-300 font-medium bg-card/60 rounded-xl p-2 border border-border/40 flex items-center gap-1.5">
+          <span className="text-primary">⚽ Próximo jogo:</span>
+          <strong>{matchDayLabel} ({calculatedMatchDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}) às {matchTime}</strong>
+        </div>
       </div>
 
-      {/* Auto-Open Section */}
-      <div className="bg-bg/70 border border-border/80 rounded-2xl p-3.5 space-y-3">
+      {/* 2. Abertura Automática da Lista */}
+      <div className="bg-bg/80 border border-border/80 rounded-2xl p-3.5 space-y-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Clock size={16} className={autoOpenEnabled ? "text-amber-400" : "text-gray-500"} />
-            <div>
-              <span className="text-xs font-black uppercase text-white tracking-wider block">Agendar Abertura da Lista</span>
-              <span className="text-[10px] text-gray-400 block">
-                {autoOpenEnabled ? 'Lista abrirá no horário programado' : 'Abrir lista imediatamente ao criar'}
-              </span>
-            </div>
-          </div>
+          <label className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+            <Clock size={14} className="text-amber-400" /> 2. Abertura Automática da Lista
+          </label>
           <button
             type="button"
             onClick={() => setAutoOpenEnabled(!autoOpenEnabled)}
-            className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 ${autoOpenEnabled ? 'bg-amber-400' : 'bg-gray-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${autoOpenEnabled ? 'bg-amber-400' : 'bg-gray-700'}`}
           >
             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoOpenEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
 
-        {autoOpenEnabled && (
-          <div className="space-y-2 pt-2 border-t border-border/40">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-amber-400 block">Quando abrir a lista?</label>
-            <input
-              type="datetime-local"
-              value={autoOpenTime}
-              onChange={(e) => setAutoOpenTime(e.target.value)}
-              className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 text-xs focus:border-amber-400 outline-none font-medium"
-            />
-            {autoOpenTime && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 flex items-center gap-2">
-                <Clock size={13} className="text-amber-400 shrink-0" />
-                <span className="text-[11px] text-amber-300 font-medium leading-tight">
-                  Abertura programada: <strong>{new Date(autoOpenTime).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {new Date(autoOpenTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
-                </span>
+        {autoOpenEnabled ? (
+          <div className="space-y-2 pt-1 border-t border-border/30">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 block mb-1">Dia de Abertura</span>
+                <select
+                  value={openDayOfWeek}
+                  onChange={(e) => setOpenDayOfWeek(Number(e.target.value))}
+                  className="w-full bg-card border border-border/80 rounded-xl px-3 py-2 text-xs text-white font-bold outline-none focus:border-amber-400"
+                >
+                  {DAYS_OF_WEEK.map(d => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 block mb-1">Horário de Abertura</span>
+                <input
+                  type="time"
+                  value={openTime}
+                  onChange={(e) => setOpenTime(e.target.value)}
+                  className="w-full bg-card border border-border/80 rounded-xl px-3 py-1.5 text-xs text-white font-bold outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            {calculatedOpenDate && (
+              <div className="text-[11px] text-amber-300 font-medium bg-amber-500/10 rounded-xl p-2 border border-amber-500/20 flex items-center gap-1.5">
+                <span>🔓 A lista abrirá:</span>
+                <strong>{openDayLabel} ({calculatedOpenDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}) às {openTime}</strong>
               </div>
             )}
           </div>
+        ) : (
+          <p className="text-[10px] text-gray-400 italic">
+            Lista abrirá imediatamente ao criar.
+          </p>
         )}
       </div>
 
-      {/* Auto-Close Section */}
-      <div className="bg-bg/70 border border-border/80 rounded-2xl p-3.5 space-y-3">
+      {/* 3. Fechamento Automático da Lista */}
+      <div className="bg-bg/80 border border-border/80 rounded-2xl p-3.5 space-y-2.5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Lock size={16} className={autoCloseEnabled ? "text-primary" : "text-gray-500"} />
-            <div>
-              <span className="text-xs font-black uppercase text-white tracking-wider block">Fechar Lista Automaticamente</span>
-              <span className="text-[10px] text-gray-400 block">Encerra confirmações no horário</span>
-            </div>
-          </div>
+          <label className="text-[10px] font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+            <Lock size={14} className="text-primary" /> 3. Fechamento Automático da Lista
+          </label>
           <button
             type="button"
             onClick={() => setAutoCloseEnabled(!autoCloseEnabled)}
-            className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 ${autoCloseEnabled ? 'bg-primary' : 'bg-gray-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${autoCloseEnabled ? 'bg-primary' : 'bg-gray-700'}`}
           >
             <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoCloseEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
 
         {autoCloseEnabled && (
-          <div className="space-y-2.5 pt-2 border-t border-border/40">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 block">Quando fechar a lista?</label>
+          <div className="space-y-2 pt-1 border-t border-border/30">
+            <span className="text-[9px] font-bold text-gray-400 block">Quando fechar a lista?</span>
             <div className="grid grid-cols-2 gap-1.5">
               {[
+                { id: '30m', label: '30 min antes' },
                 { id: '1h', label: '1h antes' },
                 { id: '2h', label: '2h antes' },
-                { id: '30m', label: '30 min antes' },
-                { id: 'match_time', label: 'No início' },
+                { id: 'match_time', label: 'No início do jogo' },
               ].map(preset => (
                 <button
                   key={preset.id}
@@ -254,7 +332,7 @@ function CreateMatchModal({ onSave, onClose }: any) {
                   onClick={() => setAutoClosePreset(preset.id as any)}
                   className={`py-2 px-2 rounded-xl text-[11px] font-bold transition-all border ${
                     autoClosePreset === preset.id
-                      ? 'bg-primary/20 border-primary text-primary'
+                      ? 'bg-primary/20 border-primary text-primary shadow-sm'
                       : 'bg-card border-border/60 text-gray-400 hover:text-white'
                   }`}
                 >
@@ -263,69 +341,57 @@ function CreateMatchModal({ onSave, onClose }: any) {
               ))}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setAutoClosePreset('custom')}
-              className={`w-full py-2 px-2.5 rounded-xl text-[11px] font-bold transition-all border text-center ${
-                autoClosePreset === 'custom'
-                  ? 'bg-primary/20 border-primary text-primary'
-                  : 'bg-card border-border/60 text-gray-400 hover:text-white'
-              }`}
-            >
-              🕒 Definir outro horário específico
-            </button>
-
-            {autoClosePreset === 'custom' && (
-              <div className="space-y-1 pt-1">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500 px-1">Horário de encerramento da lista</label>
-                <input
-                  type="datetime-local"
-                  value={customCloseTime}
-                  onChange={(e) => setCustomCloseTime(e.target.value)}
-                  className="w-full bg-bg border border-border rounded-xl p-3 text-gray-100 text-xs focus:border-primary outline-none font-medium"
-                />
-              </div>
-            )}
-
             {calculatedCloseDate && (
-              <div className="bg-primary/10 border border-primary/20 rounded-xl p-2.5 flex items-center gap-2">
-                <Lock size={13} className="text-primary shrink-0" />
-                <span className="text-[11px] text-primary/90 font-medium leading-tight">
-                  Fechamento programado para: <strong>{calculatedCloseDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {calculatedCloseDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
-                </span>
+              <div className="text-[11px] text-primary font-medium bg-primary/10 rounded-xl p-2 border border-primary/20 flex items-center gap-1.5">
+                <span>🔒 Fechamento programado:</span>
+                <strong>{calculatedCloseDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} ({autoClosePreset === 'match_time' ? 'no início' : autoClosePreset === '30m' ? '30 min antes' : autoClosePreset === '1h' ? '1h antes' : '2h antes'})</strong>
               </div>
             )}
           </div>
         )}
       </div>
 
+      {/* 4. Resumo Visual da Programação */}
+      <div className="bg-gradient-to-r from-card via-[#162330] to-card border border-primary/30 rounded-2xl p-3 space-y-1">
+        <span className="text-[9px] font-black uppercase tracking-widest text-primary block">
+          📋 Resumo da Programação
+        </span>
+        <p className="text-[11px] text-gray-200 leading-snug">
+          Pelada toda <strong className="text-white">{matchDayLabel} às {matchTime}</strong>. 
+          {autoOpenEnabled ? (
+            <> Lista abre toda <strong className="text-amber-300">{openDayLabel} às {openTime}</strong>.</>
+          ) : (
+            <> Lista abre de imediato.</>
+          )}
+          {autoCloseEnabled ? (
+            <> Fecha <strong className="text-primary">{autoClosePreset === 'match_time' ? 'no início do jogo' : autoClosePreset === '30m' ? '30 min antes' : autoClosePreset === '1h' ? '1h antes' : '2h antes'}</strong>.</>
+          ) : (
+            <> Sem fechamento automático.</>
+          )}
+        </p>
+      </div>
+
+      {/* Salvar como rotina semanal contínua */}
+      <label className="flex items-center gap-2 px-1 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={saveAsWeeklyRoutine}
+          onChange={(e) => setSaveAsWeeklyRoutine(e.target.checked)}
+          className="w-4 h-4 rounded text-primary accent-primary"
+        />
+        <span className="text-[11px] text-gray-300 font-medium">
+          Repetir toda semana automaticamente (sem precisar criar de novo)
+        </span>
+      </label>
+
+      {/* Botão de Envio */}
       <button 
-        disabled={!date || saving}
-        onClick={async () => {
-          if(!date) return;
-          setSaving(true);
-          try {
-            const matchDate = new Date(date);
-            const closeDate = autoCloseEnabled ? calculatedCloseDate : null;
-            const openDate = autoOpenEnabled && autoOpenTime ? new Date(autoOpenTime) : null;
-            await onSave({
-              date: matchDate,
-              autoOpenEnabled: autoOpenEnabled && !!openDate,
-              autoOpenTime: openDate ? openDate.toISOString() : null,
-              autoCloseEnabled: autoCloseEnabled && !!closeDate,
-              autoCloseTime: closeDate ? closeDate.toISOString() : null
-            });
-            onClose();
-          } catch (err) {
-            console.error("Erro ao criar pelada:", err);
-          } finally {
-            setSaving(false);
-          }
-        }}
-        className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-2 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+        disabled={saving}
+        onClick={handleConfirm}
+        className="w-full py-4 bg-primary text-bg rounded-2xl font-black uppercase tracking-widest mt-1 shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {saving ? <Loader2 className="animate-spin" size={18} /> : null}
-        {autoOpenEnabled ? 'Agendar Pelada' : 'Abrir Lista'}
+        Agendar Pelada e Abertura
       </button>
     </div>
   );

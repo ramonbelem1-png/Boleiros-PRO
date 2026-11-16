@@ -111,6 +111,7 @@ export interface Match {
   isListClosed?: boolean; // Fechamento manual ou automático da lista
   autoOpenEnabled?: boolean; // Se abertura automática está programada
   autoOpenTime?: string | null; // ISO string do momento em que a lista abre
+  manuallyOpenedEarly?: boolean; // Se o admin antecipou manualmente a abertura
   autoCloseEnabled?: boolean; // Se fechamento automático está configurado
   autoCloseTime?: string | null; // ISO string ou horário de fechamento
 }
@@ -151,11 +152,13 @@ export function getOpenDatePriorToMatch(
   return result;
 }
 
+export function getLocalDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export const isMatchAwaitingOpen = (match?: Match | null): boolean => {
   if (!match) return false;
   if (match.status !== 'OPEN') return false;
-  // Se o admin abriu manualmente a lista (isListClosed === false), respeita a decisão imediata
-  if (match.isListClosed === false) return false;
   if (match.autoOpenEnabled && match.autoOpenTime) {
     const openTime = new Date(match.autoOpenTime).getTime();
     if (!isNaN(openTime) && Date.now() < openTime) {
@@ -168,9 +171,22 @@ export const isMatchAwaitingOpen = (match?: Match | null): boolean => {
 export const isMatchListClosed = (match?: Match | null): boolean => {
   if (!match) return false;
   if (match.status !== 'OPEN') return true;
-  if (match.isListClosed === true) return true;
   // Se está aguardando abertura automática programada:
   if (isMatchAwaitingOpen(match)) return true;
+  // Se tinha abertura automática e o horário JÁ CHEGOU:
+  if (match.autoOpenEnabled && match.autoOpenTime) {
+    const openTime = new Date(match.autoOpenTime).getTime();
+    if (!isNaN(openTime) && Date.now() >= openTime) {
+      if (match.autoCloseEnabled && match.autoCloseTime) {
+        const closeTime = new Date(match.autoCloseTime).getTime();
+        if (!isNaN(closeTime) && Date.now() >= closeTime) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+  if (match.isListClosed === true) return true;
   if (match.isListClosed === false && !match.autoCloseEnabled) return false;
   if (match.autoCloseEnabled && match.autoCloseTime) {
     const closeTime = new Date(match.autoCloseTime).getTime();
@@ -180,6 +196,52 @@ export const isMatchListClosed = (match?: Match | null): boolean => {
   }
   return false;
 };
+
+export function getActiveOrNextMatch(matches: Match[], selectedMatchId?: string | null): Match | null {
+  if (!matches || matches.length === 0) return null;
+
+  if (selectedMatchId) {
+    const found = matches.find(m => m.id === selectedMatchId);
+    if (found) return found;
+  }
+
+  const now = new Date();
+
+  // Todas as partidas ABERTAS que ainda não expiraram
+  const openMatches = matches.filter(m => {
+    if (m.status !== 'OPEN') return false;
+    const matchDate = m.date?.toDate ? m.date.toDate() : new Date(m.date);
+    const dayAfterMatch = new Date(matchDate);
+    dayAfterMatch.setDate(dayAfterMatch.getDate() + 1);
+    dayAfterMatch.setHours(0, 0, 0, 0);
+    return now < dayAfterMatch;
+  });
+
+  if (openMatches.length === 0) {
+    return matches.find(m => m.status === 'OPEN') || null;
+  }
+
+  if (openMatches.length === 1) {
+    return openMatches[0];
+  }
+
+  // Se houver mais de uma partida OPEN:
+  // 1. Prioriza a que já tiver jogadores confirmados ou na fila
+  // 2. Se ambas tiverem ou ambas estiverem vazias, prioriza a mais próxima da data atual (ordem cronológica ascendente)
+  const sorted = [...openMatches].sort((a, b) => {
+    const aPlayers = (a.confirmedIds?.length || 0) + (a.waitingIds?.length || 0);
+    const bPlayers = (b.confirmedIds?.length || 0) + (b.waitingIds?.length || 0);
+
+    if (aPlayers > 0 && bPlayers === 0) return -1;
+    if (bPlayers > 0 && aPlayers === 0) return 1;
+
+    const dateA = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date).getTime();
+    const dateB = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date).getTime();
+    return dateA - dateB;
+  });
+
+  return sorted[0];
+}
 
 export interface Transaction {
   id: string;
@@ -217,6 +279,9 @@ export interface GroupSettings {
 
 import { useAuth } from '../components/AuthProvider';
 
+let autoScheduleInProgress = false;
+let duplicateCleanupInProgress = false;
+
 export function usePelada() {
   const { role, user, approved, isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
@@ -241,13 +306,20 @@ export function usePelada() {
     autoCloseEnabled: true,
     autoClosePreset: 'match_time'
   });
-  const [loading, setLoading] = useState(true);
+  const [matchesLoaded, setMatchesLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [actionLoading, setLoading] = useState(false);
+  const loading = (Boolean(user) && (!matchesLoaded || !settingsLoaded)) || actionLoading;
 
   useEffect(() => {
     if (!user) {
-      setLoading(false);
+      setMatchesLoaded(true);
+      setSettingsLoaded(true);
       return;
     }
+
+    setMatchesLoaded(false);
+    setSettingsLoaded(false);
 
     const unsubPlayers = onSnapshot(query(collection(db, 'players'), orderBy('name')), (snap) => {
       setPlayers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
@@ -278,8 +350,10 @@ export function usePelada() {
         } as Match;
       });
       setMatches(fetchedMatches);
+      setMatchesLoaded(true);
     }, (error) => {
       handleFirestoreError(error, 'get', 'matches');
+      setMatchesLoaded(true);
     });
 
     let unsubTransactions: () => void = () => {};
@@ -295,10 +369,10 @@ export function usePelada() {
       if (snap.exists()) {
         setSettings(prev => ({ ...prev, ...snap.data() }));
       }
-      setLoading(false);
+      setSettingsLoaded(true);
     }, (error) => {
       handleFirestoreError(error, 'get', 'groups/main');
-      setLoading(false);
+      setSettingsLoaded(true);
     });
 
     return () => {
@@ -331,10 +405,11 @@ export function usePelada() {
 
   // Fechamento automático de listas quando atinge o horário configurado
   useEffect(() => {
+    if (!isAdmin) return;
     const checkAutoClose = async () => {
       const now = Date.now();
       for (const match of matches) {
-        if (match.status === 'OPEN' && !match.isListClosed && match.autoCloseEnabled && match.autoCloseTime) {
+        if (match.status === 'OPEN' && !match.isListClosed && !isMatchAwaitingOpen(match) && match.autoCloseEnabled && match.autoCloseTime) {
           const closeTime = new Date(match.autoCloseTime).getTime();
           if (!isNaN(closeTime) && now >= closeTime) {
             console.log(`[Auto-Close] Horário atingido. Fechando lista da pelada ${match.id} automaticamente.`);
@@ -353,10 +428,11 @@ export function usePelada() {
     checkAutoClose();
     const interval = setInterval(checkAutoClose, 15000); // Checa a cada 15 segundos
     return () => clearInterval(interval);
-  }, [matches]);
+  }, [matches, isAdmin]);
 
   // Abertura automática de listas quando atinge o horário programado
   useEffect(() => {
+    if (!isAdmin) return;
     const checkAutoOpen = async () => {
       const now = Date.now();
       for (const match of matches) {
@@ -381,28 +457,119 @@ export function usePelada() {
     checkAutoOpen();
     const interval = setInterval(checkAutoOpen, 15000);
     return () => clearInterval(interval);
-  }, [matches]);
+  }, [matches, isAdmin]);
 
-  // Agendamento automático semanal da próxima pelada
+  // Limpeza automática de peladas duplicadas vazias na mesma data + correção de isListClosed
   useEffect(() => {
-    if (!isAdmin || !settings.autoScheduleEnabled) return;
+    if (loading || !isAdmin || matches.length === 0 || duplicateCleanupInProgress) return;
+
+    const cleanupDuplicates = async () => {
+      duplicateCleanupInProgress = true;
+      try {
+        const openMatches = matches.filter(m => m.status === 'OPEN');
+        const byDate: Record<string, Match[]> = {};
+
+        for (const m of openMatches) {
+          const d = m.date?.toDate ? m.date.toDate() : new Date(m.date);
+          if (isNaN(d.getTime())) continue;
+          const key = getLocalDateKey(d);
+          if (!byDate[key]) byDate[key] = [];
+          byDate[key].push(m);
+        }
+
+        for (const key of Object.keys(byDate)) {
+          const group = byDate[key];
+          // Ordena mantendo primeiro quem tem atletas ou o ID determinístico 'auto_'
+          const sorted = [...group].sort((a, b) => {
+            const aCount = (a.confirmedIds?.length || 0) + (a.waitingIds?.length || 0) + (a.absentIds?.length || 0);
+            const bCount = (b.confirmedIds?.length || 0) + (b.waitingIds?.length || 0) + (b.absentIds?.length || 0);
+            if (aCount !== bCount) return bCount - aCount;
+            if (a.id.startsWith('auto_') && !b.id.startsWith('auto_')) return -1;
+            if (b.id.startsWith('auto_') && !a.id.startsWith('auto_')) return 1;
+            return a.id.localeCompare(b.id);
+          });
+
+          if (sorted.length > 1) {
+            // Remove apenas duplicatas 100% vazias
+            for (const dup of sorted.slice(1)) {
+              const isEmpty =
+                (dup.confirmedIds?.length || 0) === 0 &&
+                (dup.waitingIds?.length || 0) === 0 &&
+                (dup.absentIds?.length || 0) === 0;
+              if (isEmpty) {
+                console.log(`[Cleanup] Removendo pelada duplicada vazia ${dup.id} (${key})`);
+                await deleteDoc(doc(db, 'matches', dup.id)).catch(console.warn);
+              }
+            }
+          }
+
+          const primary = sorted[0];
+          if (primary) {
+            const isPrimaryEmpty =
+              (primary.confirmedIds?.length || 0) === 0 &&
+              (primary.waitingIds?.length || 0) === 0 &&
+              (primary.absentIds?.length || 0) === 0;
+
+            if (isMatchAwaitingOpen(primary) && primary.isListClosed === false) {
+              await updateDoc(doc(db, 'matches', primary.id), { isListClosed: true }).catch(console.warn);
+            } else if (
+              isPrimaryEmpty &&
+              !primary.manuallyOpenedEarly &&
+              settings.autoScheduleEnabled &&
+              settings.autoOpenEnabled !== false &&
+              settings.openDayOfWeek !== undefined &&
+              settings.openTime
+            ) {
+              const matchDate = primary.date?.toDate ? primary.date.toDate() : new Date(primary.date);
+              if (!isNaN(matchDate.getTime())) {
+                const expectedOpen = getOpenDatePriorToMatch(matchDate, settings.openDayOfWeek, settings.openTime);
+                const expectedIso = expectedOpen.toISOString();
+                if (Date.now() < expectedOpen.getTime()) {
+                  if (!primary.autoOpenEnabled || primary.autoOpenTime !== expectedIso || primary.isListClosed !== true) {
+                    console.log(`[Cleanup] Sincronizando bloqueio até abertura programada (${expectedIso}) na pelada ${primary.id}`);
+                    await updateDoc(doc(db, 'matches', primary.id), {
+                      autoOpenEnabled: true,
+                      autoOpenTime: expectedIso,
+                      isListClosed: true
+                    }).catch(console.warn);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } finally {
+        duplicateCleanupInProgress = false;
+      }
+    };
+
+    cleanupDuplicates();
+  }, [loading, isAdmin, matches, settings.autoScheduleEnabled, settings.autoOpenEnabled, settings.openDayOfWeek, settings.openTime]);
+
+  // Agendamento automático semanal da próxima pelada (único e com trava contra duplicidade)
+  useEffect(() => {
+    if (loading || !isAdmin || !settings.autoScheduleEnabled) return;
     if (settings.matchDayOfWeek === undefined || !settings.matchTime) return;
 
     const checkAndSchedule = async () => {
-      const now = new Date();
-      // Verifica se já existe uma pelada OPEN futura ou no mesmo dia
-      const hasUpcomingMatch = matches.some(m => {
-        if (m.status !== 'OPEN') return false;
-        const matchD = m.date?.toDate ? m.date.toDate() : new Date(m.date);
-        const dayAfter = new Date(matchD);
-        dayAfter.setDate(dayAfter.getDate() + 1);
-        dayAfter.setHours(0, 0, 0, 0);
-        return now < dayAfter;
-      });
+      if (autoScheduleInProgress) return;
+      // Se JÁ EXISTE QUALQUER partida com status OPEN em memória, NUNCA criar outra por cima!
+      const hasAnyOpenMatch = matches.some(m => m.status === 'OPEN');
+      if (hasAnyOpenMatch) return;
 
-      if (!hasUpcomingMatch) {
+      autoScheduleInProgress = true;
+      try {
+        // Confirma diretamente no Firestore antes de escrever para impedir corrida entre abas/componentes
+        const openSnap = await getDocs(query(collection(db, 'matches'), where('status', '==', 'OPEN'), limit(1)));
+        if (!openSnap.empty) return;
+
         const matchDate = getNextDateForDayAndTime(settings.matchDayOfWeek!, settings.matchTime!);
-        
+        const dateKey = getLocalDateKey(matchDate);
+        const deterministicId = `auto_${dateKey}`;
+        const matchRef = doc(db, 'matches', deterministicId);
+        const existingDoc = await getDoc(matchRef);
+        if (existingDoc.exists()) return;
+
         let autoOpenTime: string | null = null;
         let autoOpenEnabled = false;
         if (settings.autoOpenEnabled !== false && settings.openDayOfWeek !== undefined && settings.openTime) {
@@ -426,30 +593,43 @@ export function usePelada() {
           autoCloseTime = closeDate.toISOString();
         }
 
-        console.log(`[Auto-Schedule] Agendando automaticamente próxima pelada para: ${matchDate.toLocaleString('pt-BR')}`);
-        try {
-          await createMatch({
-            date: matchDate,
-            autoOpenEnabled,
-            autoOpenTime,
-            autoCloseEnabled,
-            autoCloseTime
-          });
-        } catch (err) {
-          console.error("[Auto-Schedule] Erro ao criar pelada automática:", err);
-        }
+        const shouldBeLockedUntilOpen = Boolean(
+          autoOpenEnabled && autoOpenTime && Date.now() < new Date(autoOpenTime).getTime()
+        );
+
+        console.log(`[Auto-Schedule] Agendando pelada única (${deterministicId}) para: ${matchDate.toLocaleString('pt-BR')} (Bloqueada até abertura: ${shouldBeLockedUntilOpen})`);
+        await setDoc(matchRef, {
+          date: Timestamp.fromDate(matchDate),
+          status: 'OPEN',
+          confirmedIds: [],
+          absentIds: [],
+          waitingIds: [],
+          confirmations: {},
+          isListClosed: shouldBeLockedUntilOpen,
+          autoOpenEnabled: shouldBeLockedUntilOpen ? true : false,
+          autoOpenTime: shouldBeLockedUntilOpen ? autoOpenTime : null,
+          manuallyOpenedEarly: false,
+          autoCloseEnabled,
+          autoCloseTime
+        });
+      } catch (err) {
+        console.error("[Auto-Schedule] Erro ao criar pelada automática:", err);
+      } finally {
+        autoScheduleInProgress = false;
       }
     };
 
     checkAndSchedule();
-  }, [isAdmin, settings.autoScheduleEnabled, settings.matchDayOfWeek, settings.matchTime, settings.autoOpenEnabled, settings.openDayOfWeek, settings.openTime, settings.autoCloseEnabled, settings.autoClosePreset, matches]);
+    const interval = setInterval(checkAndSchedule, 15000);
+    return () => clearInterval(interval);
+  }, [loading, isAdmin, settings.autoScheduleEnabled, settings.matchDayOfWeek, settings.matchTime, settings.autoOpenEnabled, settings.openDayOfWeek, settings.openTime, settings.autoCloseEnabled, settings.autoClosePreset, matches]);
 
   // Effect specifically for handling the live game listener
   useEffect(() => {
     if (!user) return;
     
     // Fallback detection for active match to ensure listener attaches properly
-    const openMatchId = matches.find(m => m.status === 'OPEN')?.id;
+    const openMatchId = getActiveOrNextMatch(matches)?.id;
 
     if (!openMatchId) {
       setLiveGame(null);
@@ -603,9 +783,13 @@ export function usePelada() {
 
     // Se a programação automática estiver ativa, sincronizar com a pelada aberta atual
     if (newSettings.autoScheduleEnabled && newSettings.matchDayOfWeek !== undefined && newSettings.matchTime) {
-      const openMatch = matches.find(m => m.status === 'OPEN');
+      const openMatch = getActiveOrNextMatch(matches);
       if (openMatch) {
-        const matchDate = openMatch.date?.toDate ? openMatch.date.toDate() : new Date(openMatch.date);
+        const isEmptyMatch = (openMatch.confirmedIds?.length || 0) === 0 && (openMatch.waitingIds?.length || 0) === 0;
+        const matchDate = isEmptyMatch
+          ? getNextDateForDayAndTime(newSettings.matchDayOfWeek, newSettings.matchTime)
+          : (openMatch.date?.toDate ? openMatch.date.toDate() : new Date(openMatch.date));
+
         let autoOpenTime: string | null = null;
         let autoOpenEnabled = false;
         if (newSettings.autoOpenEnabled !== false && newSettings.openDayOfWeek !== undefined && newSettings.openTime) {
@@ -629,13 +813,23 @@ export function usePelada() {
           autoCloseTime = closeDate.toISOString();
         }
 
+        const shouldBeLockedUntilOpen = Boolean(
+          isEmptyMatch && autoOpenEnabled && autoOpenTime && Date.now() < new Date(autoOpenTime).getTime()
+        );
+
         try {
-          await updateDoc(doc(db, 'matches', openMatch.id), {
-            autoOpenEnabled,
-            autoOpenTime,
+          const updatePayload: Record<string, any> = {
+            autoOpenEnabled: shouldBeLockedUntilOpen ? true : false,
+            autoOpenTime: shouldBeLockedUntilOpen ? autoOpenTime : null,
             autoCloseEnabled,
             autoCloseTime
-          });
+          };
+          if (isEmptyMatch) {
+            updatePayload.date = Timestamp.fromDate(matchDate);
+            updatePayload.isListClosed = shouldBeLockedUntilOpen;
+            updatePayload.manuallyOpenedEarly = false;
+          }
+          await updateDoc(doc(db, 'matches', openMatch.id), updatePayload);
         } catch (err) {
           console.warn("Erro ao sincronizar agendamento na pelada atual:", err);
         }
@@ -828,6 +1022,37 @@ export function usePelada() {
     const autoOpenEnabled = data instanceof Date ? false : (data.autoOpenEnabled ?? false);
     const autoOpenTime = data instanceof Date ? null : (data.autoOpenTime ?? null);
 
+    const shouldBeLockedUntilOpen = Boolean(
+      autoOpenEnabled && autoOpenTime && Date.now() < new Date(autoOpenTime).getTime()
+    );
+
+    const targetDateKey = getLocalDateKey(matchDate);
+    // Verifica se já existe uma pelada OPEN na mesma data (evita duplicação)
+    const openSnap = await getDocs(query(collection(db, 'matches'), where('status', '==', 'OPEN')));
+    const existingSameDay = openSnap.docs.find(d => {
+      const mData = d.data();
+      const dObj = mData.date?.toDate ? mData.date.toDate() : new Date(mData.date);
+      return !isNaN(dObj.getTime()) && getLocalDateKey(dObj) === targetDateKey;
+    });
+
+    if (existingSameDay) {
+      const mData = existingSameDay.data();
+      const isEmpty = (mData.confirmedIds?.length || 0) === 0 && (mData.waitingIds?.length || 0) === 0;
+      const updatePayload: Record<string, any> = {
+        date: Timestamp.fromDate(matchDate),
+        autoOpenEnabled: shouldBeLockedUntilOpen ? true : false,
+        autoOpenTime: shouldBeLockedUntilOpen ? autoOpenTime : null,
+        autoCloseEnabled,
+        autoCloseTime
+      };
+      if (isEmpty) {
+        updatePayload.isListClosed = shouldBeLockedUntilOpen;
+        updatePayload.manuallyOpenedEarly = false;
+      }
+      await updateDoc(doc(db, 'matches', existingSameDay.id), updatePayload);
+      return;
+    }
+
     await addDoc(collection(db, 'matches'), {
       date: Timestamp.fromDate(matchDate),
       status: 'OPEN',
@@ -835,9 +1060,10 @@ export function usePelada() {
       absentIds: [],
       waitingIds: [],
       confirmations: {},
-      isListClosed: false,
-      autoOpenEnabled: autoOpenEnabled,
-      autoOpenTime: autoOpenTime,
+      isListClosed: shouldBeLockedUntilOpen,
+      autoOpenEnabled: shouldBeLockedUntilOpen ? true : false,
+      autoOpenTime: shouldBeLockedUntilOpen ? autoOpenTime : null,
+      manuallyOpenedEarly: false,
       autoCloseEnabled: autoCloseEnabled,
       autoCloseTime: autoCloseTime
     });
@@ -847,15 +1073,22 @@ export function usePelada() {
     try {
       if (isClosed) {
         await updateDoc(doc(db, 'matches', matchId), {
-          isListClosed: true
+          isListClosed: true,
+          autoOpenEnabled: false,
+          autoOpenTime: null,
+          manuallyOpenedEarly: false
         });
       } else {
+        const currentMatch = matches.find(m => m.id === matchId);
+        const closeTimeMs = currentMatch?.autoCloseTime ? new Date(currentMatch.autoCloseTime).getTime() : NaN;
+        const keepAutoClose = Boolean(currentMatch?.autoCloseEnabled && !isNaN(closeTimeMs) && Date.now() < closeTimeMs);
+
         await updateDoc(doc(db, 'matches', matchId), {
           isListClosed: false,
-          autoCloseEnabled: false,
-          autoCloseTime: null,
           autoOpenEnabled: false,
-          autoOpenTime: null
+          autoOpenTime: null,
+          manuallyOpenedEarly: true,
+          ...(keepAutoClose ? {} : { autoCloseEnabled: false, autoCloseTime: null })
         });
       }
     } catch (error) {

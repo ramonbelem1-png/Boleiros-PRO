@@ -33,14 +33,15 @@ async function startServer() {
       const { prompt, context, userEmail, userRole } = req.body;
 
       // Master Admin verification
-      const isMasterEmail = 
-        userEmail === 'ramoncxavier88@gmail.com' || 
-        userEmail === 'ramoncarvalhoxavier@hotmail.com';
-      const isMasterRole = userRole === 'CREATOR';
+      const normalizedEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
+      const isMasterEmail =
+        normalizedEmail === 'ramonbelem1@gmail.com' ||
+        normalizedEmail === 'ramoncxavier88@gmail.com' ||
+        normalizedEmail === 'ramoncarvalhoxavier@hotmail.com';
 
-      if (!isMasterRole && !isMasterEmail) {
-        return res.status(403).json({ 
-          error: 'Acesso restrito exclusivamente ao Administrador Master.' 
+      if (!isMasterEmail) {
+        return res.status(403).json({
+          error: 'Acesso restrito exclusivamente ao Administrador Master.'
         });
       }
 

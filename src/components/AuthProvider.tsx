@@ -54,33 +54,9 @@ export function isMasterAdmin(u: User | null): boolean {
     ...(u.providerData?.map(p => p.email) || [])
   ].filter(Boolean).map(e => e!.trim().toLowerCase());
 
-  const names = [
-    u.displayName,
-    ...(u.providerData?.map(p => p.displayName) || [])
-  ].filter(Boolean).map(n => n!.trim().toLowerCase());
-
-  if (emails.some(em => 
-    em === 'ramonbelem1@gmail.com' ||
-    em === 'ramoncxavier88@gmail.com' ||
-    em === 'ramoncarvalhoxavier@hotmail.com' ||
-    em.includes('ramonbelem') ||
-    em.includes('ramoncxavier') ||
-    em.includes('ramoncarvalho') ||
-    em.includes('ramon') ||
-    em.includes('xavier88')
-  )) {
-    return true;
-  }
-
-  if (names.some(n => 
-    n === 'ramon' ||
-    n.includes('ramon') ||
-    n.includes('xavier')
-  )) {
-    return true;
-  }
-
-  return false;
+  return emails.some(em => 
+    MASTER_ADMIN_EMAILS.map(m => m.toLowerCase().trim()).includes(em)
+  );
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);

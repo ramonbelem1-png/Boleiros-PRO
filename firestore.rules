@@ -17,7 +17,6 @@ service cloud.firestore {
 
     function isMasterAdmin() {
       return isSignedIn() && (
-        request.auth.token.email.matches('(?i).*ramon.*') ||
         request.auth.token.email.matches('(?i)^ramonbelem1@gmail\\.com$') ||
         request.auth.token.email.matches('(?i)^ramoncxavier88@gmail\\.com$') ||
         request.auth.token.email.matches('(?i)^ramoncarvalhoxavier@hotmail\\.com$') ||

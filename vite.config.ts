@@ -1,14 +1,35 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const buildVersion = mode === 'production' ? String(Date.now()) : 'dev';
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'emit-version-json',
+        closeBundle() {
+          if (mode === 'production') {
+            const distDir = path.resolve(__dirname, 'dist');
+            if (fs.existsSync(distDir)) {
+              fs.writeFileSync(
+                path.join(distDir, 'version.json'),
+                JSON.stringify({ version: buildVersion })
+              );
+            }
+          }
+        },
+      },
+    ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      '__APP_VERSION__': JSON.stringify(buildVersion),
     },
     resolve: {
       alias: {

@@ -4,6 +4,7 @@ import { useAuth } from './AuthProvider';
 import { Check, X, Clock, AlertCircle, Calendar as CalendarIcon, ChevronDown, ChevronUp, Filter, Loader2, ArrowUp, ArrowDown, Lock, Unlock, Settings2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import CalendarView from './CalendarView';
+import { safeStorage } from '../lib/storage';
 
 const removeAccents = (str: string): string => {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -98,7 +99,16 @@ export default function MatchList() {
   const [showAutoCloseModal, setShowAutoCloseModal] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [searchPlayer, setSearchPlayer] = useState('');
+  const [squadSortBy, setSquadSortBy] = useState<'name' | 'number'>(() => {
+    const saved = safeStorage.getItem('boleiros_squad_sort');
+    return saved === 'number' ? 'number' : 'name';
+  });
   const [submitting, setSubmitting] = useState(false);
+
+  const handleSquadSortChange = (mode: 'name' | 'number') => {
+    setSquadSortBy(mode);
+    safeStorage.setItem('boleiros_squad_sort', mode);
+  };
   const [feedback, setFeedback] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [confirmState, setConfirmState] = useState<{message: string, onConfirm: () => void} | null>(null);
 
@@ -864,17 +874,50 @@ export default function MatchList() {
                 )}
 
                 <div className="pt-8 space-y-4">
-                  <div className="flex items-center justify-between px-2">
-                    <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase">Elenco do Grupo</h3>
-                    <span className="text-[10px] font-bold text-gray-500">
-                      {players.filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase())).length} ATLETAS
-                    </span>
+                  <div className="flex items-center justify-between gap-2 px-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="text-primary text-[11px] font-bold tracking-[0.2em] uppercase truncate">Elenco do Grupo</h3>
+                      <span className="text-[10px] font-bold text-gray-500 shrink-0">
+                        {players.filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase())).length} ATLETAS
+                      </span>
+                    </div>
+                    <div className="flex bg-card p-0.5 rounded-xl border border-border/50 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSquadSortChange('name')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                          squadSortBy === 'name'
+                            ? 'bg-primary text-bg shadow-sm'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Nome
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSquadSortChange('number')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                          squadSortBy === 'number'
+                            ? 'bg-primary text-bg shadow-sm'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Nº Camisa
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
                     {players
                       .filter(p => removeAccents(p.displayName || p.name).toLowerCase().includes(removeAccents(searchPlayer).toLowerCase()))
-                      .sort((a,b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
+                      .sort((a, b) => {
+                        if (squadSortBy === 'number') {
+                          const numA = a.number !== undefined && a.number !== null ? Number(a.number) : Infinity;
+                          const numB = b.number !== undefined && b.number !== null ? Number(b.number) : Infinity;
+                          if (numA !== numB) return numA - numB;
+                        }
+                        return (a.displayName || a.name).localeCompare(b.displayName || b.name, 'pt-BR', { sensitivity: 'base' });
+                      })
                       .map(player => (
                       <div key={player.id} className="bg-card p-4 rounded-3xl border border-border/50 flex items-center justify-between shadow-sm">
                         <div className="flex items-center space-x-4">

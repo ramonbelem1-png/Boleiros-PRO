@@ -132,7 +132,34 @@
         }).catch(function() {});
       }
 
-      // 2. Auto clear legacy browser cache storage
+      // 2. Auto clear legacy browser cache storage (keeps user login/IndexedDB intact)
+      function clearHttpCachesAndReload() {
+        try {
+          var lastReload = Number(sessionStorage.getItem('auto_chunk_reload_at') || '0');
+          if (Date.now() - lastReload < 15000) return;
+          sessionStorage.setItem('auto_chunk_reload_at', String(Date.now()));
+        } catch (_) {}
+
+        var tasks = [];
+        if ('caches' in window) {
+          tasks.push(
+            caches.keys().then(function(keys) {
+              return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+            }).catch(function() {})
+          );
+        }
+        if ('serviceWorker' in navigator) {
+          tasks.push(
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              return Promise.all(regs.map(function(r) { return r.unregister(); }));
+            }).catch(function() {})
+          );
+        }
+        Promise.all(tasks).finally(function() {
+          window.location.replace(window.location.pathname + '?v=' + Date.now());
+        });
+      }
+
       if ('caches' in window) {
         caches.keys().then(function(keys) {
           for (var i = 0; i < keys.length; i++) {
@@ -141,25 +168,43 @@
         }).catch(function() {});
       }
 
-      // 3. Catch dynamic import / chunk loading errors due to deployment updates
+      function isAssetOrChunkError(msg, target) {
+        if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+          return true;
+        }
+        var lower = String(msg || '').toLowerCase();
+        return (
+          lower.indexOf('failed to fetch dynamically imported module') !== -1 ||
+          lower.indexOf('importing a module script failed') !== -1 ||
+          lower.indexOf('loading chunk') !== -1 ||
+          lower.indexOf('loading css chunk') !== -1 ||
+          lower.indexOf('error loading dynamically imported module') !== -1 ||
+          lower.indexOf('unable to preload css') !== -1
+        );
+      }
+
+      // 3. Catch script/link 404 (capture phase = true) & dynamic import errors automatically
       window.addEventListener('error', function(e) {
-        var msg = (e && (e.message || (e.error && e.error.message)) || '').toLowerCase();
-        if (msg.indexOf('failed to fetch dynamically imported module') !== -1 ||
-            msg.indexOf('loading chunk') !== -1 ||
-            msg.indexOf('error loading dynamically imported module') !== -1) {
-          var reloaded = sessionStorage.getItem('auto_chunk_reload');
-          if (!reloaded) {
-            sessionStorage.setItem('auto_chunk_reload', 'true');
-            window.location.href = window.location.pathname + '?t=' + Date.now();
-          }
+        var msg = e && (e.message || (e.error && e.error.message));
+        var target = e && e.target;
+        if (isAssetOrChunkError(msg, target)) {
+          clearHttpCachesAndReload();
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(e) {
+        var reason = e && e.reason;
+        var msg = (reason && (reason.message || String(reason))) || '';
+        if (isAssetOrChunkError(msg, null)) {
+          clearHttpCachesAndReload();
         }
       });
 
-      // 4. If after 7s React has not mounted, reveal recovery prompt
+      // 4. If after 8s React has not mounted, attempt one automatic refresh before showing prompt
       setTimeout(function() {
         var el = document.getElementById('recovery-prompt');
         if (el) el.style.display = 'block';
-      }, 7000);
+      }, 8000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

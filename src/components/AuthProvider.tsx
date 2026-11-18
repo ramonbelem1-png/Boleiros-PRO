@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -22,7 +22,19 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const isInAppBrowser = typeof navigator !== 'undefined' && /WhatsApp|FBAN|FBAV|Instagram|Line|Twitter|Snapchat/i.test(navigator.userAgent || '');
+const isStandalonePWA = typeof window !== 'undefined' && (
+  window.matchMedia?.('(display-mode: standalone)')?.matches ||
+  (window.navigator as any)?.standalone === true
+);
+const isInIframe = (() => {
+  try {
+    return typeof window !== 'undefined' && window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
 
 
 export type UserRole = 'ADMIN' | 'USER';
@@ -81,9 +93,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [showPassword, setShowPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
+  const nameRef = useRef(name);
+  nameRef.current = name;
+  const signInAttemptRef = useRef(0);
+  const signInCancelFnRef = useRef<(() => void) | null>(null);
+
+  const cancelSignIn = () => {
+    signInAttemptRef.current += 1;
+    if (signInCancelFnRef.current) {
+      signInCancelFnRef.current();
+      signInCancelFnRef.current = null;
+    }
+    setAuthLoading(false);
+  };
+
   useEffect(() => {
-    // Verificar resultado de redirecionamento (caso o usuário tenha usado esse método no mobile)
-    getRedirectResult(auth).then((result) => {
+    // Verificar resultado de redirecionamento (com timeout curto para nunca travar em IndexedDB lento no celular)
+    Promise.race([
+      getRedirectResult(auth),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+    ]).then((result) => {
       if (result?.user) {
         setUser(result.user);
       }
@@ -93,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const domain = window.location.hostname;
         setAuthError(`Domínio não autorizado: "${domain}". Adicione-o no Console do Firebase.`);
       } else if (error.code === 'auth/missing-initial-state') {
-        setAuthError("O Safari ou WhatsApp bloqueou o redirecionamento por segurança de privacidade (ITP). Por favor, use 'Entrar com Email e Senha' ou abra diretamente no Safari.");
+        setAuthError("O navegador bloqueou o redirecionamento. Use 'Entrar com Email e Senha' abaixo.");
       } else {
         setAuthError("Erro ao processar retorno do login. Tente usar 'Entrar com Email e Senha'.");
       }
@@ -117,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return false;
       });
-    }, 7000);
+    }, 4500);
 
     let unsubRoleListener: (() => void) | null = null;
 
@@ -150,11 +179,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       unsubRoleListener = onSnapshot(roleRef, async (roleSnap) => {
         try {
-          // Buscar configuração de aprovação automática
+          // Buscar configuração de aprovação automática (com timeout curto para não travar login offline/lento)
           let isAutoApprove = true;
           try {
-            const groupDoc = await getDoc(doc(db, 'groups', 'main'));
-            if (groupDoc.exists()) {
+            const groupDoc = await Promise.race([
+              getDoc(doc(db, 'groups', 'main')),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+            ]);
+            if (groupDoc && groupDoc.exists()) {
               const gData = groupDoc.data();
               if (gData.autoApprove !== undefined) {
                 isAutoApprove = gData.autoApprove === true;
@@ -197,9 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role: assignedRole,
               approved: isApproved,
               email: u.email || '',
-              name: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-              displayName: (u.displayName || name || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
-              fullName: u.displayName || name || u.email?.split('@')[0] || 'Jogador',
+              name: (u.displayName || nameRef.current || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
+              displayName: (u.displayName || nameRef.current || u.email?.split('@')[0] || 'Jogador').substring(0, 15),
+              fullName: u.displayName || nameRef.current || u.email?.split('@')[0] || 'Jogador',
               createdAt: new Date().toISOString()
             };
 
@@ -253,8 +285,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             }
 
-            const cleanDisplayName = ((existingData?.displayName || existingData?.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador') as string).substring(0, 15);
-            const cleanFullName = (existingData?.fullName || existingData?.name || u.displayName || name || u.email?.split('@')[0] || 'Jogador') as string;
+            const cleanDisplayName = ((existingData?.displayName || existingData?.name || u.displayName || nameRef.current || u.email?.split('@')[0] || 'Jogador') as string).substring(0, 15);
+            const cleanFullName = (existingData?.fullName || existingData?.name || u.displayName || nameRef.current || u.email?.split('@')[0] || 'Jogador') as string;
 
             const playerData = {
               name: cleanDisplayName,
@@ -296,32 +328,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })();
     });
 
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted || !auth.currentUser) {
+        setAuthLoading(false);
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+
     return () => {
       clearTimeout(safetyTimeout);
+      window.removeEventListener('pageshow', handlePageShow);
       unsubAuth();
       if (unsubRoleListener) unsubRoleListener();
     };
-  }, [name]);
+  }, []);
 
   const signIn = async (useRedirect = false) => {
     setAuthError(null);
     setSuccessMsg(null);
     setAuthLoading(true);
+    const attemptId = ++signInAttemptRef.current;
+
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     provider.addScope('email');
     provider.addScope('profile');
     
+    let cleanupWaiters: (() => void) | null = null;
+
     try {
       if (useRedirect) {
-        if (isIOS || isInAppBrowser) {
-          throw new Error("No iPhone ou WhatsApp, o redirecionamento pode falhar por proteção do iOS. Por favor, use 'Entrar com Email e Senha' abaixo ou abra diretamente no Safari.");
+        if (isIOS || isInAppBrowser || isInIframe) {
+          throw new Error("O redirecionamento pode ser bloqueado neste navegador/janela. Use 'Entrar com Email e Senha' abaixo ou abra diretamente no navegador.");
         }
-        await signInWithRedirect(auth, provider);
+        await Promise.race([
+          signInWithRedirect(auth, provider),
+          new Promise((_, reject) => setTimeout(() => reject({ code: 'auth/redirect-timeout' }), 15000))
+        ]);
       } else {
         try {
-          await signInWithPopup(auth, provider);
+          const popupPromise = signInWithPopup(auth, provider);
+          const timeoutOrReturnPromise = new Promise<never>((_, reject) => {
+            let returnTimer: ReturnType<typeof setTimeout> | null = null;
+            const overallTimer = setTimeout(() => {
+              reject({ code: 'auth/popup-timeout' });
+            }, 25000);
+
+            const scheduleFocusReset = () => {
+              if (document.visibilityState && document.visibilityState !== 'visible') return;
+              if (returnTimer) clearTimeout(returnTimer);
+              returnTimer = setTimeout(() => {
+                if (!auth.currentUser && signInAttemptRef.current === attemptId) {
+                  reject({ code: 'auth/popup-stalled' });
+                }
+              }, 3500);
+            };
+
+            const onVisibility = () => {
+              if (document.visibilityState === 'visible') scheduleFocusReset();
+            };
+            const onFocus = () => scheduleFocusReset();
+
+            window.addEventListener('focus', onFocus);
+            document.addEventListener('visibilitychange', onVisibility);
+
+            const cleanup = () => {
+              clearTimeout(overallTimer);
+              if (returnTimer) clearTimeout(returnTimer);
+              window.removeEventListener('focus', onFocus);
+              document.removeEventListener('visibilitychange', onVisibility);
+            };
+
+            signInCancelFnRef.current = () => {
+              cleanup();
+              reject({ code: 'auth/popup-cancelled-by-app' });
+            };
+            cleanupWaiters = cleanup;
+          });
+
+          await Promise.race([popupPromise, timeoutOrReturnPromise]);
         } catch (popupError: any) {
+          if (popupError?.code === 'auth/popup-cancelled-by-app') {
+            return;
+          }
           console.warn("[AuthProvider] Erro no popup do Google Auth:", popupError);
           
           if (popupError.code === 'auth/popup-closed-by-user') {
@@ -329,26 +418,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // No iOS (Safari) ou navegadores embutidos (WhatsApp/Instagram), NUNCA fazer fallback automático para signInWithRedirect!
-          // Isso causa a tela de erro 'missing initial state' na URL do firebaseapp.com
-          if (isIOS || isInAppBrowser) {
+          // No iOS, navegadores embutidos (WhatsApp/Instagram) ou iframes, não forçar signInWithRedirect automaticamente
+          if (isIOS || isInAppBrowser || isInIframe) {
             if (isInAppBrowser) {
-              setAuthError("Você está no navegador do WhatsApp. Para evitar bloqueios do Google, toque em ⋮ ou compartilhar e selecione 'Abrir no Safari', ou use 'Entrar com Email e Senha' abaixo!");
+              setAuthError("Você está em um navegador embutido (WhatsApp/Instagram). Toque em ⋮ para abrir no Chrome/Safari, ou use 'Entrar com Email e Senha' abaixo.");
+            } else if (isIOS) {
+              setAuthError("A janela do Google foi bloqueada pelo Safari. Toque em 'Entrar com Email e Senha' abaixo para acessar direto sem bloqueios!");
             } else {
-              setAuthError("A janela do Google foi bloqueada pelo Safari. Toque em 'Entrar com Email e Senha' abaixo para acessar diretamente sem bloqueios!");
+              setAuthError("Não foi possível concluir o pop-up do Google nesta janela. Tente novamente ou use 'Entrar com Email e Senha' abaixo.");
             }
             return;
           }
 
-          // Apenas em desktop ou navegadores onde não há restrição de ITP/particionamento
           if (
             popupError.code === 'auth/popup-blocked' || 
             popupError.code === 'auth/cancelled-popup-request' ||
-            popupError.code === 'auth/network-request-failed'
+            popupError.code === 'auth/popup-stalled' ||
+            popupError.code === 'auth/popup-timeout'
           ) {
-            console.log("[AuthProvider] Tentando login alternativo por redirecionamento no desktop...");
+            if (popupError.code === 'auth/popup-stalled' || popupError.code === 'auth/popup-timeout') {
+              setAuthError(
+                isStandalonePWA
+                  ? "No aplicativo instalado (PWA), o pop-up do Google pode não retornar automaticamente. Toque em 'Tentar Redirecionamento' ou use 'Entrar com Email e Senha' abaixo."
+                  : "A janela do Google não respondeu a tempo. Tente novamente, use 'Tentar Redirecionamento' ou entre com Email e Senha abaixo."
+              );
+              return;
+            }
+            console.log("[AuthProvider] Pop-up bloqueado. Tentando login por redirecionamento...");
             try {
-              await signInWithRedirect(auth, provider);
+              await Promise.race([
+                signInWithRedirect(auth, provider),
+                new Promise((_, reject) => setTimeout(() => reject({ code: 'auth/redirect-timeout' }), 15000))
+              ]);
               return;
             } catch (redirErr) {
               console.error("[AuthProvider] Erro também no redirecionamento:", redirErr);
@@ -360,6 +461,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (error: any) {
+      if (error?.code === 'auth/popup-cancelled-by-app') return;
       console.error("Firebase Auth Error:", error);
       let message = "Erro ao entrar. Tente novamente.";
       
@@ -374,15 +476,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message = "Falha de conexão com os servidores do Google. Verifique sua internet ou tente entrar por e-mail e senha abaixo.";
       } else if (error.code === 'auth/popup-blocked') {
         message = "O navegador bloqueou a janela pop-up do Google. Permita pop-ups ou entre por e-mail/senha.";
+      } else if (error.code === 'auth/redirect-timeout') {
+        message = "O redirecionamento do Google demorou para responder. Verifique sua conexão ou use 'Entrar com Email e Senha' abaixo.";
       } else if (error.code === 'auth/missing-initial-state') {
-        message = "O Safari / WhatsApp bloqueou o redirecionamento. Use 'Entrar com Email e Senha' abaixo para entrar sem bloqueios.";
+        message = "O navegador bloqueou o redirecionamento. Use 'Entrar com Email e Senha' abaixo para entrar sem bloqueios.";
       } else {
         message = error.message || message;
       }
       
       setAuthError(message);
     } finally {
-      setAuthLoading(false);
+      if (cleanupWaiters) {
+        cleanupWaiters();
+        cleanupWaiters = null;
+      }
+      signInCancelFnRef.current = null;
+      if (signInAttemptRef.current === attemptId) {
+        setAuthLoading(false);
+      }
     }
   };
 
@@ -540,10 +651,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   )}
                 </motion.button>
 
+                {authLoading && (
+                  <button
+                    type="button"
+                    onClick={cancelSignIn}
+                    className="w-full py-2 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
+                  >
+                    Cancelar conexão
+                  </button>
+                )}
+
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setIsEmailMode(true)}
+                  onClick={() => {
+                    if (authLoading) cancelSignIn();
+                    setIsEmailMode(true);
+                  }}
                   className="w-full py-3.5 bg-primary text-bg rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg shadow-primary/10 transition-all active:scale-95"
                 >
                   <Mail size={18} />
@@ -724,7 +848,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             >
               <div className="leading-relaxed">{authError}</div>
               {!isEmailMode && (
-                <div>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {!isIOS && !isInAppBrowser && !isInIframe && (
+                    <button
+                      type="button"
+                      onClick={() => signIn(true)}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white/10 border border-white/20 text-white rounded-xl font-black text-[10px] uppercase tracking-wider hover:bg-white/15 active:scale-95 transition-all"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Tentar Redirecionamento</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {

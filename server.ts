@@ -91,20 +91,61 @@ Pergunta do Administrador Master:
     }
   });
 
+  const SERVER_BUILD_ID = process.env.BUILD_ID || String(Date.now());
+
+  const setNoCacheHeaders = (res: express.Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  };
+
   if (!isProduction) {
+    app.get('/version.json', (_req, res) => {
+      setNoCacheHeaders(res);
+      res.json({ version: 'dev' });
+    });
+
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
         host: '0.0.0.0',
-        port: PORT
+        port: PORT,
+        ...(process.env.DISABLE_HMR === 'true' ? { hmr: false } : {})
       },
       appType: 'spa',
     });
+    app.use((req, res, next) => {
+      if (req.path === '/' || req.path.endsWith('.html') || req.path === '/manifest.json') {
+        setNoCacheHeaders(res);
+      }
+      next();
+    });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    const distDir = path.resolve(__dirname, 'dist');
+    app.get('/version.json', (_req, res) => {
+      setNoCacheHeaders(res);
+      res.sendFile(path.join(distDir, 'version.json'), (err) => {
+        if (err && !res.headersSent) {
+          res.json({ version: SERVER_BUILD_ID });
+        }
+      });
+    });
+
+    app.use(express.static(distDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          setNoCacheHeaders(res);
+        }
+      }
+    }));
+
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      setNoCacheHeaders(res);
+      res.sendFile(path.join(distDir, 'index.html'));
     });
   }
 

@@ -30,7 +30,14 @@ async function startServer() {
   // POST /api/ai-master - Exclusivo para Admin Master
   app.post('/api/ai-master', async (req, res) => {
     try {
-      const { prompt, context, userEmail, userRole } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: 'Chave da API Gemini não configurada. Verifique o painel Settings > Secrets.'
+        });
+      }
+
+      const { prompt, context, userEmail } = req.body || {};
 
       // Master Admin verification
       const normalizedEmail = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
@@ -63,32 +70,65 @@ Suas diretrizes:
 5. Se algum dado não estiver disponível no histórico, seja transparente e responda com base nos dados reais existentes no contexto fornecido.`;
 
       const promptPayload = `Dados do aplicativo da pelada (JSON):
-${JSON.stringify(context || {}, null, 2)}
+${JSON.stringify(context || {})}
 
 Pergunta do Administrador Master:
 "${prompt.trim()}"`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: promptPayload }]
+      const callGemini = async (model: string) => {
+        return ai.models.generateContent({
+          model,
+          contents: promptPayload,
+          config: {
+            systemInstruction
           }
-        ],
-        config: {
-          systemInstruction,
-          temperature: 0.2
-        }
-      });
+        });
+      };
 
-      const text = response.text || 'Não consegui formular uma resposta com os dados atuais.';
+      let response: any = null;
+      const modelsToTry = ['gemini-4-hydrogen', 'gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+      let lastErr: any = null;
+
+      for (let i = 0; i < modelsToTry.length; i++) {
+        try {
+          response = await callGemini(modelsToTry[i]);
+          lastErr = null;
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          const msg = String(err?.message || '');
+          const isTransient = err?.status === 503 || err?.status === 429 || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand');
+          if (!isTransient || i === modelsToTry.length - 1) {
+            throw err;
+          }
+          await new Promise(resolve => setTimeout(resolve, 800 * (i + 1)));
+        }
+      }
+
+      if (lastErr && !response) {
+        throw lastErr;
+      }
+
+      const text = response?.text || 'Não consegui formular uma resposta com os dados atuais.';
       return res.json({ answer: text });
     } catch (err: any) {
       console.error('Erro no processamento da IA Master:', err);
-      const errorMessage = err?.message || 'Falha ao consultar a Inteligência Artificial.';
-      return res.status(500).json({ error: errorMessage });
+      const status = typeof err?.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
+      const rawMsg = String(err?.message || '');
+      let errorMessage = rawMsg || 'Falha ao consultar a Inteligência Artificial.';
+      if (status === 503 || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('high demand')) {
+        errorMessage = 'O serviço de IA está com alta demanda temporária. Tente novamente em alguns segundos.';
+      } else if (status === 403 || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID')) {
+        errorMessage = 'Chave da API Gemini inválida ou sem permissão. Verifique o painel Settings > Secrets.';
+      } else if (status === 429 || rawMsg.includes('RESOURCE_EXHAUSTED')) {
+        errorMessage = 'Limite de requisições da IA atingido temporariamente. Aguarde alguns instantes.';
+      }
+      return res.status(status).json({ error: errorMessage });
     }
+  });
+
+  app.all('/api/*', (_req, res) => {
+    return res.status(404).json({ error: 'Endpoint de API não encontrado.' });
   });
 
   const SERVER_BUILD_ID = process.env.BUILD_ID || String(Date.now());

@@ -151,7 +151,18 @@ export default function MasterAI() {
         })
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(
+          res.status >= 500
+            ? 'O servidor da IA retornou uma resposta inválida. Tente novamente em instantes.'
+            : 'Serviço de IA indisponível neste endereço. Acesse pelo link principal do app no AI Studio.'
+        );
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Erro no servidor de IA.');
       }
